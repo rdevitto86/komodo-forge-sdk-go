@@ -1,0 +1,78 @@
+# Binaries and compiled outputs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.a
+
+# Build directories
+/bin/
+/dist/
+/build/
+/out/
+
+# Go workspace files (local development only)
+go.work
+go.work.sum
+
+# Vendor directory (uncomment if not vendoring)
+# vendor/
+
+# Test coverage
+coverage.out
+coverage.html
+*.coverprofile
+c.out
+
+# Profiling data
+*.pprof
+cpu.prof
+mem.prof
+trace.out
+
+# Generated code
+*.pb.go
+*_mock.go
+mock_*.go
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+
+# Log files
+*.log
+
+# Temporary files
+tmp/
+temp/
+
+# OS-specific
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.history/
+*.iml
+
+# Air (live reload)
+air.toml
+
+# Delve debugger
+__debug_bin
+__debug_bin*

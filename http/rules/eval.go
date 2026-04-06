@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	headers "github.com/rdevitto86/komodo-forge-sdk-go/http/headers/eval"
+	headers "github.com/rdevitto86/komodo-forge-sdk-go/http/headers"
 	httpReq "github.com/rdevitto86/komodo-forge-sdk-go/http/request"
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 	"net/http"

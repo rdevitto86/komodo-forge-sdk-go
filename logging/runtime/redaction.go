@@ -2,7 +2,7 @@ package logger
 
 import (
 	"context"
-	"github.com/rdevitto86/komodo-forge-sdk-go/http/utils/redaction"
+	"github.com/rdevitto86/komodo-forge-sdk-go/http/redaction"
 	"log/slog"
 )
 

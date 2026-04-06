@@ -84,6 +84,16 @@ func LoadConfigWithData(data []byte) {
 
 func IsConfigLoaded() bool { return configLoaded && ruleMap != nil }
 
+// ResetForTesting resets all package-level state so that LoadConfig and
+// LoadConfigWithData can be called again. This function is intended only for use
+// in test binaries; calling it in production code will break all callers.
+func ResetForTesting() {
+	loadOnce = sync.Once{}
+	configLoaded = false
+	ruleMap = nil
+	patternRoutes = nil
+}
+
 func GetRule(pKey string, method string) *EvalRule {
 	if pKey == "" || method == "" || ruleMap == nil {
 		return nil

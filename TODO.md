@@ -131,11 +131,69 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **M** Percentile (p50/p95/p99) helpers
 - [ ] **L** Throughput / RPS measurement
 
+### `scripts`
+
+> Goal: reusable shell scripts consumable by any Go app or API. Each script must be self-contained, exit non-zero on failure, and work in both local and CI environments. No SDK-specific logic.
+
+- [x] **H** `build.sh` — compile binary via `go build`; inject version, commit SHA, and build timestamp at link time via `-ldflags`; accept target `GOOS`/`GOARCH` as env vars for cross-compilation
+- [x] **H** `test.sh` — run `go test ./... -race`; support `TEST_FLAGS` env var for passthrough args (e.g. `-short`, `-run <pattern>`); print pass/fail summary and exit non-zero on any failure
+- [x] **H** `lint.sh` — run `golangci-lint run`; install lint binary if not found on `PATH`; respect `.golangci.yml` config if present; exit non-zero on any finding
+- [x] **H** `audit.sh` — run `go mod verify`, `go vet ./...`, and `govulncheck ./...`; install `govulncheck` if not found; print a clear summary section for each tool; exit non-zero if any check fails
+- [x] **H** `coverage.sh` — run tests with `-coverprofile=coverage.out`; generate HTML report via `go tool cover -html`; enforce a minimum coverage threshold (configurable via `COVERAGE_THRESHOLD` env var, default 80); print per-package breakdown
+- [x] **M** `format.sh` — run `gofmt -w ./...` and `goimports -w ./...`; install `goimports` if not found; in CI mode (`CI=true`) run in check-only mode and exit non-zero if any files would be changed rather than modifying them
+- [x] **M** `generate.sh` — run `go generate ./...`; optionally install common codegen tools (`mockgen`, `stringer`) if declared in a `tools.go` file; print which files were modified
+
+#### Shared Script Standards
+- [x] **M** Add a common `_lib.sh` helper sourced by all scripts — provides `log_info`, `log_error`, `require_tool` (checks PATH + installs if missing), and `check_go_version` (enforces minimum Go version)
+- [x] **L** Add `CI` env var awareness to all scripts — stricter output (no color codes), check-only mode where applicable (format, generate), non-interactive installs
+- [x] **L** Add usage/help output (`--help` flag) to each script documenting supported env vars and exit codes
+
+---
+
 ### `testing/moxtox`
-- [ ] **H** Reset `req.Body` after reading in condition matching (currently consumed)
-- [ ] **M** Support content types beyond JSON in `extractRequestConditions`
-- [ ] **M** Hash collision handling for scenarios with identical conditions
-- [ ] **L** Replace `fmt.Printf` debug output with the SDK logger
+
+#### Bug Fixes
+- [ ] **H** Reset `req.Body` after reading in condition matching — use `io.NopCloser(bytes.NewBuffer(...))` to restore body so subsequent reads (e.g. middleware chain) are not broken
+- [ ] **H** Fix quick mode hash mismatch — `buildHashLookupMap` hashes only the keys defined in config conditions, but `extractRequestConditions` hashes all headers/query/body; request hash will never match scenario hash for any request with extra headers
+- [ ] **H** Cache `countTotalScenarios()` result at init time — currently called on every request in dynamic mode, causing a full mapping scan per request
+- [ ] **H** Replace package-level `sync.Once` + global `config`/`allowMocks` vars with instance-scoped struct — global state prevents multiple moxtox instances and breaks parallel test suites
+
+#### Core Features (v0.1.0 required)
+- [ ] **H** Path parameter matching — support named segments (e.g. `/users/:id`, `/orders/:orderId/items/:itemId`) as a condition type, populated from URL path at match time
+- [ ] **H** Transport-level mode — wrap `http.Client` via a custom `http.RoundTripper` so outbound calls (e.g. to Stripe, PayPal) can be mocked without a running server; this is the primary use case for connector testing
+- [ ] **H** Response sequencing — allow scenarios to define an ordered list of responses so successive calls return different results (e.g. call 1 → 200, call 2 → 429, call 3+ → 503); essential for retry and circuit-breaker tests
+- [ ] **M** Regex condition matching — allow condition values to be regex patterns (e.g. `Authorization: Bearer .*`, path segment matches); required for realistic header and token matching
+- [ ] **M** Wildcard `*` condition value — simple glob match as a lighter alternative to regex for common cases (e.g. match any value for a required key)
+- [ ] **M** Support content types beyond JSON in body condition matching — form-encoded (`application/x-www-form-urlencoded`), multipart, plain text
+- [ ] **M** Hash collision handling — when two scenarios produce the same condition hash in quick mode, fall back to slice-based linear scan rather than silently dropping one scenario
+- [ ] **M** Scenario `not` conditions — allow negated matching (e.g. match requests where header `X-Feature` is absent or body field `status` is not `"active"`)
+
+#### Open Source Decoupling
+- [ ] **H** Extract into a standalone module with its own `go.mod` — no imports from `komodo-forge-sdk-go`; only external dependency should be `gopkg.in/yaml.v3`
+- [ ] **H** Remove `logging/runtime` import — define a `Logger` interface (`Info(msg string)`, `Error(msg string, err error)`, `Debug(msg string)`); default implementation wraps stdlib `log/slog` (Go 1.21+); consumers inject their own via functional option
+- [ ] **H** Remove `http/errors` import — replace `httpErr.SendError` and `httpErr.SendCustomError` calls with stdlib `http.Error` as the default; expose an injectable `ErrorHandler func(w http.ResponseWriter, r *http.Request, status int, code, message string)` so consumers can plug in RFC 7807, JSON:API, or any other error format
+- [ ] **H** Adopt functional options pattern — replace `InitMoxtoxMiddleware(env string, configPath ...string)` signature with `New(env string, opts ...Option) *Moxtox`; options include `WithLogger`, `WithErrorHandler`, `WithConfigPath`, `WithNoMatchHandler`, `WithDefaultDelay`
+- [ ] **M** Make no-match behavior injectable — currently hardcodes `418 Teapot` + `"MOXTOX_001"` error code (SDK-specific format); default to a plain JSON `404` with a generic message; allow override via `WithNoMatchHandler`
+- [ ] **M** Make config format pluggable — define a `ConfigLoader interface { Load(path string) ([]byte, error) }` with a default YAML implementation; allows consumers to source config from embedded files, S3, environment variables, etc.
+- [ ] **L** Remove hardcoded `loggerPrefix` constant — make the log prefix configurable via `WithLogPrefix(prefix string)` option so consumers can namespace log output to match their service name
+
+#### Quality & Reliability
+- [ ] **M** Validate YAML config on load — return descriptive errors for missing required fields, unknown `performanceMode` values, and malformed scenario structures rather than silently falling back
+- [ ] **M** Switch YAML internal parsing from `map[interface{}]interface{}` to `map[string]interface{}` — removes unsafe type assertions throughout `parseMapping`/`parseScenario`
+- [ ] **L** Per-scenario response header merging — allow a scenario to extend (not replace) global default headers defined at the config root
+- [ ] **L** File path resolution — resolve `scenario.File` relative to the config directory, not the process working directory, so mock files are portable across environments
+
+#### Test Coverage
+- [ ] **H** Tests for quick mode — verify hash lookup returns the correct scenario, and that the fix for hash mismatch works end-to-end
+- [ ] **H** Tests for body condition matching — including the body-restore fix (verify body is readable by the next handler after condition evaluation)
+- [ ] **M** Tests for dynamic mode threshold switching — verify mode is selected correctly at 10-scenario boundary
+- [ ] **M** Tests for each condition type in isolation — body, query, headers, path params
+- [ ] **M** Tests for priority ordering — verify higher-priority scenario wins when multiple conditions match
+- [ ] **M** Tests for response sequencing — verify correct response is returned on each successive call
+- [ ] **M** Tests for ignored routes — verify passthrough behavior
+- [ ] **M** Tests for environment gating — verify mocks are disabled when env is not in `allowedEnvironments`
+- [ ] **L** Tests for delay — verify `time.Sleep` is applied within tolerance
+- [ ] **L** Tests for dynamic template rendering — verify `{{.body.key}}` substitution
 
 ---
 
@@ -158,7 +216,6 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 
 - [ ] **H** **SQS** — send/receive/delete messages, DLQ support
 - [ ] **H** **SNS** — topic publish, subscription management
-- [ ] **H** **Cognito** — user pool management, token validation, admin ops
 - [ ] **H** **SES** — transactional email sending (templated + raw)
 - [ ] **H** **CloudWatch** — metrics publishing, log group / stream management
 - [ ] **M** **EventBridge** — rule-based event routing, put-events helper
@@ -167,7 +224,6 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **M** **Kinesis** — stream producer / consumer helpers
 - [ ] **M** **ElasticSearch / OpenSearch** — index / search / bulk helpers
 - [ ] **L** **CloudFront** — signed URL / signed cookie generation, cache invalidation
-- [ ] **L** **IAM** — assume-role, policy evaluation helpers
 - [ ] **L** **Pinpoint / SNS Mobile Push** — push notification helpers
 
 ---

@@ -1,8 +1,9 @@
-package dynamodb
+package dynamo
 
 import (
 	"context"
 	"fmt"
+
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 
 	"github.com/aws/aws-sdk-go-v2/aws"

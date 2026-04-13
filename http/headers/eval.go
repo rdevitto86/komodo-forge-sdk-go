@@ -1,12 +1,13 @@
 package headers
 
 import (
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
-	"github.com/rdevitto86/komodo-forge-sdk-go/crypto/jwt"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/rdevitto86/komodo-forge-sdk-go/config"
+	"github.com/rdevitto86/komodo-forge-sdk-go/security/jwt"
 )
 
 // ValidateHeaderValue runs lightweight validation for known header names.

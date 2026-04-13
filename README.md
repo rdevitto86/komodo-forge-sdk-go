@@ -13,37 +13,33 @@ replace komodo-forge-sdk-go => ../komodo-forge-sdk-go
 
 ## Packages
 
-### `aws/secrets-manager`
-Bootstraps AWS Secrets Manager at service startup. Resolves secrets into in-memory config.
+### `api/auth`
+Authentication utilities.
 
-```go
-awsSM.Bootstrap(cfg)
-awsSM.GetSecret(key, prefix)
-```
+### `api/circuitbreaker`
+Circuit breaker implementation (planned).
 
-### `aws/s3`
-S3 client with typed get/put/delete.
+### `api/idempotency`
+Idempotency key deduplication middleware.
 
-```go
-awsS3.Init(cfg)
-awsS3.GetObject(ctx, bucket, key)           // returns []byte
-awsS3.GetObjectAs(ctx, bucket, key, &out)   // unmarshals JSON into out
-awsS3.PutObject(ctx, bucket, key, data, contentType)
-awsS3.DeleteObject(ctx, bucket, key)
-```
+### `api/rules`
+YAML-driven field validation rules.
 
-### `aws/dynamodb`
+### `aws/aurora`
+Aurora-compatible SQL client (planned).
+
+### `aws/dynamo`
 DynamoDB client with typed CRUD and query/scan helpers.
 
 ```go
-dynamodb.Init(cfg)
-dynamodb.GetItem(ctx, table, key, &out)
-dynamodb.WriteItem(ctx, table, item)
-dynamodb.UpdateItem(ctx, table, key, updates)
-dynamodb.DeleteItem(ctx, table, key)
-dynamodb.Query(ctx, input)
-dynamodb.QueryAll(ctx, input)
-dynamodb.Scan(ctx, input)
+dynamo.Init(cfg)
+dynamo.GetItem(ctx, table, key, &out)
+dynamo.WriteItem(ctx, table, item)
+dynamo.UpdateItem(ctx, table, key, updates)
+dynamo.DeleteItem(ctx, table, key)
+dynamo.Query(ctx, input)
+dynamo.QueryAll(ctx, input)
+dynamo.Scan(ctx, input)
 ```
 
 ### `aws/elasticache`
@@ -57,8 +53,24 @@ elasticache.Delete(key)
 elasticache.AllowDistributed(ctx, key, rate, burst, ttlSec) // returns (allowed bool, retryAfter time.Duration, err)
 ```
 
-### `aws/aurora`
-Aurora-compatible SQL client (planned).
+### `aws/s3`
+S3 client with typed get/put/delete.
+
+```go
+awsS3.Init(cfg)
+awsS3.GetObject(ctx, bucket, key)           // returns []byte
+awsS3.GetObjectAs(ctx, bucket, key, &out)   // unmarshals JSON into out
+awsS3.PutObject(ctx, bucket, key, data, contentType)
+awsS3.DeleteObject(ctx, bucket, key)
+```
+
+### `aws/secretsmanager`
+Bootstraps AWS Secrets Manager at service startup. Resolves secrets into in-memory config.
+
+```go
+awsSM.Bootstrap(cfg)
+awsSM.GetSecret(key, prefix)
+```
 
 ### `config`
 In-memory config store. Checks local store first, falls back to `os.Getenv`. Used by the Secrets Manager bootstrap to inject resolved secrets.
@@ -70,55 +82,42 @@ config.DeleteConfigValue(key)
 config.GetAllKeys()
 ```
 
-### `crypto/jwt`
-RS256 JWT signing and validation.
+### `connectors`
+Third-party service connectors:
+- `connectors/stripe` — Stripe payment integration
+- `connectors/paypal` — PayPal integration
+- `connectors/apple` — Apple services
+- `connectors/google` — Google services
+
+### `events`
+Event publishing and envelope handling (planned).
+
+### `http/chain`
+Middleware chain composition.
 
 ```go
-jwt.InitializeKeys()
-jwt.SignToken(issuer, subject, audience, ttl, scopes)
-jwt.ValidateToken(tokenString)
-jwt.ParseClaims(tokenString)
-jwt.ExtractTokenFromRequest(req)
+chain.New(middleware...)
 ```
 
-### `crypto/oauth`
-OAuth 2.0 scope and grant type validation.
+### `http/client`
+HTTP client wrapper (planned - configurable timeouts, retry logic, middleware pipeline, observability).
 
 ```go
-oauth.IsValidScope(scope)
-oauth.IsValidGrantType(grantType)
+client.NewClient()
 ```
 
-### `http/middleware`
-Full middleware stack, exported from `http/middleware/exports.go`.
-
-| Middleware | Description |
-|-----------|-------------|
-| `AuthMiddleware` | Validates RS256 JWT from Authorization header |
-| `ClientTypeMiddleware` | Identifies client type (M2M vs user) |
-| `CORSMiddleware` | CORS preflight and headers |
-| `CSRFMiddleware` | CSRF token validation |
-| `IdempotencyMiddleware` | Idempotency key deduplication via Redis |
-| `IPAccessMiddleware` | IP whitelist/blacklist enforcement |
-| `NormalizationMiddleware` | Request path and header normalization |
-| `RateLimiterMiddleware` | Token bucket rate limiting via Redis |
-| `RedactionMiddleware` | Redacts sensitive fields from logs |
-| `RequestIDMiddleware` | Injects `X-Request-ID` |
-| `RuleValidationMiddleware` | YAML-driven field validation rules |
-| `SanitizationMiddleware` | Input sanitization (XSS, injection) |
-| `ScopeMiddleware` | Requires `svc:` prefixed JWT scope (internal routes) |
-| `SecurityHeadersMiddleware` | Sets security response headers |
-| `TelemetryMiddleware` | Request/response telemetry logging |
-| `Chain` | Composes a slice of middleware onto an `http.Handler` |
-
-### `http/server`
-Universal service entry point. Auto-detects Lambda vs Fargate/local.
+### `http/context`
+Context key definitions and context enrichment middleware.
 
 ```go
-// On AWS Lambda (AWS_LAMBDA_FUNCTION_NAME set): starts lambda.Start with httpadapter
-// Otherwise: ListenAndServe with graceful SIGINT/SIGTERM shutdown
-server.Run(srv, port, gracefulTimeout)
+context.ContextMiddleware(next)
 ```
+
+### `http/cors`
+CORS middleware (planned).
+
+### `http/csrf`
+CSRF token validation middleware.
 
 ### `http/errors`
 RFC 7807 Problem+JSON error responses.
@@ -131,8 +130,23 @@ errors.WithDetail(detail)
 errors.WithStatus(status)
 ```
 
+### `http/headers`
+Header validation and evaluation.
+
+### `http/ipaccess`
+IP whitelist/blacklist enforcement middleware.
+
+### `http/normalization`
+Request path and header normalization middleware.
+
+### `http/ratelimit`
+Token bucket rate limiting middleware.
+
+### `http/redaction`
+Sensitive field redaction from logs.
+
 ### `http/request`
-Request parsing helpers.
+Request parsing helpers and middleware.
 
 ```go
 request.GetPathParams(req)
@@ -140,7 +154,8 @@ request.GetQueryParams(req)
 request.GetClientType(req)
 request.GetRequestID(req)
 request.GenerateRequestId()
-request.ExtractTokenFromRequest(req)
+request.RequestIDMiddleware(next)
+request.ClientTypeMiddleware(next)
 ```
 
 ### `http/response`
@@ -151,6 +166,15 @@ response.Bind(res, &target)
 response.IsSuccess(status)
 response.IsError(status)
 ```
+
+### `http/sanitization`
+Input sanitization (XSS, injection) middleware.
+
+### `http/telemetry`
+Request/response telemetry logging middleware.
+
+### `logging/otel`
+OpenTelemetry integration (planned).
 
 ### `logging/runtime`
 `slog`-based structured logger. `tint` handler for local/dev, JSON handler for staging/prod. Includes automatic field redaction.
@@ -164,28 +188,46 @@ logger.Error(msg, args...)
 logger.Fatal(msg, err)
 ```
 
-### `concurrency/worker`
-Bounded goroutine worker pool.
+### `security/encryption`
+Encryption utilities (planned).
+
+### `security/jwt`
+RS256 JWT signing and validation.
 
 ```go
-pool, _ := worker.NewWorkerPool(cfg)
-pool.Submit(ctx, job)
-pool.SubmitAsync(ctx, job)  // returns <-chan error
-pool.Shutdown(ctx)
+jwt.InitializeKeys()
+jwt.SignToken(issuer, subject, audience, ttl, scopes)
+jwt.ValidateToken(tokenString)
+jwt.ParseClaims(tokenString)
+jwt.ExtractTokenFromRequest(req)
 ```
 
-### `concurrency/semaphore`
-Counting semaphore for concurrency control.
+### `security/oauth`
+OAuth 2.0 scope and grant type validation.
+
+```go
+oauth.IsValidScope(scope)
+oauth.IsValidGrantType(grantType)
+```
+
+### `server`
+Universal service entry point. Auto-detects Lambda vs Fargate/local.
+
+```go
+// On AWS Lambda (AWS_LAMBDA_FUNCTION_NAME set): starts lambda.Start with httpadapter
+// Otherwise: ListenAndServe with graceful SIGINT/SIGTERM shutdown
+server.Run(srv, port, gracefulTimeout)
+```
 
 ---
 
 ## Testing Utilities
 
-### `testing/moxtox`
-HTTP mock server builder for unit testing middleware and handlers without network calls.
-
 ### `testing/chaos`
 Chaos injection helpers — latency simulation and error injection.
+
+### `testing/moxtox`
+HTTP mock server builder for unit testing middleware and handlers without network calls.
 
 ### `testing/performance`
 Latency measurement and benchmarking utilities.
@@ -195,9 +237,8 @@ Latency measurement and benchmarking utilities.
 ## Development
 
 ```bash
-cd apis/komodo-forge-sdk-go
-make test     # run all tests with race detector
-make lint     # run golangci-lint
-make audit    # security audit
-make coverage # generate coverage report
+./scripts/test.sh     # run all tests with race detector
+./scripts/lint.sh     # run golangci-lint
+./scripts/audit.sh    # security audit
+./scripts/coverage.sh # generate coverage report
 ```

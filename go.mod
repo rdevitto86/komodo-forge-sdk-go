@@ -1,6 +1,6 @@
 module github.com/rdevitto86/komodo-forge-sdk-go
 
-go 1.26
+go 1.26.2
 
 require (
 	github.com/aws/aws-lambda-go v1.52.0

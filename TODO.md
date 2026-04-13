@@ -13,7 +13,7 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **M** Query builder helpers (select, insert, update, delete)
 - [ ] **M** AWS Aurora-specific error wrapping
 
-### `aws/dynamodb`
+### `aws/dynamo`
 - [ ] **H** Retry logic for unprocessed items in batch write/delete
 - [ ] **H** Transaction support (`TransactWriteItems`, `TransactGetItems`)
 - [ ] **M** Conditional expression helpers beyond raw strings
@@ -35,20 +35,22 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **M** Multipart upload (required for objects >5GB)
 - [ ] **L** Bucket operations: create, delete, list
 
-### `aws/secrets-manager`
+### `aws/secretsmanager`
 - [ ] **H** Replace `context.TODO()` with proper timeout context in `GetSecret`/`GetSecrets`
 - [ ] **H** Distinguish "not found" from other errors
 - [ ] **M** Pagination for batch secret retrieval
 - [ ] **L** Support binary secrets
 
-### `concurrency/semaphore`
-- [ ] **H** Implement semaphore primitive (file is an empty stub)
-
-### `concurrency/worker`
-- [ ] **H** Per-job timeout (context-independent)
-- [ ] **M** Metrics: completed jobs, failed jobs, queue depth
-- [ ] **M** Worker health checks
-- [ ] **L** Job priority queue
+### AWS Service Stubs (Empty)
+- [ ] **H** `aws/cloudwatch/` — directory exists but is empty
+- [ ] **H** `aws/connect/client.go` — empty stub
+- [ ] **H** `aws/contactlens/client.go` — empty stub
+- [ ] **H** `aws/elasticsearch/client.go` — empty stub
+- [ ] **H** `aws/lambda/client.go` — empty stub
+- [ ] **H** `aws/rds/client.go` — empty stub
+- [ ] **H** `aws/ses/client.go` — empty stub
+- [ ] **H** `aws/sns/client.go` — empty stub
+- [ ] **H** `aws/sqs/client.go` — empty stub
 
 ### `config`
 - [ ] **H** File-based config loading (YAML / JSON)
@@ -56,27 +58,38 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **M** Thread-safe `SetLevel` for log level changes
 - [ ] **L** Change notification / listener hooks
 
-### `crypto/jwt`
+### `security/jwt`
 - [ ] **H** Token revocation / JTI blacklist (revocation check is currently commented out)
 - [ ] **H** Token refresh / rotation mechanism
 - [ ] **M** Support for multiple concurrent key versions (JWKS-style)
 - [ ] **M** Token introspection
 - [ ] **L** Key pair generation helper (currently assumes keys exist in config)
 
-### `crypto/oauth`
+### `security/oauth`
 - [ ] **H** Refresh token flow
 - [ ] **H** Authorization code flow (redirect, code exchange, state/PKCE)
 - [ ] **H** Token endpoint handler
 - [ ] **M** Redirect URI validation
 - [ ] **L** Dynamic scope loading (currently hardcoded)
 
+### `security/encryption`
+- [ ] **H** Implement encryption package (`encryption.go` is empty stub)
+
+### `api/circuitbreaker`
+- [ ] **H** Implement circuit breaker (`breaker.go` is empty stub)
+
 ### `events`
+- [ ] **H** Implement `Publish()` (`client.go` is a stub — returns nil)
 - [ ] **H** Implement `WithCorrelationFromContext()` (TODO at line 110)
 - [ ] **H** SNS publish helper
 - [ ] **H** SQS consume / subscription helper
 - [ ] **M** DLQ handling and retry policies
 - [ ] **M** Event schema validation
 - [ ] **L** Event versioning beyond hardcoded `"1"`
+
+### `http/errors`
+- [ ] **M** Register `RangePromotions = 62` in `ranges.go` — claimed by `komodo-shop-promotions-api`; services currently use a local constant with a TODO comment pending this registration
+- [ ] **M** Register `RangeWishlist = 32` in `ranges.go` — claimed by `komodo-user-wishlist-api`; same pattern
 
 ### `http/cors/middleware`
 - [ ] **H** Full CORS implementation (currently a pass-through stub with a TODO comment)
@@ -93,12 +106,12 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **M** Cookie validation (stub / TODO)
 - [ ] **M** Tighten `Content-Length` default (currently 4096 — too small for most APIs)
 
-### `http/idempotency/middleware`
-- [ ] **H** Wire up ElastiCache storage (code is commented out)
-- [ ] **H** Fix TTL parsing (`"s"` suffix parsing on line 82)
+### `api/idempotency`
+- [ ] **H** Implement DistributedCache with Redis/ElastiCache integration (currently a stub with TODO comments)
+- [ ] **H** Wire up ElastiCache storage (code is commented out in middleware)
 - [ ] **M** Thread-safe in-memory store for single-instance fallback
 
-### `http/request/helpers`
+### `http/request`
 - [ ] **H** Implement `GetPathParams` (currently returns empty map — placeholder)
 - [ ] **H** Implement `IsValidAPIKey` (TODO comment on lines 166–175)
 - [ ] **L** Multipart / form-data request building
@@ -116,20 +129,31 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **H** Re-raise panics after logging (currently swallows them)
 - [ ] **M** Distributed trace propagation (trace ID in / out of headers)
 
+### `http/client`
+- [ ] **H** Configurable timeouts (connection, request, total) - currently uses infinite defaults
+- [ ] **H** Retry logic with exponential backoff for transient failures
+- [ ] **H** Request/response middleware pipeline (logging, auth, tracing)
+- [ ] **H** Observability hooks (metrics, structured logging, distributed tracing)
+- [ ] **H** Circuit breaker integration to prevent cascading failures
+- [ ] **M** Rate limiting support
+
+### `http/response`
+- [ ] **M** Fix `Bind()` — uses `json.Marshal` on `res.Body` instead of `io.ReadAll`
+
+### `testing/performance`
+- [ ] **H** Implement latency measurement (`latency.go` is empty stub)
+- [ ] **M** Percentile (p50/p95/p99) helpers
+- [ ] **L** Throughput / RPS measurement
+
+### `testing/chaos`
+- [ ] **H** Implement fault injection (`chaos.go` is empty stub)
+- [ ] **M** Latency injection (configurable delays per call)
+- [ ] **L** Dependency blackout simulation
+
 ### `logging/otel`
 - [ ] **H** Implement `Init()` — currently an empty stub with a TODO comment
 - [ ] **H** Wire up OpenTelemetry SDK (traces + metrics)
 - [ ] **M** Connect telemetry middleware to otel spans
-
-### `testing/chaos`
-- [ ] **M** Implement fault injection (random errors, partial failures)
-- [ ] **M** Latency injection (configurable delays per call)
-- [ ] **L** Dependency blackout simulation
-
-### `testing/performance`
-- [ ] **M** Implement latency measurement utilities (`latency.go` is empty)
-- [ ] **M** Percentile (p50/p95/p99) helpers
-- [ ] **L** Throughput / RPS measurement
 
 ### `scripts`
 
@@ -197,18 +221,43 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 
 ---
 
+## API Adapters — Komodo Services
+
+> Goal: move all per-service adapters out of `komodo-ecom/apis/<service>/pkg/v1/` and into this SDK. OpenAPI specs are the source of truth — types and HTTP clients are generated, not hand-written.
+
+### Codegen pipeline
+
+- [ ] **H** Add `scripts/generate-adapters.sh` — iterate over each Komodo service's `docs/openapi.yaml`, run `oapi-codegen` to emit types + HTTP client into `api/adapters/v{N}/<service>/`; check in generated output; CI step diffs generated code against spec and fails on mismatch
+- [ ] **H** Add `tools.go` declaring `oapi-codegen` as a tracked Go tool dependency (`go install` friendly, pinned version)
+- [ ] **M** Wire `generate-adapters.sh` into existing `scripts/generate.sh` so a single `go generate ./...` regenerates everything
+
+### Komodo service adapter targets (migrate from `pkg/v1/`)
+
+- [ ] **H** `api/adapters/v1/auth/` — generated from `komodo-auth-api/docs/openapi.yaml`; replaces `komodo-auth-api/pkg/v1/`
+- [ ] **H** `api/adapters/v1/user/` — generated from `komodo-user-api/docs/openapi.yaml`; replaces `komodo-user-api/pkg/v1/`
+- [ ] **H** `api/adapters/v1/payments/` — generated from `komodo-payments-api-rust/docs/openapi.yaml` (Rust service — no existing Go pkg/v1 to migrate)
+- [ ] **M** `api/adapters/v1/cart/` — generated from `komodo-cart-api/docs/openapi.yaml`; replaces `komodo-cart-api/pkg/v1/`
+- [ ] **M** `api/adapters/v1/shop-items/` — generated from `komodo-shop-items-api/docs/openapi.yaml`; replaces `komodo-shop-items-api/pkg/v1/`
+- [ ] **M** `api/adapters/v1/order/` — generated from `komodo-order-api/docs/openapi.yaml`; replaces `komodo-order-api/pkg/v1/`
+- [ ] **M** `api/adapters/v1/order-reservations/` — generated from `komodo-order-reservations-api/docs/openapi.yaml`; replaces `komodo-order-reservations-api/pkg/v1/`
+- [ ] **M** `api/adapters/v1/search/` — generated from `komodo-search-api/docs/openapi.yaml`; replaces `komodo-search-api/pkg/v1/`
+- [ ] **M** `api/adapters/v1/support/` — generated from `komodo-support-api/docs/openapi.yaml`; replaces `komodo-support-api/pkg/v1/`
+- [ ] **M** `api/adapters/v1/communications/` — generated from `komodo-communications-api/docs/openapi.yaml`; replaces `komodo-communications-api/pkg/v1/`
+- [ ] **M** `api/adapters/v1/reviews/` — generated from `komodo-reviews-api/docs/openapi.yaml`; replaces `komodo-reviews-api/pkg/v1/`
+- [ ] **L** Add unversioned re-export at `api/adapters/<service>/` pointing to current stable version — consumers can import the unversioned path and stay on latest without code changes
+
+---
+
 ## General SDK Health
 
 - [ ] **H** Idempotent request body reading across all middleware (body consumed once; subsequent reads fail)
 - [ ] **H** Add `context.Context` timeouts / deadlines consistently across all AWS clients
-- [ ] **H** Re-raise panics after logging in telemetry middleware (currently swallowed)
 - [ ] **H** CI: coverage gate, lint (`golangci-lint`), race detector (`-race`) in test run
-- [ ] **M** Fix `response.Bind()` — uses `json.Marshal` on `res.Body` instead of `io.ReadAll`
 - [ ] **M** Normalize error return conventions (some return empty string on miss, others return error)
 - [ ] **M** Typed config values (currently all strings)
 - [ ] **M** Centralized SDK initialization with dependency order (each package currently initializes independently)
 - [ ] **L** Config schema validation
-- [ ] **L** Module versioning strategy (`v2` path) and CHANGELOG
+- [ ] **L** Module versioning strategy (`v2` path) and CHANGELOG — include default re-export pattern: each package root re-exports from its current stable versioned subpackage so consumers import a single canonical unversioned path; older/newer versions remain importable via their versioned subpath (e.g. `http/middleware` re-exports from `http/middleware/v1`)
 
 ---
 
@@ -231,6 +280,7 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 ## Planned: Payment Processor Connectors
 
 - [ ] **H** **Stripe** — payment intents, subscriptions, refunds, webhooks
+- [ ] **M** **Stripe — payment plans / installments** — installment schedule creation, per-installment charge execution, plan cancellation, and webhook events (`payment_plan.created`, `installment.paid`, `installment.failed`); complements subscription billing
 - [ ] **H** **PayPal** — orders, captures, refunds, webhooks
 - [ ] **H** **Apple Pay** — session validation, payment token decryption
 - [ ] **H** **Google Pay** — payment data decryption, tokenization
@@ -255,6 +305,11 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 ### Observability
 - [ ] **H** **Datadog** — metrics, logs, traces submission
 - [ ] **L** **New Relic** — telemetry ingest
+
+### Shipping & Logistics
+- [ ] **M** **EasyPost** — label generation (inbound + outbound), shipment creation, tracking events, carrier-agnostic API wrapper
+- [ ] **L** **ShipStation** — order import, label generation, shipment status; alternative aggregator if EasyPost is not selected
+- [ ] **L** **USPS / UPS / FedEx direct** — raw carrier APIs if aggregator is not used; each behind the same `ShippingProvider` interface so `komodo-shipping-api` can swap carriers without code changes
 
 ### Search & Data
 - [ ] **H** **Persona** — identity verification (KYC)

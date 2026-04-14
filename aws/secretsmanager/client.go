@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
+
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -100,7 +100,6 @@ func GetSecret(key string, prefix string) (string, error) {
 	}
 
 	logger.Info(fmt.Sprintf("successfully retrieved secret %s from AWS", key))
-	config.SetConfigValue(key, *result.SecretString)
 	return *result.SecretString, nil
 }
 
@@ -158,7 +157,6 @@ func GetSecrets(keys []string, prefix string, batchId	string) (map[string]string
 	for _, key := range keys {
 		if value, ok := allSecrets[key]; ok {
 			secrets[key] = value
-			config.SetConfigValue(key, value)
 		} else {
 			missingKeys = append(missingKeys, key)
 		}

@@ -2,11 +2,11 @@ package headers
 
 import (
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
 	"github.com/rdevitto86/komodo-forge-sdk-go/security/jwt"
 )
 
@@ -56,7 +56,7 @@ func isValidContentLength(s string) bool {
 	if err != nil { return false }
 
 	max := (func() int {
-		val := config.GetConfigValue("MAX_CONTENT_LENGTH")
+		val := os.Getenv("MAX_CONTENT_LENGTH")
 		num, err := strconv.Atoi(val)
 		if val == "" || err != nil { return 4096 }
 		return num

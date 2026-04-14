@@ -6,10 +6,10 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	golangJWT "github.com/golang-jwt/jwt/v5"
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
 )
 
 // generateTestKeys creates a fresh RSA-2048 key pair and returns PEM-encoded strings.
@@ -47,17 +47,17 @@ func setupInitializedKeys(t *testing.T) {
 	t.Helper()
 	resetJWTState()
 	privPEM, pubPEM := generateTestKeys(t)
-	config.SetConfigValue("JWT_PRIVATE_KEY", privPEM)
-	config.SetConfigValue("JWT_PUBLIC_KEY", pubPEM)
-	config.SetConfigValue("JWT_KID", "test-kid")
-	config.SetConfigValue("JWT_ISSUER", "test-issuer")
-	config.SetConfigValue("JWT_AUDIENCE", "test-audience")
+	os.Setenv("JWT_PRIVATE_KEY", privPEM)
+	os.Setenv("JWT_PUBLIC_KEY", pubPEM)
+	os.Setenv("JWT_KID", "test-kid")
+	os.Setenv("JWT_ISSUER", "test-issuer")
+	os.Setenv("JWT_AUDIENCE", "test-audience")
 	t.Cleanup(func() {
-		config.DeleteConfigValue("JWT_PRIVATE_KEY")
-		config.DeleteConfigValue("JWT_PUBLIC_KEY")
-		config.DeleteConfigValue("JWT_KID")
-		config.DeleteConfigValue("JWT_ISSUER")
-		config.DeleteConfigValue("JWT_AUDIENCE")
+		os.Unsetenv("JWT_PRIVATE_KEY")
+		os.Unsetenv("JWT_PUBLIC_KEY")
+		os.Unsetenv("JWT_KID")
+		os.Unsetenv("JWT_ISSUER")
+		os.Unsetenv("JWT_AUDIENCE")
 		resetJWTState()
 	})
 	if err := InitializeKeys(); err != nil {
@@ -95,8 +95,8 @@ func TestJWT_InitializeKeys_AlreadyInitialized_Success(t *testing.T) {
 func TestJWT_InitializeKeys_MissingKeys_Failure(t *testing.T) {
 	resetJWTState()
 	defer resetJWTState()
-	config.DeleteConfigValue("JWT_PRIVATE_KEY")
-	config.DeleteConfigValue("JWT_PUBLIC_KEY")
+	os.Unsetenv("JWT_PRIVATE_KEY")
+	os.Unsetenv("JWT_PUBLIC_KEY")
 
 	err := InitializeKeys()
 	if err == nil {
@@ -107,12 +107,12 @@ func TestJWT_InitializeKeys_MissingKeys_Failure(t *testing.T) {
 func TestJWT_InitializeKeys_InvalidPrivateKey_Failure(t *testing.T) {
 	resetJWTState()
 	defer func() {
-		config.DeleteConfigValue("JWT_PRIVATE_KEY")
-		config.DeleteConfigValue("JWT_PUBLIC_KEY")
+		os.Unsetenv("JWT_PRIVATE_KEY")
+		os.Unsetenv("JWT_PUBLIC_KEY")
 		resetJWTState()
 	}()
-	config.SetConfigValue("JWT_PRIVATE_KEY", "not-valid-pem-data")
-	config.SetConfigValue("JWT_PUBLIC_KEY", "not-valid-pem-data")
+	os.Setenv("JWT_PRIVATE_KEY", "not-valid-pem-data")
+	os.Setenv("JWT_PUBLIC_KEY", "not-valid-pem-data")
 
 	err := InitializeKeys()
 	if err == nil {
@@ -124,12 +124,12 @@ func TestJWT_InitializeKeys_InvalidPublicKey_Failure(t *testing.T) {
 	resetJWTState()
 	privPEM, _ := generateTestKeys(t)
 	defer func() {
-		config.DeleteConfigValue("JWT_PRIVATE_KEY")
-		config.DeleteConfigValue("JWT_PUBLIC_KEY")
+		os.Unsetenv("JWT_PRIVATE_KEY")
+		os.Unsetenv("JWT_PUBLIC_KEY")
 		resetJWTState()
 	}()
-	config.SetConfigValue("JWT_PRIVATE_KEY", privPEM)
-	config.SetConfigValue("JWT_PUBLIC_KEY", "not-valid-pub-pem")
+	os.Setenv("JWT_PRIVATE_KEY", privPEM)
+	os.Setenv("JWT_PUBLIC_KEY", "not-valid-pub-pem")
 
 	err := InitializeKeys()
 	if err == nil {

@@ -4,11 +4,10 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
@@ -38,11 +37,11 @@ func InitializeKeys() error {
 	keyMutex.Lock()
 	defer keyMutex.Unlock()
 
-	kid = config.GetConfigValue("JWT_KID")
-	iss = config.GetConfigValue("JWT_ISSUER")
-	aud = config.GetConfigValue("JWT_AUDIENCE")
-	privKey := config.GetConfigValue("JWT_PRIVATE_KEY")
-	pubKey := config.GetConfigValue("JWT_PUBLIC_KEY")
+	kid = os.Getenv("JWT_KID")
+	iss = os.Getenv("JWT_ISSUER")
+	aud = os.Getenv("JWT_AUDIENCE")
+	privKey := os.Getenv("JWT_PRIVATE_KEY")
+	pubKey := os.Getenv("JWT_PUBLIC_KEY")
 
 	if privKey == "" || pubKey == "" {
 		return fmt.Errorf("JWT keys not fully configured in environment")

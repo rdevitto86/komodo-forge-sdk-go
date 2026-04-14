@@ -2,13 +2,13 @@ package ratelimit
 
 import (
 	"context"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/rdevitto86/komodo-forge-sdk-go/aws/elasticache"
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
 )
 
 type bucket struct {
@@ -43,11 +43,11 @@ var (
 
 // Allow attempts to consume a token for the given client key
 func Allow(ctx context.Context, key string) (allowed bool, wait time.Duration, err error) {
-	env := strings.ToLower(config.GetConfigValue("ENV"))
+	env := strings.ToLower(os.Getenv("ENV"))
 
 	if env == "prod" || env == "staging" {
 		rpsVal, burstVal := rateConfig()
-		ttl := config.GetConfigValue("BUCKET_TTL_SECOND")
+		ttl := os.Getenv("BUCKET_TTL_SECOND")
 		ttlSec, _ := strconv.Atoi(ttl)
 		return elasticache.AllowDistributed(ctx, key, rpsVal, burstVal, ttlSec)
 	}
@@ -142,7 +142,7 @@ func (bkt *bucket) retryAfter() time.Duration {
 func rateConfig() (float64, float64) {
 	rlOnce.Do(func() {
 		parseFloatEnv := func(key string, dflt float64) float64 {
-			if val := strings.TrimSpace(config.GetConfigValue(key)); val != "" {
+			if val := strings.TrimSpace(os.Getenv(key)); val != "" {
 				if f, err := strconv.ParseFloat(val, 64); err == nil {
 					return f
 				}
@@ -176,7 +176,7 @@ func getBucket(key string) *bucket {
 // Removes idle buckets after configured TTL
 func startBucketEvictor() {
 	ttlSec := 300
-	if val := strings.TrimSpace(config.GetConfigValue("RATE_LIMIT_BUCKET_TTL_SEC")); val != "" {
+	if val := strings.TrimSpace(os.Getenv("RATE_LIMIT_BUCKET_TTL_SEC")); val != "" {
 		if i, err := strconv.Atoi(val); err == nil && i > 0 {
 			ttlSec = i
 		}
@@ -210,7 +210,7 @@ func startBucketEvictor() {
 
 // Decides fail-open vs fail-closed when the distributed store is unavailable
 func ShouldFailOpen() bool {
-	v := strings.ToLower(strings.TrimSpace(config.GetConfigValue("RATE_LIMIT_FAIL_OPEN")))
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("RATE_LIMIT_FAIL_OPEN")))
 	if v == "" { return true }
 	return v == "true" || v == "1" || v == "yes"
 }

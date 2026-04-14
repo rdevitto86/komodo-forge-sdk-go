@@ -3,10 +3,9 @@ package ipaccess
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"sync"
 	"testing"
-
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
 )
 
 func okHandler() http.Handler {
@@ -16,12 +15,12 @@ func okHandler() http.Handler {
 }
 
 // resetIPState resets the package-level sync.Once and list so each test
-// can inject a fresh config via config.SetConfigValue.
+// can inject a fresh config via os.Setenv.
 func resetIPState() {
 	ipOnce = sync.Once{}
 	lists = Lists{}
-	config.DeleteConfigValue("IP_WHITELIST")
-	config.DeleteConfigValue("IP_BLACKLIST")
+	os.Unsetenv("IP_WHITELIST")
+	os.Unsetenv("IP_BLACKLIST")
 }
 
 func TestIPAccessMiddleware_AllowsUnlistedIP(t *testing.T) {
@@ -41,7 +40,7 @@ func TestIPAccessMiddleware_AllowsUnlistedIP(t *testing.T) {
 
 func TestIPAccessMiddleware_BlocksBlacklistedIP(t *testing.T) {
 	resetIPState()
-	config.SetConfigValue("IP_BLACKLIST", "10.0.0.1")
+	os.Setenv("IP_BLACKLIST", "10.0.0.1")
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-Forwarded-For", "10.0.0.1")
@@ -56,7 +55,7 @@ func TestIPAccessMiddleware_BlocksBlacklistedIP(t *testing.T) {
 
 func TestIPAccessMiddleware_AllowsNonBlacklistedIP(t *testing.T) {
 	resetIPState()
-	config.SetConfigValue("IP_BLACKLIST", "10.0.0.1")
+	os.Setenv("IP_BLACKLIST", "10.0.0.1")
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-Forwarded-For", "10.0.0.2")
@@ -71,7 +70,7 @@ func TestIPAccessMiddleware_AllowsNonBlacklistedIP(t *testing.T) {
 
 func TestIPAccessMiddleware_AllowsWhitelistedIP(t *testing.T) {
 	resetIPState()
-	config.SetConfigValue("IP_WHITELIST", "192.168.1.10")
+	os.Setenv("IP_WHITELIST", "192.168.1.10")
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-Forwarded-For", "192.168.1.10")
@@ -86,7 +85,7 @@ func TestIPAccessMiddleware_AllowsWhitelistedIP(t *testing.T) {
 
 func TestIPAccessMiddleware_BlocksIPNotInWhitelist(t *testing.T) {
 	resetIPState()
-	config.SetConfigValue("IP_WHITELIST", "192.168.1.10")
+	os.Setenv("IP_WHITELIST", "192.168.1.10")
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-Forwarded-For", "192.168.1.99")
@@ -101,7 +100,7 @@ func TestIPAccessMiddleware_BlocksIPNotInWhitelist(t *testing.T) {
 
 func TestIPAccessMiddleware_BlocksCIDRBlacklist(t *testing.T) {
 	resetIPState()
-	config.SetConfigValue("IP_BLACKLIST", "10.0.0.0/24")
+	os.Setenv("IP_BLACKLIST", "10.0.0.0/24")
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-Forwarded-For", "10.0.0.50")

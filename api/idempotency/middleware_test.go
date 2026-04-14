@@ -3,10 +3,9 @@ package idempotency
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
-
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
 )
 
 func okHandler() http.Handler {
@@ -137,7 +136,7 @@ func TestIdempotencyMiddleware_ExpiredKeyEvictedAndAllowed(t *testing.T) {
 // TestGetIdemTTL_DefaultWhenNoEnv verifies getIdemTTL returns the default when
 // IDEMPOTENCY_TTL_SEC is not set.
 func TestGetIdemTTL_DefaultWhenNoEnv(t *testing.T) {
-	config.DeleteConfigValue("IDEMPOTENCY_TTL_SEC")
+	os.Unsetenv("IDEMPOTENCY_TTL_SEC")
 	if got := getIdemTTL(); got != DEFAULT_IDEM_TTL_SEC {
 		t.Errorf("expected default TTL %d, got %d", DEFAULT_IDEM_TTL_SEC, got)
 	}
@@ -145,8 +144,8 @@ func TestGetIdemTTL_DefaultWhenNoEnv(t *testing.T) {
 
 // TestGetIdemTTL_ValidPositiveValue verifies getIdemTTL parses a valid positive duration.
 func TestGetIdemTTL_ValidPositiveValue(t *testing.T) {
-	config.SetConfigValue("IDEMPOTENCY_TTL_SEC", "600")
-	defer config.DeleteConfigValue("IDEMPOTENCY_TTL_SEC")
+	os.Setenv("IDEMPOTENCY_TTL_SEC", "600")
+	defer os.Unsetenv("IDEMPOTENCY_TTL_SEC")
 
 	if got := getIdemTTL(); got != 600 {
 		t.Errorf("expected TTL 600, got %d", got)
@@ -157,8 +156,8 @@ func TestGetIdemTTL_ValidPositiveValue(t *testing.T) {
 // falls back to the 300-second default guard.
 func TestGetIdemTTL_ZeroOrNegativeReturnsDefault(t *testing.T) {
 	// "0s" parses to 0 duration which triggers the <= 0 guard.
-	config.SetConfigValue("IDEMPOTENCY_TTL_SEC", "0")
-	defer config.DeleteConfigValue("IDEMPOTENCY_TTL_SEC")
+	os.Setenv("IDEMPOTENCY_TTL_SEC", "0")
+	defer os.Unsetenv("IDEMPOTENCY_TTL_SEC")
 
 	if got := getIdemTTL(); got != 300 {
 		t.Errorf("expected 300 for zero/negative TTL, got %d", got)

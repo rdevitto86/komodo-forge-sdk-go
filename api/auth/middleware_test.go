@@ -13,7 +13,6 @@ import (
 	"time"
 
 	gojwt "github.com/golang-jwt/jwt/v5"
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
 	ctxKeys "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 	"github.com/rdevitto86/komodo-forge-sdk-go/security/jwt"
 )
@@ -46,11 +45,6 @@ func TestMain(m *testing.M) {
 	}
 	pubPEM := string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}))
 
-	config.SetConfigValue("JWT_PRIVATE_KEY", privPEM)
-	config.SetConfigValue("JWT_PUBLIC_KEY", pubPEM)
-	config.SetConfigValue("JWT_ISSUER", "test-issuer")
-	config.SetConfigValue("JWT_AUDIENCE", "test-audience")
-	config.SetConfigValue("JWT_KID", "test-kid")
 	os.Setenv("JWT_PRIVATE_KEY", privPEM)
 	os.Setenv("JWT_PUBLIC_KEY", pubPEM)
 	os.Setenv("JWT_ISSUER", "test-issuer")

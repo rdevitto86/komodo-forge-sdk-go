@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
 	httpErr "github.com/rdevitto86/komodo-forge-sdk-go/http/errors"
 	httpReq "github.com/rdevitto86/komodo-forge-sdk-go/http/request"
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
@@ -21,8 +21,8 @@ var (
 func IPAccessMiddleware(next http.Handler) http.Handler {
 	// lazy-parse env config once
 	ipOnce.Do(func() {
-		wlIPs, wlNets := ParseList(config.GetConfigValue("IP_WHITELIST"))
-		blIPs, blNets := ParseList(config.GetConfigValue("IP_BLACKLIST"))
+		wlIPs, wlNets := ParseList(os.Getenv("IP_WHITELIST"))
+		blIPs, blNets := ParseList(os.Getenv("IP_BLACKLIST"))
 		logger.Debug("parsed IP whitelist: ", logger.Attr("whitelist", wlIPs))
 		logger.Debug("parsed IP blacklist: ", logger.Attr("blacklist", blIPs))
 	

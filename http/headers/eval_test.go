@@ -2,9 +2,8 @@ package headers
 
 import (
 	"net/http/httptest"
+	"os"
 	"testing"
-
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
 )
 
 func makeReq(hdr, val string) *httptest.ResponseRecorder {
@@ -146,7 +145,7 @@ func TestHeaderEval_ValidateHeaderValue_Accept(t *testing.T) {
 
 func TestHeaderEval_ValidateHeaderValue_ContentLength(t *testing.T) {
 	// Default max is 4096
-	config.DeleteConfigValue("MAX_CONTENT_LENGTH")
+	os.Unsetenv("MAX_CONTENT_LENGTH")
 
 	tests := []struct {
 		val  string
@@ -174,8 +173,8 @@ func TestHeaderEval_ValidateHeaderValue_ContentLength(t *testing.T) {
 
 	// Test with custom max
 	t.Run("custom max content length", func(t *testing.T) {
-		config.SetConfigValue("MAX_CONTENT_LENGTH", "100")
-		defer config.DeleteConfigValue("MAX_CONTENT_LENGTH")
+		os.Setenv("MAX_CONTENT_LENGTH", "100")
+		defer os.Unsetenv("MAX_CONTENT_LENGTH")
 		req := httptest.NewRequest("POST", "/", nil)
 		req.Header.Set("Content-Length", "50")
 		ok, _ := ValidateHeaderValue("content-length", req)

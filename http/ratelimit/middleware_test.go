@@ -3,9 +3,8 @@ package ratelimit
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
-
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
 )
 
 func okHandler() http.Handler {
@@ -85,11 +84,11 @@ func TestRateLimiterMiddleware_IsolatesBucketsByKey(t *testing.T) {
 // Setting ENV=prod causes ratelimit.Allow to call AllowDistributed which errors because
 // no Elasticache client is configured; with RATE_LIMIT_FAIL_OPEN=true the request passes.
 func TestRateLimiterMiddleware_FailOpen(t *testing.T) {
-	config.SetConfigValue("ENV", "prod")
-	config.SetConfigValue("RATE_LIMIT_FAIL_OPEN", "true")
+	os.Setenv("ENV", "prod")
+	os.Setenv("RATE_LIMIT_FAIL_OPEN", "true")
 	defer func() {
-		config.DeleteConfigValue("ENV")
-		config.DeleteConfigValue("RATE_LIMIT_FAIL_OPEN")
+		os.Unsetenv("ENV")
+		os.Unsetenv("RATE_LIMIT_FAIL_OPEN")
 	}()
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -116,11 +115,11 @@ func TestRateLimiterMiddleware_FailOpen(t *testing.T) {
 // Setting ENV=prod causes ratelimit.Allow to error; with RATE_LIMIT_FAIL_OPEN=false the
 // middleware returns 500.
 func TestRateLimiterMiddleware_FailClosed(t *testing.T) {
-	config.SetConfigValue("ENV", "prod")
-	config.SetConfigValue("RATE_LIMIT_FAIL_OPEN", "false")
+	os.Setenv("ENV", "prod")
+	os.Setenv("RATE_LIMIT_FAIL_OPEN", "false")
 	defer func() {
-		config.DeleteConfigValue("ENV")
-		config.DeleteConfigValue("RATE_LIMIT_FAIL_OPEN")
+		os.Unsetenv("ENV")
+		os.Unsetenv("RATE_LIMIT_FAIL_OPEN")
 	}()
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

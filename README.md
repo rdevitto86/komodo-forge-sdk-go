@@ -73,13 +73,13 @@ awsSM.GetSecret(key, prefix)
 ```
 
 ### `config`
-In-memory config store. Checks local store first, falls back to `os.Getenv`. Used by the Secrets Manager bootstrap to inject resolved secrets.
+Configuration values are fetched using Go's native `os.Getenv` function. Other operations use the same `os` library.
 
 ```go
-config.GetConfigValue(key)
-config.SetConfigValue(key, val)
-config.DeleteConfigValue(key)
-config.GetAllKeys()
+os.Getenv(key)
+os.Setenv(key, val)
+os.Unsetenv(key)
+os.Environ()
 ```
 
 ### `connectors`

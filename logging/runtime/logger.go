@@ -22,7 +22,7 @@ var (
 //
 // All other environments use the JSON handler (stdout → CloudWatch).
 //
-// The version parameter is optional — pass config.GetConfigValue("VERSION") or
+// The version parameter is optional — pass os.Getenv("VERSION") or
 // omit it; defaults to "unknown". Using a variadic keeps callers that already
 // use the 3-argument form working without changes.
 func Init(name string, lvl string, env string, version ...string) {

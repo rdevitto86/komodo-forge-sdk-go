@@ -1,10 +1,9 @@
 package idempotency
 
 import (
+	"os"
 	"sync"
 	"time"
-
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
 )
 
 const DEFAULT_IDEM_TTL_SEC int64 = 300 // 5 minutes
@@ -108,7 +107,7 @@ func (s *Store) Delete(key string) {
 }
 
 func getIdemTTL() int64 {
-	if ttl := config.GetConfigValue("IDEMPOTENCY_TTL_SEC"); ttl != "" {
+	if ttl := os.Getenv("IDEMPOTENCY_TTL_SEC"); ttl != "" {
 		if dur, err := time.ParseDuration(ttl + "s"); err == nil {
 			if dur <= 0 {
 				return DEFAULT_IDEM_TTL_SEC

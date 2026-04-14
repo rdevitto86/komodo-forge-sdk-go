@@ -2,11 +2,10 @@ package ratelimit
 
 import (
 	"context"
+	"os"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/rdevitto86/komodo-forge-sdk-go/config"
 )
 
 // resetState resets all package-level rate limiter state between tests.
@@ -21,12 +20,12 @@ func resetState() {
 func TestRateLimit_Allow(t *testing.T) {
 	t.Run("local mode allows first request", func(t *testing.T) {
 		resetState()
-		config.DeleteConfigValue("ENV")
-		config.SetConfigValue("RATE_LIMIT_RPS", "10")
-		config.SetConfigValue("RATE_LIMIT_BURST", "5")
+		os.Unsetenv("ENV")
+		os.Setenv("RATE_LIMIT_RPS", "10")
+		os.Setenv("RATE_LIMIT_BURST", "5")
 		defer func() {
-			config.DeleteConfigValue("RATE_LIMIT_RPS")
-			config.DeleteConfigValue("RATE_LIMIT_BURST")
+			os.Unsetenv("RATE_LIMIT_RPS")
+			os.Unsetenv("RATE_LIMIT_BURST")
 		}()
 
 		allowed, wait, err := Allow(context.Background(), "test-key-1")
@@ -40,12 +39,12 @@ func TestRateLimit_Allow(t *testing.T) {
 
 	t.Run("local mode exhausts tokens", func(t *testing.T) {
 		resetState()
-		config.DeleteConfigValue("ENV")
-		config.SetConfigValue("RATE_LIMIT_RPS", "1")
-		config.SetConfigValue("RATE_LIMIT_BURST", "1")
+		os.Unsetenv("ENV")
+		os.Setenv("RATE_LIMIT_RPS", "1")
+		os.Setenv("RATE_LIMIT_BURST", "1")
 		defer func() {
-			config.DeleteConfigValue("RATE_LIMIT_RPS")
-			config.DeleteConfigValue("RATE_LIMIT_BURST")
+			os.Unsetenv("RATE_LIMIT_RPS")
+			os.Unsetenv("RATE_LIMIT_BURST")
 		}()
 
 		// First call should be allowed (consumes all burst tokens)
@@ -72,8 +71,8 @@ func TestRateLimit_Allow(t *testing.T) {
 
 	t.Run("prod env attempts distributed rate limit (fails gracefully)", func(t *testing.T) {
 		resetState()
-		config.SetConfigValue("ENV", "prod")
-		defer config.DeleteConfigValue("ENV")
+		os.Setenv("ENV", "prod")
+		defer os.Unsetenv("ENV")
 
 		// This will call elasticache.AllowDistributed which will fail with no
 		// real elasticache connection, but exercises the prod/staging code path.
@@ -83,8 +82,8 @@ func TestRateLimit_Allow(t *testing.T) {
 
 	t.Run("staging env attempts distributed rate limit (fails gracefully)", func(t *testing.T) {
 		resetState()
-		config.SetConfigValue("ENV", "staging")
-		defer config.DeleteConfigValue("ENV")
+		os.Setenv("ENV", "staging")
+		defer os.Unsetenv("ENV")
 
 		_, _, _ = Allow(context.Background(), "staging-key")
 	})
@@ -92,12 +91,12 @@ func TestRateLimit_Allow(t *testing.T) {
 
 func TestRateLimit_GetUsage(t *testing.T) {
 	resetState()
-	config.DeleteConfigValue("ENV")
-	config.SetConfigValue("RATE_LIMIT_RPS", "10")
-	config.SetConfigValue("RATE_LIMIT_BURST", "10")
+	os.Unsetenv("ENV")
+	os.Setenv("RATE_LIMIT_RPS", "10")
+	os.Setenv("RATE_LIMIT_BURST", "10")
 	defer func() {
-		config.DeleteConfigValue("RATE_LIMIT_RPS")
-		config.DeleteConfigValue("RATE_LIMIT_BURST")
+		os.Unsetenv("RATE_LIMIT_RPS")
+		os.Unsetenv("RATE_LIMIT_BURST")
 	}()
 
 	// Consume one token
@@ -121,12 +120,12 @@ func TestRateLimit_GetUsage(t *testing.T) {
 func TestRateLimit_GetUsage_NegativeUsed(t *testing.T) {
 	// When tokens > burstVal, usedF would be < 0 → should be clamped to 0
 	resetState()
-	config.DeleteConfigValue("ENV")
-	config.SetConfigValue("RATE_LIMIT_RPS", "100")
-	config.SetConfigValue("RATE_LIMIT_BURST", "1") // burst=1
+	os.Unsetenv("ENV")
+	os.Setenv("RATE_LIMIT_RPS", "100")
+	os.Setenv("RATE_LIMIT_BURST", "1") // burst=1
 	defer func() {
-		config.DeleteConfigValue("RATE_LIMIT_RPS")
-		config.DeleteConfigValue("RATE_LIMIT_BURST")
+		os.Unsetenv("RATE_LIMIT_RPS")
+		os.Unsetenv("RATE_LIMIT_BURST")
 	}()
 
 	// Call Allow to initialize bucket
@@ -155,7 +154,7 @@ func TestRateLimit_GetUsage_NegativeUsed(t *testing.T) {
 
 func TestRateLimit_Reset(t *testing.T) {
 	resetState()
-	config.DeleteConfigValue("ENV")
+	os.Unsetenv("ENV")
 
 	// Create a bucket by calling Allow
 	Allow(context.Background(), "reset-key")
@@ -240,11 +239,11 @@ func TestRateLimit_ShouldFailOpen(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			config.DeleteConfigValue("RATE_LIMIT_FAIL_OPEN")
+			os.Unsetenv("RATE_LIMIT_FAIL_OPEN")
 			if tc.setVal {
-				config.SetConfigValue("RATE_LIMIT_FAIL_OPEN", tc.val)
+				os.Setenv("RATE_LIMIT_FAIL_OPEN", tc.val)
 			}
-			defer config.DeleteConfigValue("RATE_LIMIT_FAIL_OPEN")
+			defer os.Unsetenv("RATE_LIMIT_FAIL_OPEN")
 
 			got := ShouldFailOpen()
 			if got != tc.want {
@@ -256,8 +255,8 @@ func TestRateLimit_ShouldFailOpen(t *testing.T) {
 
 func TestRateLimit_RateConfig_Defaults(t *testing.T) {
 	resetState()
-	config.DeleteConfigValue("RATE_LIMIT_RPS")
-	config.DeleteConfigValue("RATE_LIMIT_BURST")
+	os.Unsetenv("RATE_LIMIT_RPS")
+	os.Unsetenv("RATE_LIMIT_BURST")
 
 	r, b := rateConfig()
 	if r != 10 {
@@ -270,11 +269,11 @@ func TestRateLimit_RateConfig_Defaults(t *testing.T) {
 
 func TestRateLimit_RateConfig_FromConfig(t *testing.T) {
 	resetState()
-	config.SetConfigValue("RATE_LIMIT_RPS", "30")
-	config.SetConfigValue("RATE_LIMIT_BURST", "60")
+	os.Setenv("RATE_LIMIT_RPS", "30")
+	os.Setenv("RATE_LIMIT_BURST", "60")
 	defer func() {
-		config.DeleteConfigValue("RATE_LIMIT_RPS")
-		config.DeleteConfigValue("RATE_LIMIT_BURST")
+		os.Unsetenv("RATE_LIMIT_RPS")
+		os.Unsetenv("RATE_LIMIT_BURST")
 	}()
 
 	r, b := rateConfig()
@@ -289,11 +288,11 @@ func TestRateLimit_RateConfig_FromConfig(t *testing.T) {
 func TestRateLimit_RateConfig_InvalidValues(t *testing.T) {
 	// invalid (non-positive) rps/burst fall back to defaults
 	resetState()
-	config.SetConfigValue("RATE_LIMIT_RPS", "-5")
-	config.SetConfigValue("RATE_LIMIT_BURST", "0")
+	os.Setenv("RATE_LIMIT_RPS", "-5")
+	os.Setenv("RATE_LIMIT_BURST", "0")
 	defer func() {
-		config.DeleteConfigValue("RATE_LIMIT_RPS")
-		config.DeleteConfigValue("RATE_LIMIT_BURST")
+		os.Unsetenv("RATE_LIMIT_RPS")
+		os.Unsetenv("RATE_LIMIT_BURST")
 	}()
 
 	r, b := rateConfig()
@@ -309,9 +308,9 @@ func TestRateLimit_BucketEvictor_Started(t *testing.T) {
 	// Calling Allow triggers getBucket which triggers evictOnce.Do(startBucketEvictor)
 	// This just ensures no panic occurs and the goroutine is launched.
 	resetState()
-	config.DeleteConfigValue("ENV")
-	config.SetConfigValue("RATE_LIMIT_BUCKET_TTL_SEC", "1")
-	defer config.DeleteConfigValue("RATE_LIMIT_BUCKET_TTL_SEC")
+	os.Unsetenv("ENV")
+	os.Setenv("RATE_LIMIT_BUCKET_TTL_SEC", "1")
+	defer os.Unsetenv("RATE_LIMIT_BUCKET_TTL_SEC")
 
 	_, _, err := Allow(context.Background(), "evictor-test")
 	if err != nil {
@@ -332,12 +331,12 @@ func TestRateLimit_GetBucket_Existing(t *testing.T) {
 func TestRateLimit_Allow_TokenRefill(t *testing.T) {
 	// Test the token refill branch in allow() when last is not zero
 	resetState()
-	config.DeleteConfigValue("ENV")
-	config.SetConfigValue("RATE_LIMIT_RPS", "100")
-	config.SetConfigValue("RATE_LIMIT_BURST", "2")
+	os.Unsetenv("ENV")
+	os.Setenv("RATE_LIMIT_RPS", "100")
+	os.Setenv("RATE_LIMIT_BURST", "2")
 	defer func() {
-		config.DeleteConfigValue("RATE_LIMIT_RPS")
-		config.DeleteConfigValue("RATE_LIMIT_BURST")
+		os.Unsetenv("RATE_LIMIT_RPS")
+		os.Unsetenv("RATE_LIMIT_BURST")
 	}()
 
 	// First Allow: sets tokens = burst, consumes one
@@ -354,12 +353,12 @@ func TestRateLimit_Allow_TokenRefill(t *testing.T) {
 func TestRateLimit_Allow_TokensCapAtBurst(t *testing.T) {
 	// Test that tokens are capped at burst during refill
 	resetState()
-	config.DeleteConfigValue("ENV")
-	config.SetConfigValue("RATE_LIMIT_RPS", "1000")
-	config.SetConfigValue("RATE_LIMIT_BURST", "3")
+	os.Unsetenv("ENV")
+	os.Setenv("RATE_LIMIT_RPS", "1000")
+	os.Setenv("RATE_LIMIT_BURST", "3")
 	defer func() {
-		config.DeleteConfigValue("RATE_LIMIT_RPS")
-		config.DeleteConfigValue("RATE_LIMIT_BURST")
+		os.Unsetenv("RATE_LIMIT_RPS")
+		os.Unsetenv("RATE_LIMIT_BURST")
 	}()
 
 	Allow(context.Background(), "cap-key")

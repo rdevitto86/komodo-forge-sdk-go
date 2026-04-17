@@ -16,6 +16,7 @@ import (
 	mwratelimit "github.com/rdevitto86/komodo-forge-sdk-go/http/ratelimit"
 	mwrequest "github.com/rdevitto86/komodo-forge-sdk-go/http/request"
 	mwsanitize "github.com/rdevitto86/komodo-forge-sdk-go/http/sanitization"
+	mwipaccess "github.com/rdevitto86/komodo-forge-sdk-go/http/ipaccess"
 	mwtelemetry "github.com/rdevitto86/komodo-forge-sdk-go/http/telemetry"
 )
 
@@ -30,6 +31,9 @@ var RequestIDMiddleware = mwrequest.RequestIDMiddleware
 // ClientSourceMiddleware extracts and attaches client source info to the context.
 var ClientSourceMiddleware = mwrequest.ClientSourceMiddleware
 
+// ClientTypeMiddleware is an alias for ClientSourceMiddleware retained for backward compatibility.
+var ClientTypeMiddleware = mwrequest.ClientSourceMiddleware
+
 // TelemetryMiddleware records request telemetry (latency, status, route).
 var TelemetryMiddleware = mwtelemetry.TelemetryMiddleware
 
@@ -41,6 +45,9 @@ var AuthMiddleware = mwapiauth.AuthMiddleware
 
 // RequireServiceScope validates that the JWT carries the required service-to-service scope.
 var RequireServiceScope = mwapiauth.RequireServiceScope
+
+// ScopeMiddleware is an alias for RequireServiceScope retained for backward compatibility.
+var ScopeMiddleware = mwapiauth.RequireServiceScope
 
 // CORSMiddleware sets CORS response headers.
 var CORSMiddleware = mwcors.CORSMiddleware
@@ -62,3 +69,6 @@ var IdempotencyMiddleware = mwidempotency.IdempotencyMiddleware
 
 // RuleValidationMiddleware validates incoming requests against registered rule sets.
 var RuleValidationMiddleware = mwrules.RuleValidationMiddleware
+
+// IPAccessMiddleware enforces IP allowlist/blocklist rules.
+var IPAccessMiddleware = mwipaccess.IPAccessMiddleware

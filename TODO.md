@@ -77,6 +77,27 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 
 ### `api/circuitbreaker`
 - [ ] **H** Implement circuit breaker (`breaker.go` is empty stub)
+- [ ] **M** Configurable failure threshold, half-open state probe, exponential backoff, fallback to degraded mode (cache-only, async queue, or fail-fast with clear error codes)
+- [ ] **M** Document and wire into the following Komodo call sites once implemented:
+  - **komodo-auth-api**: ElastiCache token revocation checks (`oauth_token_handler.go:173`)
+  - **komodo-cart-api**: `shop-items-api` (product snapshots), `shop-inventory-api` (stock holds)
+  - **komodo-support-api**: Anthropic Haiku LLM calls (`anthropic.go:39`)
+  - **komodo-address-api**: External address validation provider (SmartyStreets/Google) — currently stubs (`address.go:50,59,77`)
+  - **komodo-search-api**: Typesense search queries
+  - **komodo-communications-api**: SendGrid/SES email, Twilio/SNS SMS
+  - **komodo-shipping-api**: Carrier aggregator API (EasyPost/ShipStation)
+  - **komodo-payments-api**: Stripe API calls (`payment_intents`, `refunds`)
+  - **komodo-event-bus-api**: SNS publish calls (CDC Lambda and relay publisher)
+  - **Cross-service calls**: cart-api ↔ inventory-api, order-api ↔ payments-api, order-api ↔ shipping-api, returns-api ↔ payments-api/inventory-api
+
+### `security/hashing` (new)
+- [ ] **H** Shared password/token hashing utility — standardize on Argon2id (preferred) or bcrypt across all Komodo services; expose `Hash(plaintext) (string, error)` and `Verify(plaintext, hash) (bool, error)`; replace ad-hoc hashing currently done per-service in `komodo-auth-api` and future `komodo-user-api` password storage
+
+### `http/handlers` (new)
+- [ ] **L** Health handler — 5+ Komodo services (`user-api`, `cart-api`, `shop-inventory-api`, `reviews-api`, `features-api`) implement an identical `{"status":"OK"}` health endpoint; expose as a one-liner registration (`handlers.Health(mux)`) so every service mounts the same implementation
+
+### `aws/dynamostreams` (new)
+- [ ] **M** Generic DynamoDB Streams consumer/subscriber — beyond the single CDC Lambda in `komodo-event-bus-api`, services like `statistics-api`, `insights-api`, and `search-api` need to consume stream events for real-time aggregation and index sync; provide shard management, checkpointing, retry, and a handler callback interface so any service can subscribe without reimplementing the plumbing
 
 ### `events`
 - [ ] **H** Implement `Publish()` (`client.go` is a stub — returns nil)
@@ -223,7 +244,7 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 
 ## API Adapters — Komodo Services
 
-> Goal: move all per-service adapters out of `komodo-ecom/apis/<service>/pkg/v1/` and into this SDK. OpenAPI specs are the source of truth — types and HTTP clients are generated, not hand-written.
+> Goal: generate per-service adapters in this SDK from each Komodo service's OpenAPI spec. OpenAPI specs are the source of truth — types and HTTP clients are generated, not hand-written.
 
 ### Codegen pipeline
 
@@ -231,19 +252,19 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **H** Add `tools.go` declaring `oapi-codegen` as a tracked Go tool dependency (`go install` friendly, pinned version)
 - [ ] **M** Wire `generate-adapters.sh` into existing `scripts/generate.sh` so a single `go generate ./...` regenerates everything
 
-### Komodo service adapter targets (migrate from `pkg/v1/`)
+### Komodo service adapter targets
 
-- [ ] **H** `api/adapters/v1/auth/` — generated from `komodo-auth-api/docs/openapi.yaml`; replaces `komodo-auth-api/pkg/v1/`
-- [ ] **H** `api/adapters/v1/user/` — generated from `komodo-user-api/docs/openapi.yaml`; replaces `komodo-user-api/pkg/v1/`
-- [ ] **H** `api/adapters/v1/payments/` — generated from `komodo-payments-api-rust/docs/openapi.yaml` (Rust service — no existing Go pkg/v1 to migrate)
-- [ ] **M** `api/adapters/v1/cart/` — generated from `komodo-cart-api/docs/openapi.yaml`; replaces `komodo-cart-api/pkg/v1/`
-- [ ] **M** `api/adapters/v1/shop-items/` — generated from `komodo-shop-items-api/docs/openapi.yaml`; replaces `komodo-shop-items-api/pkg/v1/`
-- [ ] **M** `api/adapters/v1/order/` — generated from `komodo-order-api/docs/openapi.yaml`; replaces `komodo-order-api/pkg/v1/`
-- [ ] **M** `api/adapters/v1/order-reservations/` — generated from `komodo-order-reservations-api/docs/openapi.yaml`; replaces `komodo-order-reservations-api/pkg/v1/`
-- [ ] **M** `api/adapters/v1/search/` — generated from `komodo-search-api/docs/openapi.yaml`; replaces `komodo-search-api/pkg/v1/`
-- [ ] **M** `api/adapters/v1/support/` — generated from `komodo-support-api/docs/openapi.yaml`; replaces `komodo-support-api/pkg/v1/`
-- [ ] **M** `api/adapters/v1/communications/` — generated from `komodo-communications-api/docs/openapi.yaml`; replaces `komodo-communications-api/pkg/v1/`
-- [ ] **M** `api/adapters/v1/reviews/` — generated from `komodo-reviews-api/docs/openapi.yaml`; replaces `komodo-reviews-api/pkg/v1/`
+- [ ] **H** `api/adapters/v1/auth/` — generated from `komodo-auth-api/docs/openapi.yaml`
+- [ ] **H** `api/adapters/v1/user/` — generated from `komodo-user-api/docs/openapi.yaml`
+- [ ] **H** `api/adapters/v1/payments/` — generated from `komodo-payments-api/openapi.yaml` (Rust service, no existing Go pkg/v1 to migrate)
+- [ ] **M** `api/adapters/v1/cart/` — generated from `komodo-cart-api/docs/openapi.yaml`
+- [ ] **M** `api/adapters/v1/shop-items/` — generated from `komodo-shop-items-api/docs/openapi.yaml`
+- [ ] **M** `api/adapters/v1/order/` — generated from `komodo-order-api/docs/openapi.yaml`
+- [ ] **M** `api/adapters/v1/order-reservations/` — generated from `komodo-order-reservations-api/docs/openapi.yaml`
+- [ ] **M** `api/adapters/v1/search/` — generated from `komodo-search-api/docs/openapi.yaml`
+- [ ] **M** `api/adapters/v1/support/` — generated from `komodo-support-api/docs/openapi.yaml`
+- [ ] **M** `api/adapters/v1/communications/` — generated from `komodo-communications-api/docs/openapi.yaml`
+- [ ] **M** `api/adapters/v1/reviews/` — generated from `komodo-reviews-api/docs/openapi.yaml`
 - [ ] **L** Add unversioned re-export at `api/adapters/<service>/` pointing to current stable version — consumers can import the unversioned path and stay on latest without code changes
 
 ---

@@ -3,7 +3,7 @@ package httperrors
 import "net/http"
 
 // ErrorCode is the canonical error type for all Komodo services.
-// Domain-specific codes are defined in each service's pkg/v1/models/errors.go
+// Domain-specific codes are auto-generated from each service's openapi.yaml
 // using this type, within their registered range (see ranges.go).
 type ErrorCode struct {
 	ID      string `json:"id"`

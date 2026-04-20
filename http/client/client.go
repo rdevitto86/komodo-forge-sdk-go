@@ -48,19 +48,19 @@ func GetJSON[T any](c *Client, ctx context.Context, url string) (*T, error) {
 	}
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.Do(req)
+	res, err := c.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("client.GetJSON: %w", err)
 	}
-	defer resp.Body.Close()
+	defer res.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, fmt.Errorf("client.GetJSON: read body: %w", err)
 	}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &HTTPError{StatusCode: resp.StatusCode, Body: body}
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return nil, &HTTPError{StatusCode: res.StatusCode, Body: body}
 	}
 
 	var result T
@@ -82,22 +82,23 @@ func PostJSON[T any](c *Client, ctx context.Context, url string, body any) (*T, 
 	if err != nil {
 		return nil, fmt.Errorf("client.PostJSON: %w", err)
 	}
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	resp, err := c.Do(req)
+	res, err := c.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("client.PostJSON: %w", err)
 	}
-	defer resp.Body.Close()
+	defer res.Body.Close()
 
-	raw, err := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(res.Body)
 	if err != nil {
 		return nil, fmt.Errorf("client.PostJSON: read body: %w", err)
 	}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, &HTTPError{StatusCode: resp.StatusCode, Body: raw}
+	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		return nil, &HTTPError{StatusCode: res.StatusCode, Body: raw}
 	}
 
 	var result T

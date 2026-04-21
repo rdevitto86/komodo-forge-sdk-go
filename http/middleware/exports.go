@@ -2,9 +2,7 @@
 package middleware
 
 import (
-	mwapiauth "github.com/rdevitto86/komodo-forge-sdk-go/api/auth"
-	mwidempotency "github.com/rdevitto86/komodo-forge-sdk-go/api/idempotency"
-	mwrules "github.com/rdevitto86/komodo-forge-sdk-go/api/rules"
+	mwapiauth "github.com/rdevitto86/komodo-forge-sdk-go/auth"
 	mwcors "github.com/rdevitto86/komodo-forge-sdk-go/http/cors"
 	mwcsrf "github.com/rdevitto86/komodo-forge-sdk-go/http/csrf"
 	mwheaders "github.com/rdevitto86/komodo-forge-sdk-go/http/headers"
@@ -16,6 +14,8 @@ import (
 	mwrequest "github.com/rdevitto86/komodo-forge-sdk-go/http/request"
 	mwsanitize "github.com/rdevitto86/komodo-forge-sdk-go/http/sanitization"
 	mwtelemetry "github.com/rdevitto86/komodo-forge-sdk-go/http/telemetry"
+	mwidempotency "github.com/rdevitto86/komodo-forge-sdk-go/idempotency"
+	mwrules "github.com/rdevitto86/komodo-forge-sdk-go/rules"
 )
 
 var (

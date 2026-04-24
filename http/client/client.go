@@ -11,21 +11,64 @@ import (
 )
 
 // Client wraps net/http.Client as the canonical HTTP transport for Komodo services.
-// Future additions: timeout override, retry policy, circuit breaker.
 type Client struct {
 	httpClient *http.Client
+	breaker    *breaker
 }
 
-// NewClient returns a Client with a 30s default timeout.
-func NewClient() *Client {
-	return &Client{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+// Option is a functional option for NewClient.
+type Option func(*Client)
+
+// WithCircuitBreaker attaches a circuit breaker to the client. When set, Do()
+// tracks failures (transport errors and 4xx/5xx responses) per request host.
+func WithCircuitBreaker(cfg Config) Option {
+	return func(c *Client) {
+		c.breaker = newBreaker(cfg)
 	}
 }
 
+// NewClient returns a Client with a 30s default timeout.
+// Callers with no options get a plain client with no circuit breaker overhead.
+func NewClient(opts ...Option) *Client {
+	c := &Client{
+		httpClient: &http.Client{Timeout: 30 * time.Second},
+	}
+	for _, o := range opts { o(c) }
+	return c
+}
+
 // Do executes the request using the underlying http.Client.
+// When a circuit breaker is configured, failures (transport errors and 4xx/5xx
+// responses) are counted per req.URL.Host. If the breaker is open, Do returns
+// nil, circuitbreaker.ErrOpen without making a network call.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	return c.httpClient.Do(req)
+	if c.breaker == nil {
+		return c.httpClient.Do(req)
+	}
+
+	var (
+		resp *http.Response
+		err  error
+	)
+
+	breakerErr := c.breaker.execute(req.URL.Host, func() error {
+		resp, err = c.httpClient.Do(req)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode >= 400 {
+			return fmt.Errorf("upstream %d", resp.StatusCode)
+		}
+		return nil
+	})
+
+	if breakerErr == ErrOpen {
+		return nil, ErrOpen
+	}
+
+	// For non-ErrOpen breaker errors (transport error or 4xx/5xx), return the
+	// original resp and err so the caller sees the real HTTP response when present.
+	return resp, err
 }
 
 // HTTPError is returned by GetJSON and PostJSON when the server responds with a non-2xx status.

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 type testPayload struct {
@@ -103,5 +104,78 @@ func TestGetJSON_TransportError(t *testing.T) {
 	var httpErr *HTTPError
 	if errors.As(err, &httpErr) {
 		t.Fatalf("expected a transport error (not *HTTPError), got *HTTPError with status %d", httpErr.StatusCode)
+	}
+}
+
+// --- Circuit breaker integration tests ---
+
+func newBreakerClient(threshold int, timeout time.Duration) *Client {
+	return NewClient(WithCircuitBreaker(Config{
+		FailureThreshold:    threshold,
+		SuccessThreshold:    1,
+		OpenTimeout:         timeout,
+		MaxHalfOpenRequests: 1,
+	}))
+}
+
+func TestWithCircuitBreaker_TripsAfterNFailures(t *testing.T) {
+	const threshold = 3
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	c := newBreakerClient(threshold, time.Hour)
+
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
+
+	for i := range threshold {
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatalf("call %d: unexpected transport error: %v", i, err)
+		}
+		resp.Body.Close()
+	}
+
+	// Breaker should be open now.
+	_, err := c.Do(req)
+	if !errors.Is(err, ErrOpen) {
+		t.Fatalf("expected ErrOpen after %d failures, got %v", threshold, err)
+	}
+}
+
+func TestWithCircuitBreaker_ReturnsErrOpenWhenOpen(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	c := newBreakerClient(1, time.Hour)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
+
+	resp, _ := c.Do(req)
+	if resp != nil {
+		resp.Body.Close()
+	}
+
+	_, err := c.Do(req)
+	if !errors.Is(err, ErrOpen) {
+		t.Fatalf("expected ErrOpen, got %v", err)
+	}
+}
+
+func TestNoBreaker_TransportErrorPassesThrough(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv.Close()
+
+	c := NewClient() // no circuit breaker
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
+
+	_, err := c.Do(req)
+	if err == nil {
+		t.Fatal("expected transport error, got nil")
+	}
+	if errors.Is(err, ErrOpen) {
+		t.Fatal("expected real transport error, not ErrOpen")
 	}
 }

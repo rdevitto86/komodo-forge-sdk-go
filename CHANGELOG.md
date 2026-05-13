@@ -6,20 +6,18 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.10.1]
+## [0.10.2]
 
 ### Changed
 
-- **Codebase-wide style pass** — removed redundant doc-comment prefixes ("X is a …", "X creates …") from exported types and functions across all packages; comment text now starts with the salient detail rather than repeating the identifier.
-- **`config/config.go`** — re-aligned constant block from tab-indented columns to `gofmt`-standard single-space alignment; added trailing newline.
-- **`testing/moxtox`** — renamed receiver `cnfg` → `cfg`; expanded single-line `if !ok { continue }` guards to multi-line form; aligned struct tag columns.
-- **All test files** — added section-break comments between logical test groups for readability.
-- **Codebase-wide error message cleanup** — removed service-name prefixes (`"sqs: ..."`, `"events: ..."`, etc.) from all `fmt.Errorf` calls and `logger` calls
-- **README.md** — updated examples and installation instructions for new API patterns.
+- **Codebase-wide error message cleanup** — removed service-name prefixes (`"sqs: ..."`, `"events: ..."`, etc.) from all `fmt.Errorf` calls and `logger` calls across `aws/sqs`, `aws/sns`, `aws/dynamo`, `aws/elasticache`, `aws/secretsmanager`, `events`, `http/ratelimit`, and `rules`. Messages now read as actions (`"failed to receive message: ..."`) rather than repeating the package name.
+- **`Makefile` — `release` target** — `make release` now reads `VERSION`, creates the git tag, and pushes it to origin in one step.
+- **`README.md`** — corrected package paths, API signatures, and package inventory to match current SDK state.
+- **`CHANGELOG.md`** — corrected version entries to accurately reflect what shipped in each tag.
 
 ---
 
-## [0.10.0]
+## [0.10.1]
 
 ### Performance
 
@@ -60,6 +58,18 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - **`aws/elasticache` API** — `Get(key string)`, `Set(key, value string, ttl int64)`, and `Delete(key string)` signatures changed to `Get(ctx, key)`, `Set(ctx, key, value, ttl)`, `Delete(ctx, key)`. Callers must pass a context.
+- **Codebase-wide style pass** — removed redundant doc-comment prefixes from exported types and functions; comment text now starts with the salient detail rather than repeating the identifier.
+- **`config/config.go`** — re-aligned constant block to `gofmt`-standard single-space alignment.
+- **`testing/moxtox`** — renamed receiver `cnfg` → `cfg`; expanded single-line `if !ok { continue }` guards to multi-line form.
+- **All test files** — added section-break comments between logical test groups for readability.
+
+---
+
+## [0.10.0]
+
+### Changed
+
+- **`http/client` — circuit breaker** (`http/client/circuitbreaker.go`) — added per-host circuit breaker with configurable failure threshold, timeout, and half-open probe.
 
 ---
 

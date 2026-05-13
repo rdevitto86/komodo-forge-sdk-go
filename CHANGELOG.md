@@ -6,7 +6,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
-## [0.10.2]
+## [0.10.3]
 
 ### Changed
 

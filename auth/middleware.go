@@ -28,12 +28,12 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// ParseClaims is called after ValidateToken confirms the signature, issuer,
+		// called after ValidateToken confirms the signature, issuer,
 		// and audience are valid; an error here would be unreachable in practice.
 		claims, _ := jwt.ParseClaims(tokenString)
 
 		ctx := context.WithValue(req.Context(), ctxKeys.AUTH_VALID_KEY, true)
-		
+
 		if claims.Subject != "" {
 			ctx = context.WithValue(ctx, ctxKeys.USER_ID_KEY, claims.Subject)
 		}
@@ -59,7 +59,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// RequireServiceScope rejects requests whose JWT does not carry a service-scoped token.
+// Rejects requests whose JWT does not carry a service-scoped token.
 // Service tokens must have at least one scope with a "svc:" prefix, issued by komodo-auth-api
 // on service bootstrap — distinct from user tokens, which carry user-scoped claims.
 func RequireServiceScope(next http.Handler) http.Handler {

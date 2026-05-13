@@ -13,7 +13,7 @@ import (
 	"net/http"
 )
 
-// Run is the universal entry point for all Komodo services.
+// Universal entry point for all Komodo services.
 // On AWS Lambda (detected via AWS_LAMBDA_FUNCTION_NAME) it wraps the handler
 // with the API Gateway v2 HTTP adapter and starts the Lambda runtime.
 // Otherwise it falls through to InitAndServe for local docker-compose and Fargate.
@@ -27,15 +27,15 @@ func Run(srv *http.Server, port string, gracefulTimeout time.Duration) {
 
 // Initialize and start the server with graceful shutdown
 // parameters:
-//	- srv: the server to start
-//	- p: the port to listen on
-//	- t: the timeout for graceful shutdown
+//   - srv: the server to start
+//   - p: the port to listen on
+//   - t: the timeout for graceful shutdown
 func InitAndServe(srv *http.Server, p string, t time.Duration) {
 	// Create context for graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	srv.Addr = p 	// Set server address
+	srv.Addr = p // Set server address
 
 	// Start server in goroutine
 	go func() {

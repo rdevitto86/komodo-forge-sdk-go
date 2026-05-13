@@ -43,7 +43,6 @@ type rlCfg struct {
 	burst float64
 }
 
-// envCfg holds env-derived values cached once at startup.
 type envCfg struct {
 	env    string
 	ttlSec int
@@ -68,21 +67,20 @@ var (
 	failOnce    sync.Once
 )
 
-// SetElasticacheClient wires a distributed ElastiCache client for prod/staging
+// Wires a distributed ElastiCache client for prod/staging
 // rate limiting. Must be called before the first Allow call in those environments.
 func SetElasticacheClient(c elasticache.API) {
-	// Store via atomic to avoid a race with Allow readers.
 	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&ecClient)), *(*unsafe.Pointer)(unsafe.Pointer(&c)))
 }
 
-// Allow attempts to consume a token for the given client key.
+// Attempts to consume a token for the given client key.
 func Allow(ctx context.Context, key string) (allowed bool, wait time.Duration, err error) {
 	env := loadEnv().env
 
 	if env == "prod" || env == "staging" {
 		ec := ecClient
 		if ec == nil {
-			return false, 0, fmt.Errorf("ratelimit: no distributed client configured for env %q", env)
+			return false, 0, fmt.Errorf("no distributed client configured for env %q", env)
 		}
 		cfg := loadCfg()
 		ttlSec := loadEnv().ttlSec
@@ -96,32 +94,30 @@ func Allow(ctx context.Context, key string) (allowed bool, wait time.Duration, e
 	return true, 0, nil
 }
 
-// GetUsage returns simple usage metrics for the given key.
+// Returns simple usage metrics for the given key.
 func GetUsage(ctx context.Context, key string) (used int, remaining int, reset time.Time, err error) {
-	b := getBucket(key)
+	bkt := getBucket(key)
 
-	b.mu.Lock()
-	tokens := b.tokens
-	b.mu.Unlock()
+	bkt.mu.Lock()
+	tokens := bkt.tokens
+	bkt.mu.Unlock()
 
 	cfg := loadCfg()
-	remaining = int(tokens)
 	usedF := cfg.burst - tokens
 	if usedF < 0 {
 		usedF = 0
 	}
-	used = int(usedF)
-	reset = time.Now().Add(b.retryAfter())
-	return used, remaining, reset, nil
+
+	return int(usedF), int(tokens), time.Now().Add(bkt.retryAfter()), nil
 }
 
-// Reset removes any in-process bucket state for the given key.
+// Removes any in-process bucket state for the given key.
 func Reset(ctx context.Context, key string) error {
 	buckets.Delete(key)
 	return nil
 }
 
-// LoadConfig programmatically overrides rate limiter settings (RPS/Burst).
+// Programmatically overrides rate limiter settings (RPS/Burst).
 func LoadConfig(cfg Config) error {
 	current := loadCfg()
 	next := rlCfg{rps: current.rps, burst: current.burst}
@@ -135,7 +131,6 @@ func LoadConfig(cfg Config) error {
 	return nil
 }
 
-// allow checks and updates the bucket token count.
 func (bkt *bucket) allow() bool {
 	cfg := loadCfg()
 	now := time.Now()
@@ -163,14 +158,15 @@ func (bkt *bucket) allow() bool {
 	return false
 }
 
-// retryAfter estimates how long until the next token is available.
 func (bkt *bucket) retryAfter() time.Duration {
 	cfg := loadCfg()
 	if cfg.rps <= 0 {
 		return time.Second
 	}
+
 	bkt.mu.Lock()
 	defer bkt.mu.Unlock()
+
 	deficit := 1 - bkt.tokens
 	if deficit <= 0 {
 		return 0
@@ -178,7 +174,6 @@ func (bkt *bucket) retryAfter() time.Duration {
 	return time.Duration(deficit / cfg.rps * float64(time.Second))
 }
 
-// loadCfg returns the current rlCfg, initialising from env vars on first call.
 func loadCfg() rlCfg {
 	cfgOnce.Do(func() {
 		parseFloat := func(key string, dflt float64) float64 {
@@ -196,19 +191,19 @@ func loadCfg() rlCfg {
 		}
 		cfgPtr.Store(&rlCfg{rps: rps, burst: burst})
 	})
+
 	if p := cfgPtr.Load(); p != nil {
 		return *p
 	}
 	return rlCfg{rps: 10, burst: 20}
 }
 
-// rateConfig returns the current rps and burst as a pair.
 func rateConfig() (float64, float64) {
 	c := loadCfg()
 	return c.rps, c.burst
 }
 
-// ResetForTesting resets all package-level state so tests can start clean.
+// Resets all package-level state so tests can start clean.
 // Must only be called from test code.
 func ResetForTesting() {
 	cfgOnce = sync.Once{}
@@ -221,7 +216,6 @@ func ResetForTesting() {
 	buckets.Range(func(k, v any) bool { buckets.Delete(k); return true })
 }
 
-// loadEnv returns the cached env config, initialising on first call.
 func loadEnv() envCfg {
 	envOnce.Do(func() {
 		env := strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
@@ -236,7 +230,6 @@ func loadEnv() envCfg {
 	return *envPtr.Load()
 }
 
-// getBucket retrieves or creates a rate limit bucket for the given key.
 func getBucket(key string) *bucket {
 	evictOnce.Do(startBucketEvictor)
 	if v, ok := buckets.Load(key); ok {
@@ -247,7 +240,6 @@ func getBucket(key string) *bucket {
 	return actual.(*bucket)
 }
 
-// startBucketEvictor removes idle buckets after the configured TTL.
 func startBucketEvictor() {
 	ttlSec := 300
 	if val := strings.TrimSpace(os.Getenv("RATE_LIMIT_BUCKET_TTL_SEC")); val != "" {
@@ -263,12 +255,14 @@ func startBucketEvictor() {
 			now := time.Now()
 			buckets.Range(func(key, val any) bool {
 				b := val.(*bucket)
+
 				b.mu.Lock()
 				lastActive := b.last
 				if lastActive.IsZero() {
 					lastActive = b.created
 				}
 				b.mu.Unlock()
+
 				if now.Sub(lastActive) > ttl {
 					buckets.Delete(key)
 				}
@@ -278,7 +272,7 @@ func startBucketEvictor() {
 	}()
 }
 
-// ShouldFailOpen decides fail-open vs fail-closed when the distributed store is unavailable.
+// Decides fail-open vs fail-closed when the distributed store is unavailable.
 func ShouldFailOpen() bool {
 	failOnce.Do(func() {
 		v := strings.ToLower(strings.TrimSpace(os.Getenv("RATE_LIMIT_FAIL_OPEN")))

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Lists contains parsed whitelist/blacklist IPs and CIDR networks.
+// Parsed whitelist/blacklist IPs and CIDR networks.
 type Lists struct {
 	WhitelistIPs  []net.IP
 	WhitelistNets []*net.IPNet
@@ -15,7 +15,9 @@ type Lists struct {
 
 // Returns true if the ip is allowed according to the provided lists.
 func Evaluate(ip net.IP, lists *Lists) bool {
-	if lists == nil { return true }
+	if lists == nil {
+		return true
+	}
 
 	// If whitelist present, only allow those entries
 	if len(lists.WhitelistIPs) > 0 || len(lists.WhitelistNets) > 0 {
@@ -31,10 +33,14 @@ func Evaluate(ip net.IP, lists *Lists) bool {
 
 func ipInList(ip net.IP, ips []net.IP, nets []*net.IPNet) bool {
 	for _, a := range ips {
-		if a.Equal(ip) { return true }
+		if a.Equal(ip) {
+			return true
+		}
 	}
 	for _, n := range nets {
-		if n.Contains(ip) { return true }
+		if n.Contains(ip) {
+			return true
+		}
 	}
 	return false
 }
@@ -42,12 +48,15 @@ func ipInList(ip net.IP, ips []net.IP, nets []*net.IPNet) bool {
 // Parses a comma-separated list of IPs or CIDR ranges and returns
 // the parsed IPs and networks. Invalid entries are ignored.
 func ParseList(raw string) (ips []net.IP, nets []*net.IPNet) {
-	if strings.TrimSpace(raw) == "" { return nil, nil }
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
 
-	parts := strings.Split(raw, ",")
-	for _, p := range parts {
+	for p := range strings.SplitSeq(raw, ",") {
 		p = strings.TrimSpace(p)
-		if p == "" { continue }
+		if p == "" {
+			continue
+		}
 
 		if strings.Contains(p, "/") {
 			if _, network, err := net.ParseCIDR(p); err == nil {

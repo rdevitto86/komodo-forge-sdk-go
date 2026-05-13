@@ -11,7 +11,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// API is the interface for ElastiCache/Redis operations.
 type API interface {
 	Get(ctx context.Context, key string) (string, error)
 	Set(ctx context.Context, key string, value string, ttl int64) error
@@ -26,15 +25,14 @@ type Config struct {
 	DB       int
 }
 
-// Client wraps a Redis client for ElastiCache.
 type Client struct {
 	rc *redis.Client
 }
 
-// New creates a Client and pings the endpoint to verify connectivity.
+// Creates a Client and pings the endpoint to verify connectivity.
 func New(cfg Config) (*Client, error) {
 	if cfg.Endpoint == "" {
-		return nil, fmt.Errorf("elasticache: endpoint is required")
+		return nil, fmt.Errorf("endpoint is required")
 	}
 
 	rc := redis.NewClient(&redis.Options{
@@ -48,18 +46,18 @@ func New(cfg Config) (*Client, error) {
 
 	if err := rc.Ping(ctx).Err(); err != nil {
 		logger.Error("failed to ping elasticache", err)
-		return nil, fmt.Errorf("elasticache: ping failed: %w", err)
+		return nil, fmt.Errorf("failed to ping: %w", err)
 	}
 
 	logger.Info("elasticache client initialized")
 	return &Client{rc: rc}, nil
 }
 
-// NewFromString creates a Client from a Redis connection URL (redis://:password@host:port/db).
+// Creates a Client from a Redis connection URL (redis://:password@host:port/db).
 func NewFromString(connStr string) (*Client, error) {
 	opts, err := redis.ParseURL(connStr)
 	if err != nil {
-		return nil, fmt.Errorf("elasticache: invalid connection string: %w", err)
+		return nil, fmt.Errorf("invalid connection string: %w", err)
 	}
 
 	rc := redis.NewClient(opts)
@@ -69,21 +67,20 @@ func NewFromString(connStr string) (*Client, error) {
 
 	if err := rc.Ping(ctx).Err(); err != nil {
 		logger.Error("failed to ping elasticache", err)
-		return nil, fmt.Errorf("elasticache: ping failed: %w", err)
+		return nil, fmt.Errorf("failed to ping: %w", err)
 	}
 
 	logger.Info("elasticache client initialized from connection string")
 	return &Client{rc: rc}, nil
 }
 
-// NewFromDBString creates a Client from discrete string fields for callers
+// Creates a Client from discrete string fields for callers
 // still carrying a legacy string-typed DB value.
 func NewFromDBString(endpoint, password, dbStr string) (*Client, error) {
 	db, _ := strconv.Atoi(dbStr)
 	return New(Config{Endpoint: endpoint, Password: password, DB: db})
 }
 
-// withTimeout wraps ctx in a 2s deadline only when ctx has no deadline set.
 func withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	if _, ok := ctx.Deadline(); ok {
 		return ctx, func() {}
@@ -91,7 +88,7 @@ func withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, 2*time.Second)
 }
 
-// Get retrieves the string value stored at key. Returns ("", nil) on cache miss.
+// Retrieves the string value stored at key. Returns ("", nil) on cache miss.
 func (c *Client) Get(ctx context.Context, key string) (string, error) {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
@@ -107,7 +104,7 @@ func (c *Client) Get(ctx context.Context, key string) (string, error) {
 	return val, nil
 }
 
-// Set stores a value with the given TTL in seconds. Use ttl=0 for no expiration.
+// Stores a value with the given TTL in seconds. Use ttl=0 for no expiration.
 func (c *Client) Set(ctx context.Context, key string, value string, ttl int64) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
@@ -124,7 +121,7 @@ func (c *Client) Set(ctx context.Context, key string, value string, ttl int64) e
 	return nil
 }
 
-// Delete removes a key from the cache.
+// Removes a key from the cache.
 func (c *Client) Delete(ctx context.Context, key string) error {
 	ctx, cancel := withTimeout(ctx)
 	defer cancel()
@@ -136,7 +133,7 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-// Close closes the underlying Redis connection.
+// Closes the underlying Redis connection.
 func (c *Client) Close() error {
 	return c.rc.Close()
 }
@@ -190,25 +187,25 @@ func (c *Client) AllowDistributed(ctx context.Context, key string, rate, burst f
 
 	arr, ok := res.([]interface{})
 	if !ok || len(arr) < 2 {
-		return false, 0, fmt.Errorf("elasticache: unexpected script result: %v", res)
+		return false, 0, fmt.Errorf("unexpected script result: %v", res)
 	}
 
 	var allowed bool
 	switch v := arr[0].(type) {
-		case int64:
-			allowed = v == 1
-		case string:
-			allowed = v == "1"
+	case int64:
+		allowed = v == 1
+	case string:
+		allowed = v == "1"
 	}
 
 	var waitMs int64
 	switch v := arr[1].(type) {
-		case int64:
-			waitMs = v
-		case string:
-			if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
-				waitMs = parsed
-			}
+	case int64:
+		waitMs = v
+	case string:
+		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
+			waitMs = parsed
+		}
 	}
 
 	return allowed, time.Duration(waitMs) * time.Millisecond, nil

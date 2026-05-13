@@ -9,11 +9,11 @@ import (
 
 var (
 	slogger  *slog.Logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	logLevel               = &slog.LevelVar{}
+	logLevel              = &slog.LevelVar{}
 	initOnce sync.Once
 )
 
-// Init configures the global logger. Must be called once at service startup.
+// Configures the global logger. Must be called once at service startup.
 //
 // Local/dev environments (env == "local"|"dev"|"development") use the
 // KomodoTextHandler which formats as:

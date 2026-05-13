@@ -2,7 +2,6 @@ package cloudwatch
 
 import "context"
 
-// API is the interface for CloudWatch operations.
 type API interface {
 	PutMetricData(ctx context.Context, namespace string, metrics []MetricDatum) error
 	PutLogEvents(ctx context.Context, logGroup, logStream string, events []LogEvent) error
@@ -31,7 +30,7 @@ type LogEvent struct {
 // TODO: wire github.com/aws/aws-sdk-go-v2/service/cloudwatch when implementing.
 type Client struct{}
 
-// New creates and returns a new CloudWatch Client.
+// Creates and returns a new CloudWatch Client.
 func New(config Config) (*Client, error) {
 	return &Client{}, nil
 }

@@ -4,8 +4,6 @@ import (
 	"testing"
 )
 
-// --- IsValidScope ---
-
 func TestOAuth_IsValidScope_SingleValid_Success(t *testing.T) {
 	validScopes := []string{
 		"read", "write", "admin",
@@ -61,8 +59,6 @@ func TestOAuth_IsValidScope_MixedValidAndInvalid_Failure(t *testing.T) {
 	}
 }
 
-// --- GetInvalidScopes ---
-
 func TestOAuth_GetInvalidScopes_AllValid_Success(t *testing.T) {
 	got := GetInvalidScopes("read write")
 	if len(got) != 0 {
@@ -104,8 +100,6 @@ func TestOAuth_GetInvalidScopes_AllInvalid_Failure(t *testing.T) {
 		t.Errorf("expected 2 invalid scopes, got %v", got)
 	}
 }
-
-// --- IsValidGrantType ---
 
 func TestOAuth_IsValidGrantType_ClientCredentials_Success(t *testing.T) {
 	if !IsValidGrantType("client_credentials") {

@@ -9,8 +9,6 @@ import (
 	ctxKeys "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 )
 
-// --- Request ID Middleware Tests --------------------------------------------------
-
 func TestRequestIDMiddleware_GeneratesID(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -120,8 +118,6 @@ func TestRequestIDMiddleware_UsesContextRequestID(t *testing.T) {
 		t.Errorf("expected X-Request-ID %q in response, got %q", ctxID, rec.Header().Get("X-Request-ID"))
 	}
 }
-
-// --- Client Source Middleware Tests --------------------------------------------------
 
 func captureClientType(req *http.Request) string {
 	var captured string

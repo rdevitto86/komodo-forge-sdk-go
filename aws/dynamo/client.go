@@ -14,8 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-// API is the interface for all DynamoDB operations. Use it in callers so the
-// concrete *Client can be swapped for a test double without modifying call sites.
+// Use in callers to swap the concrete *Client for a test double.
 type API interface {
 	BuildKey(pk string, pv any, sk string, sv any) (map[string]types.AttributeValue, error)
 	GetItem(ctx context.Context, table string, key map[string]types.AttributeValue, batch bool, keys []map[string]types.AttributeValue) (any, error)
@@ -46,17 +45,16 @@ type Config struct {
 	MaxConcurrentBatches int
 }
 
-// Client wraps the AWS DynamoDB SDK client.
 type Client struct {
 	db          *dynamodb.Client
 	maxParallel int // semaphore cap for batch operations
 }
 
-// New creates and returns a new DynamoDB Client. Returns an error if the AWS
+// Creates and returns a new DynamoDB Client. Returns an error if the AWS
 // config cannot be loaded or the region is missing.
 func New(config Config) (*Client, error) {
 	if config.Region == "" {
-		return nil, fmt.Errorf("dynamodb: region is required")
+		return nil, fmt.Errorf("region is required")
 	}
 
 	ctx := context.Background()

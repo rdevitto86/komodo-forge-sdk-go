@@ -22,10 +22,10 @@ type FieldSpec struct {
 	compiled *regexp.Regexp
 }
 
-type Headers     map[string]FieldSpec
-type PathParams  map[string]FieldSpec
+type Headers map[string]FieldSpec
+type PathParams map[string]FieldSpec
 type QueryParams map[string]FieldSpec
-type Body        map[string]FieldSpec
+type Body map[string]FieldSpec
 
 type EvalRule struct {
 	Toggle          bool        `yaml:"toggle,omitempty"`

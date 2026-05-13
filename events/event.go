@@ -50,7 +50,7 @@ type Event struct {
 	CorrelationID string         `json:"correlation_id,omitempty"`
 }
 
-// New constructs an Event with a generated ID, current UTC timestamp, and
+// Constructs an Event with a generated ID, current UTC timestamp, and
 // version "1". Chain WithCorrelation or WithCorrelationFromContext to attach a
 // correlation ID before publishing.
 func New(
@@ -72,13 +72,13 @@ func New(
 	}
 }
 
-// WithCorrelation returns a copy of the event with CorrelationID set.
+// Returns a copy of the event with CorrelationID set.
 func (e Event) WithCorrelation(correlationID string) Event {
 	e.CorrelationID = correlationID
 	return e
 }
 
-// WithCorrelationFromContext returns a copy of the event with CorrelationID
+// Returns a copy of the event with CorrelationID
 // read from the X-Correlation-ID value stored in ctx by the HTTP middleware.
 // If no correlation ID is present in ctx the event is returned unchanged.
 func (e Event) WithCorrelationFromContext(ctx context.Context) Event {

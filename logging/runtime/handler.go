@@ -46,7 +46,7 @@ type KomodoTextHandler struct {
 	preAttrs []slog.Attr // attrs set via .With() (e.g., service, env, version)
 }
 
-// NewKomodoTextHandler constructs a handler writing to w.
+// Constructs a handler writing to w.
 // Set color=true for terminal output, false for CI/pipe environments.
 func NewKomodoTextHandler(w io.Writer, color bool, level slog.Leveler) *KomodoTextHandler {
 	return &KomodoTextHandler{w: w, color: color, level: level}
@@ -56,7 +56,7 @@ func (h *KomodoTextHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= h.level.Level()
 }
 
-// WithAttrs returns a new handler with the provided attrs prepended to all future records.
+// Returns a new handler with the provided attrs prepended to all future records.
 // A new handler struct is constructed rather than copied to avoid copying the mutex.
 func (h *KomodoTextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	h2 := &KomodoTextHandler{
@@ -70,7 +70,7 @@ func (h *KomodoTextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return h2
 }
 
-// WithGroup is a no-op for the text handler — groups are flattened with dot notation.
+// No-op for the text handler — groups are flattened with dot notation.
 func (h *KomodoTextHandler) WithGroup(name string) slog.Handler {
 	return h
 }

@@ -16,23 +16,24 @@ import (
 var (
 	cachedPrivateKey *rsa.PrivateKey
 	cachedPublicKey  *rsa.PublicKey
-	kid      				 string
-	iss           	 string
-	aud           	 string
+	kid              string
+	iss              string
+	aud              string
 	keyMutex         sync.RWMutex
 	keysInitialized  bool
 )
 
-// CustomClaims defines type-safe claims for your application
 type CustomClaims struct {
-	Scopes []string `json:"scp,omitempty"`
-	IsAdmin bool   `json:"adm,omitempty"`
+	Scopes  []string `json:"scp,omitempty"`
+	IsAdmin bool     `json:"adm,omitempty"`
 	jwt.RegisteredClaims
 }
 
 // Loads RSA keys and assigns a KID for rotation support
 func InitializeKeys() error {
-	if keysInitialized { return nil }
+	if keysInitialized {
+		return nil
+	}
 
 	keyMutex.Lock()
 	defer keyMutex.Unlock()
@@ -62,7 +63,7 @@ func InitializeKeys() error {
 	return nil
 }
 
-// SignToken creates a signed JWS with a KID in the header
+// Creates a signed JWS with a KID in the header
 func SignToken(issuer string, subject string, audience string, ttl int64, scopes []string) (string, error) {
 	if !keysInitialized {
 		return "", fmt.Errorf("failed to sign token: jwt keys not initialized")
@@ -100,8 +101,12 @@ func ValidateToken(tokenString string) (bool, error) {
 	pub := cachedPublicKey
 	keyMutex.RUnlock()
 
-	if iss == "" { return false, fmt.Errorf("missing jwt issuer") }
-	if aud == "" { return false, fmt.Errorf("missing jwt audience") }
+	if iss == "" {
+		return false, fmt.Errorf("missing jwt issuer")
+	}
+	if aud == "" {
+		return false, fmt.Errorf("missing jwt audience")
+	}
 
 	token, err := jwt.ParseWithClaims(
 		tokenString,
@@ -132,7 +137,7 @@ func ValidateToken(tokenString string) (bool, error) {
 	return true, nil
 }
 
-// ValidateAndParseClaims validates signature, expiration, issuer, and audience in one parse,
+// Validates signature, expiration, issuer, and audience in one parse,
 // and returns the embedded claims. Prefer this over ValidateToken + ParseClaims.
 func ValidateAndParseClaims(tokenString string) (*CustomClaims, error) {
 	if !keysInitialized {

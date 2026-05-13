@@ -21,7 +21,9 @@ func SanitizationMiddleware(next http.Handler) http.Handler {
 
 		if req.Body != nil && req.Header.Get("Content-Type") == "application/json" {
 			sanitizeBody(wtr, req)
-			if req.Body == nil { return }
+			if req.Body == nil {
+				return
+			}
 		}
 
 		next.ServeHTTP(wtr, req)
@@ -40,7 +42,9 @@ func sanitizeHeaders(req *http.Request) {
 // Sanitizes URL path parameters using stdlib routing (Go 1.22+)
 func sanitizePathParams(req *http.Request) {
 	pattern := req.Pattern
-	if pattern == "" { return }
+	if pattern == "" {
+		return
+	}
 
 	// Extract wildcard names from the pattern (e.g. "GET /item/{sku}" -> ["sku"])
 	for _, seg := range strings.Split(pattern, "/") {
@@ -103,23 +107,23 @@ func sanitizeBody(wtr http.ResponseWriter, req *http.Request) {
 // Recursively sanitizes JSON data structures
 func sanitizeJSON(data interface{}) interface{} {
 	switch val := data.(type) {
-		case string:
-			return sanitizeString(val)
-		case map[string]interface{}:
-			sanitized := make(map[string]interface{})
-			for key, value := range val {
-				sanitizedKey := sanitizeString(key)
-				sanitized[sanitizedKey] = sanitizeJSON(value)
-			}
-			return sanitized
-		case []interface{}:
-			sanitized := make([]interface{}, len(val))
-			for i, value := range val {
-				sanitized[i] = sanitizeJSON(value)
-			}
-			return sanitized
-		default:
-			return val
+	case string:
+		return sanitizeString(val)
+	case map[string]interface{}:
+		sanitized := make(map[string]interface{})
+		for key, value := range val {
+			sanitizedKey := sanitizeString(key)
+			sanitized[sanitizedKey] = sanitizeJSON(value)
+		}
+		return sanitized
+	case []interface{}:
+		sanitized := make([]interface{}, len(val))
+		for i, value := range val {
+			sanitized[i] = sanitizeJSON(value)
+		}
+		return sanitized
+	default:
+		return val
 	}
 }
 

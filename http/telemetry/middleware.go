@@ -23,7 +23,7 @@ func TelemetryMiddleware(next http.Handler) http.Handler {
 			if rec := recover(); rec != nil {
 				reqID := httpReq.GetRequestID(req)
 				_ = reqID
-				
+
 				// Safely check status
 				status := resWtr.Status
 				if status == 0 {
@@ -31,7 +31,7 @@ func TelemetryMiddleware(next http.Handler) http.Handler {
 						wtr, req, httpErr.Global.Internal, httpErr.WithDetail("error occured while logging telemetry"),
 					)
 				}
-				
+
 				logger.Error("telemetry panicked!", fmt.Errorf("telemetry panicked: %v", rec))
 				return
 			}
@@ -46,19 +46,19 @@ func TelemetryMiddleware(next http.Handler) http.Handler {
 			reqID := httpReq.GetRequestID(req)
 
 			payload := map[string]any{
-				"request_id": reqID,
-				"method":     req.Method,
-				"path":       req.URL.Path,
-				"query":      req.URL.RawQuery,
-				"status":     status,
-				"bytes":     	bytesWritten,
-				"latency_ms": ms,
-				"ip":         req.RemoteAddr,
-				"user_agent": req.UserAgent(),
-				"referer":    req.Referer(),
-				"proto":     	req.Proto,
-				"host":      	req.Host,
-				"start_time": start.UTC().Format(time.RFC3339Nano),
+				"request_id":  reqID,
+				"method":      req.Method,
+				"path":        req.URL.Path,
+				"query":       req.URL.RawQuery,
+				"status":      status,
+				"bytes":       bytesWritten,
+				"latency_ms":  ms,
+				"ip":          req.RemoteAddr,
+				"user_agent":  req.UserAgent(),
+				"referer":     req.Referer(),
+				"proto":       req.Proto,
+				"host":        req.Host,
+				"start_time":  start.UTC().Format(time.RFC3339Nano),
 				"finish_time": time.Now().UTC().Format(time.RFC3339Nano),
 			}
 

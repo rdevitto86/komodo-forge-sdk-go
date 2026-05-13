@@ -39,7 +39,7 @@ func RequestIDMiddleware(next http.Handler) http.Handler {
 }
 
 const (
-	ClientTypeAPI string = "api"
+	ClientTypeAPI     string = "api"
 	ClientTypeBrowser string = "browser"
 )
 
@@ -50,12 +50,12 @@ func ClientSourceMiddleware(next http.Handler) http.Handler {
 		authHeader := req.Header.Get("Authorization")
 		hasReferer := req.Header.Get("Referer") != ""
 		hasCookie := req.Header.Get("Cookie") != ""
-		
+
 		clientType := ClientTypeBrowser
 		if authHeader != "" && !hasReferer && !hasCookie {
 			clientType = ClientTypeAPI
 		}
-	
+
 		ctx := context.WithValue(req.Context(), httpCtx.CLIENT_TYPE_KEY, clientType)
 		next.ServeHTTP(wtr, req.WithContext(ctx))
 	})

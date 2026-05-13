@@ -2,7 +2,6 @@ package elasticsearch
 
 import "context"
 
-// API is the interface for Elasticsearch/OpenSearch operations.
 type API interface {
 	Index(ctx context.Context, index, id string, doc any) error
 	Search(ctx context.Context, index string, query any) ([]map[string]any, error)
@@ -20,7 +19,7 @@ type Config struct {
 // TODO: wire opensearch-go or olivere/elastic when implementing.
 type Client struct{}
 
-// New creates and returns a new Elasticsearch Client.
+// Creates and returns a new Elasticsearch Client.
 func New(config Config) (*Client, error) {
 	return &Client{}, nil
 }

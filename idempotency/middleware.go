@@ -24,7 +24,7 @@ func SetStore(store *Store) {
 	defaultStore = store
 }
 
-// IdempotencyMiddleware guards against duplicate requests using the Idempotency-Key header.
+// Guards against duplicate requests using the Idempotency-Key header.
 // It only applies to unsafe, state-changing methods (POST, PUT, PATCH, DELETE).
 // Safe methods (GET, HEAD, OPTIONS) are skipped entirely.
 func IdempotencyMiddleware(next http.Handler) http.Handler {

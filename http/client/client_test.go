@@ -107,8 +107,6 @@ func TestGetJSON_TransportError(t *testing.T) {
 	}
 }
 
-// --- Circuit breaker integration tests ---
-
 func newBreakerClient(threshold int, timeout time.Duration) *Client {
 	return NewClient(WithCircuitBreaker(Config{
 		FailureThreshold:    threshold,

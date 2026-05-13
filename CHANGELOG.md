@@ -6,6 +6,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.10.1]
+
+### Changed
+
+- **Codebase-wide style pass** — removed redundant doc-comment prefixes ("X is a …", "X creates …") from exported types and functions across all packages; comment text now starts with the salient detail rather than repeating the identifier.
+- **`config/config.go`** — re-aligned constant block from tab-indented columns to `gofmt`-standard single-space alignment; added trailing newline.
+- **`testing/moxtox`** — renamed receiver `cnfg` → `cfg`; expanded single-line `if !ok { continue }` guards to multi-line form; aligned struct tag columns.
+- **All test files** — added section-break comments between logical test groups for readability.
+- **Codebase-wide error message cleanup** — removed service-name prefixes (`"sqs: ..."`, `"events: ..."`, etc.) from all `fmt.Errorf` calls and `logger` calls
+- **README.md** — updated examples and installation instructions for new API patterns.
+
+---
+
 ## [0.10.0]
 
 ### Performance

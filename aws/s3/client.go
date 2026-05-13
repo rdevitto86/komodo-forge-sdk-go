@@ -15,7 +15,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-// API is the interface for S3 operations.
 type API interface {
 	GetObject(ctx context.Context, bucket, key string) ([]byte, error)
 	GetObjectAs(ctx context.Context, bucket, key string, out any) error
@@ -30,12 +29,11 @@ type Config struct {
 	Endpoint  string
 }
 
-// Client wraps the AWS S3 SDK client.
 type Client struct {
 	s3 *s3.Client
 }
 
-// New creates and returns a new S3 Client.
+// Creates and returns a new S3 Client.
 func New(config Config) (*Client, error) {
 	if config.Region == "" {
 		return nil, fmt.Errorf("s3: region is required")
@@ -72,7 +70,7 @@ func New(config Config) (*Client, error) {
 	return &Client{s3: s3.NewFromConfig(cfg, opts...)}, nil
 }
 
-// GetObject retrieves an object from S3 as raw bytes.
+// Retrieves an object from S3 as raw bytes.
 func (c *Client) GetObject(ctx context.Context, bucket, key string) ([]byte, error) {
 	result, err := c.s3.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(bucket),
@@ -92,7 +90,7 @@ func (c *Client) GetObject(ctx context.Context, bucket, key string) ([]byte, err
 	return data, nil
 }
 
-// GetObjectAs retrieves an S3 object and unmarshals the JSON body into out.
+// Retrieves an S3 object and unmarshals the JSON body into out.
 func (c *Client) GetObjectAs(ctx context.Context, bucket, key string, out any) error {
 	data, err := c.GetObject(ctx, bucket, key)
 	if err != nil {
@@ -105,7 +103,7 @@ func (c *Client) GetObjectAs(ctx context.Context, bucket, key string, out any) e
 	return nil
 }
 
-// PutObject uploads data to S3 at bucket/key with an optional contentType.
+// Uploads data to S3 at bucket/key with an optional contentType.
 func (c *Client) PutObject(ctx context.Context, bucket, key string, data []byte, contentType string) error {
 	input := &s3.PutObjectInput{
 		Bucket: aws.String(bucket),
@@ -122,7 +120,7 @@ func (c *Client) PutObject(ctx context.Context, bucket, key string, data []byte,
 	return nil
 }
 
-// DeleteObject removes an object from S3.
+// Removes an object from S3.
 func (c *Client) DeleteObject(ctx context.Context, bucket, key string) error {
 	if _, err := c.s3.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(bucket),

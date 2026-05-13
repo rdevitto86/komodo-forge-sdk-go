@@ -306,8 +306,8 @@ func TestNormalizePath(t *testing.T) {
 		{"/v1", "/"},
 		{"/users?foo=bar", "/users"},
 		{"users", "/users"},
-		{"?query=only", "/"},         // query-only path becomes empty → returns "/"
-		{"  ?query  ", "/"},          // whitespace around query-only
+		{"?query=only", "/"}, // query-only path becomes empty → returns "/"
+		{"  ?query  ", "/"},  // whitespace around query-only
 	}
 
 	for _, tc := range tests {

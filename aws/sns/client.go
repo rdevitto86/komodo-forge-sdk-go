@@ -21,7 +21,6 @@ type PublishInput struct {
 	Attrs    map[string]string // optional string message attributes
 }
 
-// API is the interface for SNS operations.
 type API interface {
 	Publish(ctx context.Context, input PublishInput) (messageID string, err error)
 }
@@ -33,15 +32,14 @@ type Config struct {
 	Endpoint  string
 }
 
-// Client wraps the AWS SNS SDK client.
 type Client struct {
 	sns *sns.Client
 }
 
-// New creates and returns a new SNS Client.
+// Creates and returns a new SNS Client.
 func New(config Config) (*Client, error) {
 	if config.Region == "" {
-		return nil, fmt.Errorf("sns: region is required")
+		return nil, fmt.Errorf("region is required")
 	}
 
 	cfgOpts := []func(*awsconfig.LoadOptions) error{
@@ -59,7 +57,7 @@ func New(config Config) (*Client, error) {
 
 	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), cfgOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("sns: failed to load config: %w", err)
+		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
 	var opts []func(*sns.Options)
@@ -71,7 +69,7 @@ func New(config Config) (*Client, error) {
 	return &Client{sns: sns.NewFromConfig(cfg, opts...)}, nil
 }
 
-// Publish sends a message to an SNS topic. For FIFO topics, set GroupID and DedupID.
+// Sends a message to an SNS topic. For FIFO topics, set GroupID and DedupID.
 func (c *Client) Publish(ctx context.Context, input PublishInput) (string, error) {
 	in := &sns.PublishInput{
 		TopicArn: aws.String(input.TopicARN),
@@ -98,7 +96,7 @@ func (c *Client) Publish(ctx context.Context, input PublishInput) (string, error
 
 	result, err := c.sns.Publish(ctx, in)
 	if err != nil {
-		return "", fmt.Errorf("sns: publish failed: %w", err)
+		return "", fmt.Errorf("failed to publish message: %w", err)
 	}
 	return aws.ToString(result.MessageId), nil
 }

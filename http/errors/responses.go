@@ -7,10 +7,10 @@ import (
 )
 
 type ErrorResponse struct {
-	Status  int    `json:"status"`
-	Message string `json:"message"`
-	Code    string `json:"code"`
-	Detail  string `json:"detail,omitempty"`
+	Status    int    `json:"status"`
+	Message   string `json:"message"`
+	Code      string `json:"code"`
+	Detail    string `json:"detail,omitempty"`
 	RequestId string `json:"request_id"`
 	Timestamp string `json:"timestamp"`
 }
@@ -31,9 +31,15 @@ func SendError(wtr http.ResponseWriter, req *http.Request, errCode ErrorCode, ov
 
 	if len(overrides) > 0 {
 		override := overrides[0]
-		if override.Status != nil { status = *override.Status }
-		if override.Message != nil { message = *override.Message }
-		if override.Detail != nil { detail = *override.Detail }
+		if override.Status != nil {
+			status = *override.Status
+		}
+		if override.Message != nil {
+			message = *override.Message
+		}
+		if override.Detail != nil {
+			detail = *override.Detail
+		}
 	}
 
 	wtr.WriteHeader(status)
@@ -62,6 +68,6 @@ func WithDetail(detail string) ErrorOverride { return ErrorOverride{Detail: &det
 func WithStatus(status int) ErrorOverride { return ErrorOverride{Status: &status} }
 
 // Returns overrides for error codes
-func WithOverrides(message string, detail string, status int) ErrorOverride { 
-	return ErrorOverride{Message: &message, Detail: &detail, Status: &status} 
+func WithOverrides(message string, detail string, status int) ErrorOverride {
+	return ErrorOverride{Message: &message, Detail: &detail, Status: &status}
 }

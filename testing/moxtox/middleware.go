@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"gopkg.in/yaml.v3"
@@ -20,14 +21,14 @@ var (
 
 const loggerPrefix = "[::Moxtox::]"
 
-// InitMoxtoxMiddleware initializes the moxtox middleware for intercepting real HTTP requests and replacing with mocks.
+// Intercepts real HTTP requests and replaces them with configured mock responses.
 func InitMoxtoxMiddleware(env string, configPath ...string) func(http.Handler) http.Handler {
 	once.Do(func() {
 		// Determine baseDir from configPath or default
 		if len(configPath) == 0 || configPath[0] == "" {
 			cwd, err := os.Getwd()
 			if err != nil {
-				logger.Error(loggerPrefix + " unable to determine current working directory", err)
+				logger.Error(loggerPrefix+" unable to determine current working directory", err)
 				allowMocks = false
 				return
 			}
@@ -39,7 +40,7 @@ func InitMoxtoxMiddleware(env string, configPath ...string) func(http.Handler) h
 		// Load the Moxtox config
 		if data, err := os.ReadFile(filepath.Join(dir, "moxtox_config.yml")); err == nil {
 			if err := yaml.Unmarshal(data, &config); err != nil {
-				logger.Error(loggerPrefix + "error loading moxtox config", err)
+				logger.Error(loggerPrefix+"error loading moxtox config", err)
 				allowMocks = false
 				return
 			}
@@ -48,7 +49,7 @@ func InitMoxtoxMiddleware(env string, configPath ...string) func(http.Handler) h
 				allowMocks = false
 				return
 			}
-			if !contains(config.AllowedEnvironments, env) {
+			if !slices.Contains(config.AllowedEnvironments, env) {
 				logger.Info(loggerPrefix + " mocks not allowed in this environment")
 				allowMocks = false
 				return
@@ -56,22 +57,22 @@ func InitMoxtoxMiddleware(env string, configPath ...string) func(http.Handler) h
 
 			// build mock data store based on mode
 			switch config.PerformanceMode {
-				case "quick":
+			case "quick":
+				config.buildHashLookupMap()
+			case "dynamic":
+				totalScenarios := config.countTotalScenarios()
+				if totalScenarios > 10 { // threshold for switching to quick mode
 					config.buildHashLookupMap()
-				case "dynamic":
-					totalScenarios := config.countTotalScenarios()
-					if totalScenarios > 10 { // threshold for switching to quick mode
-						config.buildHashLookupMap()
-					} else {
-						config.buildSliceLookupMap()
-					}
-				default: // "default"
+				} else {
 					config.buildSliceLookupMap()
+				}
+			default: // "default"
+				config.buildSliceLookupMap()
 			}
 
 			logger.Info(loggerPrefix + " mocks enabled successfully")
 		} else {
-			logger.Error(loggerPrefix + " error loading moxtox config", err)
+			logger.Error(loggerPrefix+" error loading moxtox config", err)
 			allowMocks = false
 		}
 	})
@@ -83,12 +84,11 @@ func InitMoxtoxMiddleware(env string, configPath ...string) func(http.Handler) h
 	return func(next http.Handler) http.Handler { return next }
 }
 
-// mockResponseHandler returns a middleware that injects mock responses based on the LookupMap.
 func mockResponseHandler() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 			// Check for ignored routes first
-			if contains(config.IgnoredRoutes, req.URL.Path) {
+			if slices.Contains(config.IgnoredRoutes, req.URL.Path) {
 				next.ServeHTTP(wtr, req)
 				return
 			}

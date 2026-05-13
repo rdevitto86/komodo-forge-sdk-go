@@ -25,21 +25,21 @@ var (
 
 	// --- handlers ---
 
-	AuthMiddleware = mwapiauth.AuthMiddleware
-	ClientSourceMiddleware = mwrequest.ClientSourceMiddleware
-	ClientTypeMiddleware = mwrequest.ClientSourceMiddleware
-	CORSMiddleware = mwcors.CORSMiddleware
-	CSRFMiddleware = mwcsrf.CSRFMiddleware
-	IdempotencyMiddleware = mwidempotency.IdempotencyMiddleware
-	IPAccessMiddleware = mwipaccess.IPAccessMiddleware
-	NormalizationMiddleware = mwnorm.NormalizationMiddleware
-	RateLimiterMiddleware = mwratelimit.RateLimiterMiddleware
-	RedactionMiddleware = mwredaction.RedactionMiddleware
-	RequestIDMiddleware = mwrequest.RequestIDMiddleware
-	RequireServiceScope = mwapiauth.RequireServiceScope
-	RuleValidationMiddleware = mwrules.RuleValidationMiddleware
-	SanitizationMiddleware = mwsanitize.SanitizationMiddleware
-	ScopeMiddleware = mwapiauth.RequireServiceScope
+	AuthMiddleware            = mwapiauth.AuthMiddleware
+	ClientSourceMiddleware    = mwrequest.ClientSourceMiddleware
+	ClientTypeMiddleware      = mwrequest.ClientSourceMiddleware
+	CORSMiddleware            = mwcors.CORSMiddleware
+	CSRFMiddleware            = mwcsrf.CSRFMiddleware
+	IdempotencyMiddleware     = mwidempotency.IdempotencyMiddleware
+	IPAccessMiddleware        = mwipaccess.IPAccessMiddleware
+	NormalizationMiddleware   = mwnorm.NormalizationMiddleware
+	RateLimiterMiddleware     = mwratelimit.RateLimiterMiddleware
+	RedactionMiddleware       = mwredaction.RedactionMiddleware
+	RequestIDMiddleware       = mwrequest.RequestIDMiddleware
+	RequireServiceScope       = mwapiauth.RequireServiceScope
+	RuleValidationMiddleware  = mwrules.RuleValidationMiddleware
+	SanitizationMiddleware    = mwsanitize.SanitizationMiddleware
+	ScopeMiddleware           = mwapiauth.RequireServiceScope
 	SecurityHeadersMiddleware = mwheaders.SecurityHeadersMiddleware
-	TelemetryMiddleware = mwtelemetry.TelemetryMiddleware
+	TelemetryMiddleware       = mwtelemetry.TelemetryMiddleware
 )

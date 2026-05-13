@@ -38,16 +38,18 @@ func normalizeHeaders(req *http.Request) {
 
 // Normalizes URL path
 func normalizeURL(req *http.Request) {
-	if req.URL == nil { return }
+	if req.URL == nil {
+		return
+	}
 
 	path := req.URL.Path
-	
+
 	if path != "/" {
 		path = strings.TrimRight(path, "/")
 	}
-	
+
 	path = strings.ReplaceAll(path, "//", "/")
-	
+
 	req.URL.Path = path
 	req.RequestURI = path
 	if req.URL.RawQuery != "" {
@@ -57,27 +59,29 @@ func normalizeURL(req *http.Request) {
 
 // Normalizes query parameters
 func normalizeQueryParams(req *http.Request) {
-	if req.URL == nil { return }
+	if req.URL == nil {
+		return
+	}
 	normalized := url.Values{}
 
 	for key, values := range req.URL.Query() {
 		normalizedKey := strings.TrimSpace(key)
 		for _, value := range values {
 			normalizedValue := strings.TrimSpace(value)
-			
+
 			switch normalizedValue {
-				case "true", "True", "TRUE":
-					normalizedValue = "true"
-				case "false", "False", "FALSE":
-					normalizedValue = "false"
-				case "sort", "Sort", "SORT":
-					normalizedValue = "sort"
-				case "asc", "Asc", "ASC":
-					normalizedValue = "asc"
-				case "desc", "Desc", "DESC":
-					normalizedValue = "desc"
-				default:
-					// do nothing
+			case "true", "True", "TRUE":
+				normalizedValue = "true"
+			case "false", "False", "FALSE":
+				normalizedValue = "false"
+			case "sort", "Sort", "SORT":
+				normalizedValue = "sort"
+			case "asc", "Asc", "ASC":
+				normalizedValue = "asc"
+			case "desc", "Desc", "DESC":
+				normalizedValue = "desc"
+			default:
+				// do nothing
 			}
 
 			normalized.Add(normalizedKey, normalizedValue)

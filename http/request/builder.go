@@ -16,29 +16,35 @@ func NewRequest(
 	headers map[string]string,
 	ctx context.Context,
 ) (*http.Request, error) {
-	if url == "" { return nil, fmt.Errorf("url is required") }
+	if url == "" {
+		return nil, fmt.Errorf("url is required")
+	}
 
 	var bodyReader *strings.Reader
 	switch method = strings.ToUpper(method); method {
-		case "POST", "PUT", "PATCH":
-			if str, ok := body.(string); ok {
-				bodyReader = strings.NewReader(str)
-			} else if jsonBytes, err := json.Marshal(body); err == nil {
-				bodyReader = strings.NewReader(string(jsonBytes))
-			} else {
-				return nil, fmt.Errorf("error marshaling body: %v", err)
-			}
-		case "GET", "DELETE", "HEAD", "OPTIONS", "TRACE", "CONNECT":
-			bodyReader = nil
-		default:
-			return nil, fmt.Errorf("invalid method: %s", method)
+	case "POST", "PUT", "PATCH":
+		if str, ok := body.(string); ok {
+			bodyReader = strings.NewReader(str)
+		} else if jsonBytes, err := json.Marshal(body); err == nil {
+			bodyReader = strings.NewReader(string(jsonBytes))
+		} else {
+			return nil, fmt.Errorf("error marshaling body: %v", err)
+		}
+	case "GET", "DELETE", "HEAD", "OPTIONS", "TRACE", "CONNECT":
+		bodyReader = nil
+	default:
+		return nil, fmt.Errorf("invalid method: %s", method)
 	}
 
-	if ctx == nil { ctx = context.Background() }
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
-	if err != nil { return nil, err }
-	
+	if err != nil {
+		return nil, err
+	}
+
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
@@ -47,6 +53,8 @@ func NewRequest(
 
 // Creates a new HTTP request from an existing HTTP request.
 func FromRequest(req *http.Request) (*http.Request, error) {
-	if req == nil { return nil, fmt.Errorf("request is required") }
+	if req == nil {
+		return nil, fmt.Errorf("request is required")
+	}
 	return http.NewRequestWithContext(req.Context(), req.Method, req.URL.String(), req.Body)
 }

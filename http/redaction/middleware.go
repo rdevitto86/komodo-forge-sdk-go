@@ -39,7 +39,9 @@ func RedactionMiddleware(next http.Handler) http.Handler {
 }
 
 func redactHeaders(header http.Header) http.Header {
-	if header == nil { return nil }
+	if header == nil {
+		return nil
+	}
 
 	out := make(http.Header, len(header))
 	sensitiveHeaderRE := regexp.MustCompile(`(?i)authorization|cookie|set-cookie|x-api-key|x-amz-signature`)
@@ -68,14 +70,22 @@ var bearerRE = regexp.MustCompile(`(?i)^\s*bearer\s+[A-Za-z0-9\-\._~\+/]+=*$`)
 var longTokenRE = regexp.MustCompile(`[A-Za-z0-9\-\._~\+/]{20,}`)
 
 func looksLikeToken(s string) bool {
-	if s == "" { return false }
-	if bearerRE.MatchString(s) { return true }
-	if longTokenRE.MatchString(s) && len(s) > 30 { return true }
+	if s == "" {
+		return false
+	}
+	if bearerRE.MatchString(s) {
+		return true
+	}
+	if longTokenRE.MatchString(s) && len(s) > 30 {
+		return true
+	}
 	return false
 }
 
 func redactQuery(vals url.Values) url.Values {
-	if vals == nil { return nil }
+	if vals == nil {
+		return nil
+	}
 
 	out := url.Values{}
 	for k, v := range vals {
@@ -114,13 +124,17 @@ func containsSensitiveKey(key string) bool {
 	}
 
 	for _, s := range sensitiveKeys {
-		if key == s || strings.Contains(key, s) { return true }
+		if key == s || strings.Contains(key, s) {
+			return true
+		}
 	}
 	return false
 }
 
 func redactBody(b []byte, contentType string) []byte {
-	if len(b) == 0 { return b }
+	if len(b) == 0 {
+		return b
+	}
 
 	// only attempt JSON redaction; for others, do a simple token mask
 	if strings.Contains(strings.ToLower(contentType), "application/json") {
@@ -142,19 +156,19 @@ func redactBody(b []byte, contentType string) []byte {
 
 func redactInterface(val interface{}) {
 	switch t := val.(type) {
-		case map[string]interface{}:
-			for k, v := range t {
-				if containsSensitiveKey(strings.ToLower(k)) {
-					t[k] = "REDACTED"
-					continue
-				}
-				redactInterface(v)
+	case map[string]interface{}:
+		for k, v := range t {
+			if containsSensitiveKey(strings.ToLower(k)) {
+				t[k] = "REDACTED"
+				continue
 			}
-		case []interface{}:
-			for i := range t {
-				redactInterface(t[i])
-			}
-		case string:
-			// do nothing
+			redactInterface(v)
+		}
+	case []interface{}:
+		for i := range t {
+			redactInterface(t[i])
+		}
+	case string:
+		// do nothing
 	}
 }

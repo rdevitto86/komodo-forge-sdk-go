@@ -15,8 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 )
 
-// API is the interface for Secrets Manager operations. Use it in callers so the
-// concrete *Client can be swapped for a test double without modifying call sites.
+// Use in callers to swap the concrete *Client for a test double.
 type API interface {
 	GetSecret(key, prefix string) (string, error)
 	GetSecrets(keys []string, prefix, batchID string) (map[string]string, error)
@@ -54,7 +53,6 @@ func newCache(ttl time.Duration) *secretCache {
 	}
 }
 
-// get returns the cached value and true if the entry exists and has not expired.
 func (c *secretCache) get(key string) (string, bool) {
 	if c.ttl < 0 {
 		return "", false
@@ -68,7 +66,6 @@ func (c *secretCache) get(key string) (string, bool) {
 	return e.value, true
 }
 
-// set stores a value in the cache with the configured TTL.
 func (c *secretCache) set(key, value string) {
 	if c.ttl < 0 {
 		return
@@ -78,18 +75,17 @@ func (c *secretCache) set(key, value string) {
 	c.mu.Unlock()
 }
 
-// Client wraps the AWS Secrets Manager SDK client.
 type Client struct {
 	sm     *secretsmanager.Client
 	prefix string
 	cache  *secretCache
 }
 
-// New creates a Secrets Manager Client. If cfg.Keys is non-empty it eagerly
+// Creates a Secrets Manager Client. If cfg.Keys is non-empty it eagerly
 // loads those secrets via GetSecrets and returns any retrieval error.
 func New(cfg Config) (*Client, error) {
 	if cfg.Region == "" {
-		return nil, fmt.Errorf("secretsmanager: region is required")
+		return nil, fmt.Errorf("region is required")
 	}
 
 	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(cfg.Region)}
@@ -126,11 +122,11 @@ func New(cfg Config) (*Client, error) {
 	return c, nil
 }
 
-// GetSecret retrieves a single secret by key under the given prefix path.
+// Retrieves a single secret by key under the given prefix path.
 // Results are cached for the configured CacheTTL.
 func (c *Client) GetSecret(key, prefix string) (string, error) {
 	if prefix == "" {
-		return "", fmt.Errorf("secretsmanager: prefix is required")
+		return "", fmt.Errorf("prefix is required")
 	}
 
 	path := prefix + key
@@ -146,7 +142,7 @@ func (c *Client) GetSecret(key, prefix string) (string, error) {
 		return "", err
 	}
 	if result.SecretString == nil {
-		return "", fmt.Errorf("secretsmanager: secret %s has no string value", path)
+		return "", fmt.Errorf("secret %s has no string value", path)
 	}
 
 	value := *result.SecretString
@@ -155,18 +151,18 @@ func (c *Client) GetSecret(key, prefix string) (string, error) {
 	return value, nil
 }
 
-// GetSecrets retrieves a batch secret JSON blob at prefix+batchID and returns
+// Retrieves a batch secret JSON blob at prefix+batchID and returns
 // the subset of keys requested. The full blob is cached for CacheTTL; individual
 // key lookups served from that cached blob do not incur additional API calls.
 func (c *Client) GetSecrets(keys []string, prefix, batchID string) (map[string]string, error) {
 	if len(keys) == 0 {
-		return nil, fmt.Errorf("secretsmanager: no keys provided")
+		return nil, fmt.Errorf("no keys provided")
 	}
 	if prefix == "" {
-		return nil, fmt.Errorf("secretsmanager: prefix is required")
+		return nil, fmt.Errorf("prefix is required")
 	}
 	if batchID == "" {
-		return nil, fmt.Errorf("secretsmanager: batchID is required")
+		return nil, fmt.Errorf("batchID is required")
 	}
 
 	path := prefix + batchID
@@ -183,7 +179,7 @@ func (c *Client) GetSecrets(keys []string, prefix, batchID string) (map[string]s
 			return nil, err
 		}
 		if result.SecretString == nil {
-			return nil, fmt.Errorf("secretsmanager: batch secret %s has no string value", path)
+			return nil, fmt.Errorf("batch secret %s has no string value", path)
 		}
 		raw = *result.SecretString
 		c.cache.set(path, raw)

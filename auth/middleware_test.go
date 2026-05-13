@@ -71,8 +71,6 @@ func signCustomToken(t *testing.T, claims gojwt.Claims) string {
 	return signed
 }
 
-// --- Authorization Middleware Tests ---
-
 func TestAuthMiddleware_Success(t *testing.T) {
 	tokenStr, err := jwt.SignToken("test-issuer", "user-123", "test-audience", 3600, nil)
 	if err != nil {
@@ -243,8 +241,6 @@ func TestAuthMiddleware_BearerTokenKeysNotInitialized(t *testing.T) {
 		t.Errorf("expected 401, got %d", rec.Code)
 	}
 }
-
-// --- Scope Middleware Tests ---
 
 func requestWithScopes(scopes []string) *http.Request {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

@@ -9,35 +9,39 @@ import (
 	"strings"
 )
 
-// buildHashLookupMap builds HashLookupMap for quick mode.
-func (cnfg *MoxtoxConfig) buildHashLookupMap() {
-	cnfg.HashLookupMap = make(map[string]map[string]map[string]Scenario)
+func (cfg *MoxtoxConfig) buildHashLookupMap() {
+	cfg.HashLookupMap = make(map[string]map[string]map[string]Scenario)
 
-	for path, rawMapping := range cnfg.Mappings {
-		mappingData, ok := rawMapping.(map[interface{}]interface{})
-		if !ok { continue }
+	for path, rawMapping := range cfg.Mappings {
+		mappingData, ok := rawMapping.(map[any]any)
+		if !ok {
+			continue
+		}
 
 		mapping := parseMapping(mappingData)
-		cnfg.HashLookupMap[path] = make(map[string]map[string]Scenario)
+		cfg.HashLookupMap[path] = make(map[string]map[string]Scenario)
 
 		for method, methodData := range mapping.Methods {
-			cnfg.HashLookupMap[path][method] = make(map[string]Scenario)
+			cfg.HashLookupMap[path][method] = make(map[string]Scenario)
 
 			for _, scenario := range methodData.Scenarios {
 				hash := hashConditions(scenario.Conditions)
-				cnfg.HashLookupMap[path][method][hash] = scenario
+				cfg.HashLookupMap[path][method][hash] = scenario
 			}
 		}
 	}
 }
 
-// hashConditions creates a unique hash for conditions map.
-func hashConditions(conditions map[string]interface{}) string {
-	if len(conditions) == 0 { return "default" }
+func hashConditions(conditions map[string]any) string {
+	if len(conditions) == 0 {
+		return "default"
+	}
 
 	// Sort keys for consistency
 	keys := make([]string, 0, len(conditions))
-	for k := range conditions { keys = append(keys, k) }
+	for k := range conditions {
+		keys = append(keys, k)
+	}
 
 	sort.Strings(keys)
 	var sorted []string
@@ -49,8 +53,6 @@ func hashConditions(conditions map[string]interface{}) string {
 	return fmt.Sprintf("%x", md5.Sum([]byte(data)))
 }
 
-// matchesRequestHash checks if the request matches any scenario using hash-based lookup.
-// Returns the matching scenario if found.
 func matchesRequestHash(req *http.Request) (Scenario, bool) {
 	path := req.URL.Path
 	method := req.Method
@@ -84,19 +86,18 @@ func matchesRequestHash(req *http.Request) (Scenario, bool) {
 	return Scenario{}, false
 }
 
-// extractRequestConditions extracts conditions from the request for hashing.
-func extractRequestConditions(req *http.Request) map[string]interface{} {
-	conditions := make(map[string]interface{})
+func extractRequestConditions(req *http.Request) map[string]any {
+	conditions := make(map[string]any)
 
 	// Body (simplified)
 	if req.Body != nil && strings.Contains(req.Header.Get("Content-Type"), "application/json") {
-		var body map[string]interface{}
+		var body map[string]any
 		json.NewDecoder(req.Body).Decode(&body)
 		conditions["body"] = body
 	}
 
 	// Query
-	query := make(map[string]interface{})
+	query := make(map[string]any)
 	for k, v := range req.URL.Query() {
 		if len(v) > 0 {
 			query[k] = v[0]
@@ -107,7 +108,7 @@ func extractRequestConditions(req *http.Request) map[string]interface{} {
 	}
 
 	// Headers
-	headers := make(map[string]interface{})
+	headers := make(map[string]any)
 	for k, v := range req.Header {
 		if len(v) > 0 {
 			headers[strings.ToLower(k)] = v[0]
@@ -118,7 +119,7 @@ func extractRequestConditions(req *http.Request) map[string]interface{} {
 	}
 
 	// Path
-	conditions["path"] = map[string]interface{}{"path": req.URL.Path}
+	conditions["path"] = map[string]any{"path": req.URL.Path}
 
 	return conditions
 }

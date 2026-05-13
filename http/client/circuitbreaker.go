@@ -6,10 +6,9 @@ import (
 	"time"
 )
 
-// ErrOpen is returned by Do when the circuit breaker for the target host is open.
+// Returned by Do when the circuit breaker for the target host is open.
 var ErrOpen = errors.New("circuit breaker is open")
 
-// BreakerState represents the current state of a circuit breaker.
 type BreakerState int
 
 const (
@@ -31,7 +30,7 @@ func (s BreakerState) String() string {
 	}
 }
 
-// Config controls the behaviour of the circuit breaker attached via WithCircuitBreaker.
+// Controls the behaviour of the circuit breaker attached via WithCircuitBreaker.
 type Config struct {
 	// FailureThreshold is the number of failures before the breaker opens.
 	// Recommended default: 5.
@@ -75,10 +74,10 @@ type breakerEntry struct {
 }
 
 type breaker struct {
-	cfg      Config
-	hosts    sync.Map // string → *breakerEntry
-	hostCount int     // approximate; protected by hostMu
-	hostMu   sync.Mutex
+	cfg       Config
+	hosts     sync.Map // string → *breakerEntry
+	hostCount int      // approximate; protected by hostMu
+	hostMu    sync.Mutex
 }
 
 func newBreaker(cfg Config) *breaker {
@@ -191,7 +190,7 @@ func (b *breaker) execute(key string, fn func() error) error {
 	}
 }
 
-// Prune removes closed, zero-failure entries from the host map, reclaiming
+// Removes closed, zero-failure entries from the host map, reclaiming
 // memory for hosts that are no longer actively failing. Call periodically
 // from application code if the service contacts many distinct hosts.
 func (b *breaker) Prune() {

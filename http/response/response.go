@@ -8,11 +8,11 @@ import (
 )
 
 type APIResponse struct {
-	Status  	int
-	Body    	[]byte // raw response body
-	Headers 	http.Header
+	Status    int
+	Body      []byte // raw response body
+	Headers   http.Header
 	RequestID string
-	Error 		*httpErr.ErrorCode
+	Error     *httpErr.ErrorCode
 }
 
 // Unmarshals the response body into the target struct
@@ -27,15 +27,15 @@ func Bind(res *http.Response, target any) (*APIResponse, error) {
 	}
 
 	return &APIResponse{
-		Status:   	res.StatusCode,
-		Body:     	body,
-		Headers:  	res.Header,
-		RequestID: 	res.Header.Get("X-Request-ID"),
-		Error:    	nil,
+		Status:    res.StatusCode,
+		Body:      body,
+		Headers:   res.Header,
+		RequestID: res.Header.Get("X-Request-ID"),
+		Error:     nil,
 	}, nil
 }
 
-// ResponseWriter wraps http.ResponseWriter to capture status code and bytes written.
+// Wraps http.ResponseWriter to capture status code and bytes written.
 type ResponseWriter struct {
 	http.ResponseWriter
 	Status       int
@@ -52,7 +52,9 @@ func (wtr *ResponseWriter) WriteHeader(code int) {
 }
 
 func (wtr *ResponseWriter) Write(b []byte) (int, error) {
-	if !wtr.WroteHeader { wtr.WriteHeader(http.StatusOK) }
+	if !wtr.WroteHeader {
+		wtr.WriteHeader(http.StatusOK)
+	}
 	num, err := wtr.ResponseWriter.Write(b)
 	wtr.BytesWritten += num
 	return num, err
@@ -62,7 +64,7 @@ func (wtr *ResponseWriter) Unwrap() http.ResponseWriter {
 	return wtr.ResponseWriter
 }
 
-func IsSuccess(status int) bool { return status >= 200 && status < 300 }
-func IsError(status int) bool { return status >= 400 && status < 600 }
-func IsRedirect(status int) bool { return status >= 300 && status < 400 }
+func IsSuccess(status int) bool       { return status >= 200 && status < 300 }
+func IsError(status int) bool         { return status >= 400 && status < 600 }
+func IsRedirect(status int) bool      { return status >= 300 && status < 400 }
 func IsInformational(status int) bool { return status >= 100 && status < 200 }

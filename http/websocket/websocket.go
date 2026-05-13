@@ -10,30 +10,29 @@ import (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin:     func(r *http.Request) bool { return true },
 }
 
-// Client wraps a WebSocket connection with helper methods.
 type Client struct {
 	conn *websocket.Conn
 }
 
-// NewClient creates a new WebSocket client from an existing connection.
+// Creates a new WebSocket client from an existing connection.
 func NewClient(conn *websocket.Conn) *Client {
 	return &Client{conn: conn}
 }
 
-// Write sends a message to the WebSocket connection.
+// Sends a message to the WebSocket connection.
 func (c *Client) Write(messageType int, data []byte) error {
 	return c.conn.WriteMessage(messageType, data)
 }
 
-// Read reads a message from the WebSocket connection.
+// Reads a message from the WebSocket connection.
 func (c *Client) Read() (int, []byte, error) {
 	return c.conn.ReadMessage()
 }
 
-// Close closes the WebSocket connection.
+// Closes the WebSocket connection.
 func (c *Client) Close() error {
 	return c.conn.Close()
 }

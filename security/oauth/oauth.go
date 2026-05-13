@@ -18,10 +18,16 @@ var allowedScopes = map[string]bool{
 // Checks if the provided scope string is valid according to predefined rules.
 // Scopes with a "svc:" prefix are service-to-service scopes and are always valid.
 func IsValidScope(scope string) bool {
-	if scope == "" { return false }
-	for _, s := range strings.Fields(strings.ReplaceAll(scope, ",", " ")) {
-		if strings.HasPrefix(s, "svc:") { continue }
-		if !allowedScopes[s] { return false }
+	if scope == "" {
+		return false
+	}
+	for s := range strings.FieldsSeq(strings.ReplaceAll(scope, ",", " ")) {
+		if strings.HasPrefix(s, "svc:") {
+			continue
+		}
+		if !allowedScopes[s] {
+			return false
+		}
 	}
 	return true
 }
@@ -29,9 +35,13 @@ func IsValidScope(scope string) bool {
 // Returns a slice of invalid scopes found in the provided scope string.
 func GetInvalidScopes(scope string) []string {
 	var invalid []string
-	for _, s := range strings.Fields(strings.ReplaceAll(scope, ",", " ")) {
-		if strings.HasPrefix(s, "svc:") { continue }
-		if !allowedScopes[s] { invalid = append(invalid, s) }
+	for s := range strings.FieldsSeq(strings.ReplaceAll(scope, ",", " ")) {
+		if strings.HasPrefix(s, "svc:") {
+			continue
+		}
+		if !allowedScopes[s] {
+			invalid = append(invalid, s)
+		}
 	}
 	return invalid
 }
@@ -39,9 +49,9 @@ func GetInvalidScopes(scope string) []string {
 // Checks if the provided grant type string is valid according to predefined rules.
 func IsValidGrantType(grantType string) bool {
 	switch grantType {
-		case "client_credentials", "authorization_code", "refresh_token":
-			return true
-		default:
-			return false
+	case "client_credentials", "authorization_code", "refresh_token":
+		return true
+	default:
+		return false
 	}
 }

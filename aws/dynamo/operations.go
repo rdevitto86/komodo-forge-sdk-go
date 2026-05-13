@@ -72,7 +72,6 @@ func (c *Client) deleteItem(
 	return nil
 }
 
-// chunks splits keys into slices of at most maxBatchSize.
 func chunks[T any](items []T) [][]T {
 	var out [][]T
 	for i := 0; i < len(items); i += maxBatchSize {

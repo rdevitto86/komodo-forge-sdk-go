@@ -59,10 +59,10 @@ func TestIPAccess_Evaluate(t *testing.T) {
 			want:  true,
 		},
 		{
-			name: "empty lists allows all",
-			ip:   ip1,
+			name:  "empty lists allows all",
+			ip:    ip1,
 			lists: &Lists{},
-			want: true,
+			want:  true,
 		},
 		{
 			name: "whitelist IP - IP in whitelist",

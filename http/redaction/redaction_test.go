@@ -96,7 +96,7 @@ func TestRedaction_RedactPair(t *testing.T) {
 	})
 
 	t.Run("non-sensitive key with slice value", func(t *testing.T) {
-		val := []interface{}{"a", "b"}
+		val := []any{"a", "b"}
 		got := RedactPair("x-list", val)
 		if got == nil {
 			t.Error("got nil, want slice")
@@ -104,7 +104,7 @@ func TestRedaction_RedactPair(t *testing.T) {
 	})
 
 	t.Run("non-sensitive key with map value", func(t *testing.T) {
-		val := map[string]interface{}{"k": "v"}
+		val := map[string]any{"k": "v"}
 		got := RedactPair("x-map", val)
 		if got == nil {
 			t.Error("got nil, want map")

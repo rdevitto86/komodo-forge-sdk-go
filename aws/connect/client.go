@@ -2,7 +2,6 @@ package connect
 
 import "context"
 
-// API is the interface for AWS Connect operations.
 type API interface {
 	StartContactRecording(ctx context.Context, instanceID, contactID, participantID string) error
 	StopContactRecording(ctx context.Context, instanceID, contactID, participantID string) error
@@ -20,7 +19,7 @@ type Config struct {
 // TODO: wire github.com/aws/aws-sdk-go-v2/service/connect when implementing.
 type Client struct{}
 
-// New creates and returns a new Connect Client.
+// Creates and returns a new Connect Client.
 func New(config Config) (*Client, error) {
 	return &Client{}, nil
 }

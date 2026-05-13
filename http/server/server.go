@@ -9,13 +9,13 @@ import (
 	komodoserver "github.com/rdevitto86/komodo-forge-sdk-go/server"
 )
 
-// Run starts the HTTP server on port and blocks until the process receives a shutdown signal,
+// Starts the HTTP server on port and blocks until the process receives a shutdown signal,
 // then performs a graceful drain up to gracefulTimeout.
 func Run(srv *http.Server, port string, gracefulTimeout time.Duration) {
 	komodoserver.Run(srv, port, gracefulTimeout)
 }
 
-// InitAndServe is an alias for Run retained for backward compatibility.
+// Alias for Run, retained for backward compatibility.
 func InitAndServe(srv *http.Server, p string, t time.Duration) {
 	komodoserver.InitAndServe(srv, p, t)
 }

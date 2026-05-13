@@ -2,12 +2,13 @@ package rules
 
 import (
 	"fmt"
-	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 	"os"
 	"regexp"
 	"sort"
 	"strings"
 	"sync"
+
+	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 
 	"gopkg.in/yaml.v3"
 )
@@ -28,7 +29,7 @@ type routePattern struct {
 
 // Loads validation rules from a file path or embedded data
 func LoadConfig(path ...string) bool {
-	loadOnce.Do(func() { 
+	loadOnce.Do(func() {
 		var data []byte
 		var err error
 		var source string
@@ -43,7 +44,7 @@ func LoadConfig(path ...string) bool {
 		}
 
 		if err != nil || data == nil {
-			logger.Error("failed to load validation rules from" + source, err)
+			logger.Error("failed to load validation rules from"+source, err)
 			configLoaded = false
 			return
 		}
@@ -81,11 +82,10 @@ func LoadConfigWithData(data []byte) {
 		logger.Info("successfully loaded validation rules from embedded config")
 	})
 }
-	
 
 func IsConfigLoaded() bool { return configLoaded && ruleMap != nil }
 
-// ResetForTesting resets all package-level state so that LoadConfig and
+// Resets all package-level state so that LoadConfig and
 // LoadConfigWithData can be called again. This function is intended only for use
 // in test binaries; calling it in production code will break all callers.
 func ResetForTesting() {
@@ -155,13 +155,13 @@ func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePa
 	}
 
 	cfg := root.Rules
-	
+
 	// Validate and normalize the configuration
 	if err := validateAndNormalizeConfig(cfg); err != nil {
 		logger.Error("validation rules configuration is invalid", err)
 		return nil, nil, err
 	}
-	
+
 	patterns := make([]routePattern, 0)
 
 	// Build patterns for templates with dynamic segments
@@ -170,7 +170,7 @@ func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePa
 			reStr, keys := templateToRegex(tpl)
 			re, err := regexp.Compile("^" + reStr + "$")
 			if err != nil {
-				logger.Error("invalid route pattern " + tpl, err)
+				logger.Error("invalid route pattern "+tpl, err)
 				return nil, nil, fmt.Errorf("invalid route pattern %s: %w", tpl, err)
 			}
 
@@ -224,39 +224,45 @@ func compileRulePatterns(cfg RuleConfig) error {
 	}
 
 	for _, methods := range cfg {
+		// Methods
 		for method, rule := range methods {
+			// Headers
 			for name, spec := range rule.Headers {
 				re, err := compile(spec.Pattern)
 				if err != nil {
-					return fmt.Errorf("rules: header %q: %w", name, err)
+					return fmt.Errorf("failed to compile header %q pattern: %w", name, err)
 				}
 				spec.compiled = re
 				rule.Headers[name] = spec
 			}
+			// Path params
 			for name, spec := range rule.PathParams {
 				re, err := compile(spec.Pattern)
 				if err != nil {
-					return fmt.Errorf("rules: path param %q: %w", name, err)
+					return fmt.Errorf("failed to compile path param %q pattern: %w", name, err)
 				}
 				spec.compiled = re
 				rule.PathParams[name] = spec
 			}
+			// Query params
 			for name, spec := range rule.QueryParams {
 				re, err := compile(spec.Pattern)
 				if err != nil {
-					return fmt.Errorf("rules: query param %q: %w", name, err)
+					return fmt.Errorf("failed to compile query param %q pattern: %w", name, err)
 				}
 				spec.compiled = re
 				rule.QueryParams[name] = spec
 			}
+			// Body
 			for name, spec := range rule.Body {
 				re, err := compile(spec.Pattern)
 				if err != nil {
-					return fmt.Errorf("rules: body field %q: %w", name, err)
+					return fmt.Errorf("failed to compile body field %q pattern: %w", name, err)
 				}
 				spec.compiled = re
 				rule.Body[name] = spec
 			}
+
 			methods[method] = rule
 		}
 	}
@@ -305,6 +311,7 @@ func normalizePath(p string) string {
 	if p == "" {
 		return p
 	}
+
 	// drop query
 	if idx := strings.Index(p, "?"); idx != -1 {
 		p = p[:idx]
@@ -345,6 +352,7 @@ func matchRouteAndExtractParams(path string) (*routePattern, map[string]string) 
 		if !rp.re.MatchString(np) {
 			continue
 		}
+
 		matches := rp.re.FindStringSubmatch(np)
 		names := rp.re.SubexpNames()
 		params := make(map[string]string)

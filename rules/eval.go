@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	headers "github.com/rdevitto86/komodo-forge-sdk-go/http/headers"
 	httpReq "github.com/rdevitto86/komodo-forge-sdk-go/http/request"
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -44,7 +44,7 @@ func IsRuleValid(req *http.Request, rule *EvalRule) bool {
 		logger.Error("validation failure: body check", fmt.Errorf("body validation failed"))
 		return false
 	}
-	
+
 	logger.Info("all validations passed")
 	return true
 }
@@ -85,7 +85,7 @@ func isValidVersion(req *http.Request, rule *EvalRule) bool {
 	versionStr := httpReq.GetAPIVersion(req)
 	if versionStr == "" {
 		logger.Error(
-			fmt.Sprintf("version required (v%d) but not found in request", rule.RequiredVersion), 
+			fmt.Sprintf("version required (v%d) but not found in request", rule.RequiredVersion),
 			fmt.Errorf("version not found"),
 		)
 		return false
@@ -127,7 +127,9 @@ func areValidHeaders(req *http.Request, rule *EvalRule) bool {
 			)
 			return false
 		}
-		if val == "" { continue }
+		if val == "" {
+			continue
+		}
 
 		// Check exact value match if specified
 		if valStr, _ := spec.Value.(string); valStr != "" {
@@ -252,7 +254,10 @@ func areValidPathParams(req *http.Request, rule *EvalRule) bool {
 		if len(spec.Enum) > 0 {
 			okEnum := false
 			for _, e := range spec.Enum {
-				if e == val { okEnum = true; break }
+				if e == val {
+					okEnum = true
+					break
+				}
 			}
 			if !okEnum {
 				logger.Error(
@@ -281,26 +286,26 @@ func areValidPathParams(req *http.Request, rule *EvalRule) bool {
 
 		// simple type validation for common scalar types
 		switch spec.Type {
-			case "", "string":
-				// already a string
-			case "int":
-				if _, err := strconv.Atoi(val); err != nil {
-					logger.Error(
-						fmt.Sprintf("path param %q value %q is not a valid int", name, val),
-						fmt.Errorf("path param type mismatch"),
-					)
-					return false
-				}
-			case "bool":
-				if val != "true" && val != "false" {
-					logger.Error(
-						fmt.Sprintf("path param %q value %q is not a valid bool", name, val),
-						fmt.Errorf("path param type mismatch"),
-					)
-					return false
-				}
-			default:
-				// unknown types are treated as pass-through for now
+		case "", "string":
+			// already a string
+		case "int":
+			if _, err := strconv.Atoi(val); err != nil {
+				logger.Error(
+					fmt.Sprintf("path param %q value %q is not a valid int", name, val),
+					fmt.Errorf("path param type mismatch"),
+				)
+				return false
+			}
+		case "bool":
+			if val != "true" && val != "false" {
+				logger.Error(
+					fmt.Sprintf("path param %q value %q is not a valid bool", name, val),
+					fmt.Errorf("path param type mismatch"),
+				)
+				return false
+			}
+		default:
+			// unknown types are treated as pass-through for now
 		}
 	}
 	return true
@@ -335,7 +340,10 @@ func areValidQueryParams(req *http.Request, rule *EvalRule) bool {
 		if len(spec.Enum) > 0 {
 			okv := false
 			for _, e := range spec.Enum {
-				if e == val { okv = true; break }
+				if e == val {
+					okv = true
+					break
+				}
 			}
 			if !okv {
 				logger.Error(
@@ -367,8 +375,8 @@ func areValidQueryParams(req *http.Request, rule *EvalRule) bool {
 // Checks if the request body complies with the provided EvalRule.
 func isValidBody(req *http.Request, rule *EvalRule) bool {
 	switch req.Method {
-		case http.MethodGet, http.MethodHead, http.MethodOptions:
-			return true
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
 	}
 
 	// Read the body (it can only be read once)
@@ -384,7 +392,9 @@ func isValidBody(req *http.Request, rule *EvalRule) bool {
 	req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
 	// If body is empty, that's valid for some requests
-	if len(bodyBytes) == 0 { return true }
+	if len(bodyBytes) == 0 {
+		return true
+	}
 
 	// Parse JSON
 	var bodyMap map[string]any
@@ -412,31 +422,31 @@ func isValidBody(req *http.Request, rule *EvalRule) bool {
 
 		// basic type checks
 		switch spec.Type {
-			case "", "string":
-				if _, ok := v.(string); !ok {
-					logger.Error(
-						fmt.Sprintf("body field %q is not a string", name),
-						fmt.Errorf("body field type mismatch"),
-					)
-					return false
-				}
-			case "int":
-				// JSON numbers are float64 by default
-				if _, ok := v.(float64); !ok {
-					logger.Error(
-						fmt.Sprintf("body field %q is not a number", name),
-						fmt.Errorf("body field type mismatch"),
-					)
-					return false
-				}
-			case "bool":
-				if _, ok := v.(bool); !ok {
-					logger.Error(
-						fmt.Sprintf("body field %q is not a bool", name),
-						fmt.Errorf("body field type mismatch"),
-					)
-					return false
-				}
+		case "", "string":
+			if _, ok := v.(string); !ok {
+				logger.Error(
+					fmt.Sprintf("body field %q is not a string", name),
+					fmt.Errorf("body field type mismatch"),
+				)
+				return false
+			}
+		case "int":
+			// JSON numbers are float64 by default
+			if _, ok := v.(float64); !ok {
+				logger.Error(
+					fmt.Sprintf("body field %q is not a number", name),
+					fmt.Errorf("body field type mismatch"),
+				)
+				return false
+			}
+		case "bool":
+			if _, ok := v.(bool); !ok {
+				logger.Error(
+					fmt.Sprintf("body field %q is not a bool", name),
+					fmt.Errorf("body field type mismatch"),
+				)
+				return false
+			}
 		}
 	}
 	return true

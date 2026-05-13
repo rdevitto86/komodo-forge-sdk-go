@@ -203,7 +203,7 @@ func TestGetClientType_APIKey(t *testing.T) {
 }
 
 func TestGetClientType_BearerWithGrantType(t *testing.T) {
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		"sub":        "user123",
 		"grant_type": "client_credentials",
 	}
@@ -217,7 +217,7 @@ func TestGetClientType_BearerWithGrantType(t *testing.T) {
 }
 
 func TestGetClientType_BearerWithApiScope(t *testing.T) {
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		"scope": "api:read api:write",
 	}
 	token := makeTestJWT(claims)
@@ -230,7 +230,7 @@ func TestGetClientType_BearerWithApiScope(t *testing.T) {
 }
 
 func TestGetClientType_BearerWithServiceScope(t *testing.T) {
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		"scope": "service:internal",
 	}
 	token := makeTestJWT(claims)
@@ -243,7 +243,7 @@ func TestGetClientType_BearerWithServiceScope(t *testing.T) {
 }
 
 func TestGetClientType_BearerWithClientType(t *testing.T) {
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		"client_type": "browser",
 	}
 	token := makeTestJWT(claims)
@@ -256,7 +256,7 @@ func TestGetClientType_BearerWithClientType(t *testing.T) {
 }
 
 func TestGetClientType_BearerWithAPIClientType(t *testing.T) {
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		"client_type": "api",
 	}
 	token := makeTestJWT(claims)
@@ -270,7 +270,7 @@ func TestGetClientType_BearerWithAPIClientType(t *testing.T) {
 
 func TestGetClientType_BearerWithUnknownClientType(t *testing.T) {
 	// client_type present but not "api" or "browser"
-	claims := map[string]interface{}{
+	claims := map[string]any{
 		"client_type": "other",
 	}
 	token := makeTestJWT(claims)
@@ -332,7 +332,7 @@ func TestIsValidAPIKey(t *testing.T) {
 }
 
 // makeTestJWT creates an unsigned test JWT (header.payload.sig).
-func makeTestJWT(claims map[string]interface{}) string {
+func makeTestJWT(claims map[string]any) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
 	payload, _ := json.Marshal(claims)
 	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)

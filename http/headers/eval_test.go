@@ -6,12 +6,6 @@ import (
 	"testing"
 )
 
-func makeReq(hdr, val string) *httptest.ResponseRecorder {
-	_ = hdr
-	_ = val
-	return nil
-}
-
 func TestHeaderEval_ValidateHeaderValue_Authorization(t *testing.T) {
 	// "authorization" goes through jwt.ValidateToken — keys not initialized,
 	// so it will return false/error for any token value
@@ -153,10 +147,10 @@ func TestHeaderEval_ValidateHeaderValue_ContentLength(t *testing.T) {
 	}{
 		{"1", true},
 		{"4096", true},
-		{"4097", false},  // exceeds default max
-		{"0", false},     // not positive
-		{"-1", false},    // negative
-		{"abc", false},   // non-numeric
+		{"4097", false}, // exceeds default max
+		{"0", false},    // not positive
+		{"-1", false},   // negative
+		{"abc", false},  // non-numeric
 		{"", false},
 	}
 	for _, tc := range tests {
@@ -195,12 +189,12 @@ func TestHeaderEval_ValidateHeaderValue_IdempotencyKey(t *testing.T) {
 		val  string
 		want bool
 	}{
-		{"abcdefgh", true},           // 8 chars
+		{"abcdefgh", true}, // 8 chars
 		{"abcdefgh12345678901234567890123456789012345678901234567890abcd", true}, // 64 chars
 		{"abc-123_XYZ", true},
-		{"short", false},             // too short (< 8)
-		{"ab cd ef", false},          // space not allowed
-		{"abc!@#$%", false},          // special chars not allowed
+		{"short", false},    // too short (< 8)
+		{"ab cd ef", false}, // space not allowed
+		{"abc!@#$%", false}, // special chars not allowed
 		{"", false},
 	}
 	for _, tc := range tests {
@@ -313,7 +307,7 @@ func TestHeaderEval_ValidateHeaderValue_XRequestedBy(t *testing.T) {
 		{"", false},
 		// > 64 chars
 		{"a123456789012345678901234567890123456789012345678901234567890123456789", false},
-		{"bad value!", false},  // space/exclamation not in allowed charset
+		{"bad value!", false}, // space/exclamation not in allowed charset
 	}
 	for _, tc := range tests {
 		req := httptest.NewRequest("GET", "/", nil)
@@ -352,9 +346,3 @@ func TestHeaderEval_ValidateHeaderValue_Default(t *testing.T) {
 	}
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}

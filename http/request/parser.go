@@ -13,7 +13,9 @@ import (
 // Header format: "application/json;v=1" or "application/json; version=2"
 // URL format: "/v1/resource" (fallback for backwards compatibility)
 func GetAPIVersion(req *http.Request) string {
-	if req == nil { return "" }
+	if req == nil {
+		return ""
+	}
 
 	// Priority 1: Check Accept header for version parameter
 	if accept := req.Header.Get("Accept"); accept != "" {
@@ -44,18 +46,18 @@ func GetAPIVersion(req *http.Request) string {
 // Extracts version from media type header (e.g., "application/json;v=1" or "application/json; version=2")
 func extractVersionFromMediaType(mediaType string) string {
 	parts := strings.Split(mediaType, ";")
-	if len(parts) < 2 { return "" }
+	if len(parts) < 2 {
+		return ""
+	}
 
 	for _, part := range parts[1:] {
 		param := strings.TrimSpace(part)
-		
+
 		// Support both "v=1" and "version=1" formats
-		if strings.HasPrefix(param, "v=") {
-			version := strings.TrimPrefix(param, "v=")
+		if version, ok := strings.CutPrefix(param, "v="); ok {
 			return "/v" + strings.TrimSpace(version)
 		}
-		if strings.HasPrefix(param, "version=") {
-			version := strings.TrimPrefix(param, "version=")
+		if version, ok := strings.CutPrefix(param, "version="); ok {
 			return "/v" + strings.TrimSpace(version)
 		}
 	}
@@ -108,7 +110,9 @@ func GetQueryParams(req *http.Request) map[string]string {
 
 	out := make(map[string]string)
 	values, err := url.ParseQuery(req.URL.RawQuery)
-	if err != nil { return out }
+	if err != nil {
+		return out
+	}
 
 	for k, v := range values {
 		if len(v) > 0 {
@@ -120,11 +124,11 @@ func GetQueryParams(req *http.Request) map[string]string {
 
 // Determines if the request is from an API client or a browser client.
 // Validates JWT token claims to prevent header spoofing.
-func GetClientType(req *http.Request) string { 
+func GetClientType(req *http.Request) string {
 	if apiKey := req.Header.Get("X-API-Key"); apiKey != "" && IsValidAPIKey(apiKey) {
 		return "api"
 	}
-	
+
 	authHeader := req.Header.Get("Authorization")
 	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 		parts := strings.Split(strings.TrimPrefix(authHeader, "Bearer "), ".")
@@ -135,14 +139,14 @@ func GetClientType(req *http.Request) string {
 			if m := len(payload) % 4; m != 0 {
 				payload += strings.Repeat("=", 4-m)
 			}
-			
+
 			if decoded, err := base64.URLEncoding.DecodeString(payload); err == nil {
-				var claims map[string]interface{}
+				var claims map[string]any
 				if err := json.Unmarshal(decoded, &claims); err == nil {
 					if clientType, ok := claims["client_type"].(string); ok {
 						switch clientType {
-							case "api", "browser":
-								return clientType
+						case "api", "browser":
+							return clientType
 						}
 					}
 					if grantType, ok := claims["grant_type"].(string); ok && grantType == "client_credentials" {
@@ -157,7 +161,7 @@ func GetClientType(req *http.Request) string {
 			}
 		}
 	}
-	
+
 	// Default to browser (enforces CSRF)
 	return "browser"
 }
@@ -171,7 +175,7 @@ func IsValidAPIKey(apiKey string) bool {
 	// 2. Check if key exists and is active (not revoked/expired)
 	// 3. Optional: Rate limit check, scope validation
 	// 4. Log the API key usage for auditing
-	
+
 	return true
 }
 

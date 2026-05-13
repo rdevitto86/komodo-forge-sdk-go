@@ -121,8 +121,6 @@ func makeReqWithVersion(method, path, version string) *http.Request {
 	return req
 }
 
-// ===================== IsRuleValid tests =====================
-
 func TestEval_WithValidRule(t *testing.T) {
 	setupComprehensive(t)
 
@@ -161,8 +159,6 @@ func TestEval_WithInvalidRule(t *testing.T) {
 		}
 	})
 }
-
-// ===================== Version validation =====================
 
 func TestEval_Version_Lenient(t *testing.T) {
 	setupComprehensive(t)
@@ -257,8 +253,6 @@ func TestEval_Version_Strict(t *testing.T) {
 		}
 	})
 }
-
-// ===================== Header validation =====================
 
 func TestEval_Headers(t *testing.T) {
 	setupComprehensive(t)
@@ -399,8 +393,6 @@ func TestEval_Headers(t *testing.T) {
 	})
 }
 
-// ===================== Query param validation =====================
-
 func TestEval_QueryParams(t *testing.T) {
 	setupComprehensive(t)
 
@@ -473,8 +465,6 @@ func TestEval_QueryParams(t *testing.T) {
 		}
 	})
 }
-
-// ===================== Path param validation =====================
 
 func TestEval_PathParams(t *testing.T) {
 	setupComprehensive(t)
@@ -631,8 +621,6 @@ func TestEval_PathParams(t *testing.T) {
 	})
 }
 
-// ===================== Body validation =====================
-
 func TestEval_Body(t *testing.T) {
 	setupComprehensive(t)
 
@@ -739,8 +727,6 @@ func TestEval_Body(t *testing.T) {
 	})
 }
 
-// ===================== Full IsRuleValid integration tests =====================
-
 func TestIsRuleValid_Integration(t *testing.T) {
 	setupComprehensive(t)
 
@@ -821,8 +807,6 @@ func TestIsRuleValid_Integration(t *testing.T) {
 	})
 }
 
-// ===================== Additional coverage for path param type:int error =====================
-
 func TestEval_PathParams_IntType_InvalidValue_Failure(t *testing.T) {
 	setupComprehensive(t)
 	// Custom rule: type int but no pattern that would reject non-ints first.
@@ -870,8 +854,6 @@ func TestEval_PathParams_InvalidRegex_Failure(t *testing.T) {
 	}
 }
 
-// ===================== Additional coverage for query param MinLen/MaxLen =====================
-
 func TestEval_QueryParams_MinLen_Failure(t *testing.T) {
 	rule := &EvalRule{
 		Level: LevelLenient,
@@ -913,8 +895,6 @@ func TestEval_QueryParams_InvalidRegex_Failure(t *testing.T) {
 		t.Error("expected false for query param with invalid regex pattern")
 	}
 }
-
-// ===================== Additional coverage for body read error =====================
 
 func TestEval_Body_ReadError_Failure(t *testing.T) {
 	setupComprehensive(t)

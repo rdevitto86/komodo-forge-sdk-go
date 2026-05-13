@@ -2,7 +2,6 @@ package contactlens
 
 import "context"
 
-// API is the interface for AWS Contact Lens operations.
 type API interface {
 	ListRealtimeContactAnalysisSegments(ctx context.Context, instanceID, contactID string) ([]Segment, error)
 }
@@ -24,7 +23,7 @@ type Segment struct {
 // TODO: wire github.com/aws/aws-sdk-go-v2/service/contactlens when implementing.
 type Client struct{}
 
-// New creates and returns a new Contact Lens Client.
+// Creates and returns a new Contact Lens Client.
 func New(config Config) (*Client, error) {
 	return &Client{}, nil
 }

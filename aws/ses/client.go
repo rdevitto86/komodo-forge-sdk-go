@@ -2,7 +2,6 @@ package ses
 
 import "context"
 
-// API is the interface for SES operations.
 type API interface {
 	SendEmail(ctx context.Context, from, to, subject, htmlBody, textBody string) (string, error)
 	SendTemplatedEmail(ctx context.Context, from, to, templateName string, data map[string]any) (string, error)
@@ -20,7 +19,7 @@ type Config struct {
 // TODO: wire github.com/aws/aws-sdk-go-v2/service/ses (or sesv2) when implementing.
 type Client struct{}
 
-// New creates and returns a new SES Client.
+// Creates and returns a new SES Client.
 func New(config Config) (*Client, error) {
 	return &Client{}, nil
 }

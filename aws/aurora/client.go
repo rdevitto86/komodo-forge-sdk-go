@@ -2,7 +2,6 @@ package aurora
 
 import "context"
 
-// API is the interface for Aurora RDS operations.
 type API interface {
 	Query(ctx context.Context, sql string, args ...any) ([]map[string]any, error)
 	Exec(ctx context.Context, sql string, args ...any) (int64, error)
@@ -18,7 +17,7 @@ type Config struct {
 // TODO: wire database/sql + pgx or mysql driver when implementing.
 type Client struct{}
 
-// New creates and returns a new Aurora Client.
+// Creates and returns a new Aurora Client.
 func New(config Config) (*Client, error) {
 	return &Client{}, nil
 }

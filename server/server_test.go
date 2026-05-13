@@ -20,6 +20,8 @@ func findFreePort() (string, error) {
 	return fmt.Sprintf("127.0.0.1:%d", port), nil
 }
 
+// ── Unit Tests ───────────────────────────────────────────────────────────────
+
 func TestRun_LambdaEnv(t *testing.T) {
 	// When AWS_LAMBDA_FUNCTION_NAME is set, Run takes the Lambda branch.
 	// lambda.Start calls log.Fatal when not in a real Lambda environment,
@@ -53,6 +55,8 @@ func TestRun_LambdaEnv(t *testing.T) {
 		// lambda.Start may block; acceptable - the branch was still covered
 	}
 }
+
+// ── Integration Tests ────────────────────────────────────────────────────────
 
 func TestRun(t *testing.T) {
 	// Test that Run calls InitAndServe when not in Lambda environment

@@ -65,8 +65,6 @@ func setupInitializedKeys(t *testing.T) {
 	}
 }
 
-// --- InitializeKeys ---
-
 func TestJWT_InitializeKeys_Success(t *testing.T) {
 	setupInitializedKeys(t)
 
@@ -137,8 +135,6 @@ func TestJWT_InitializeKeys_InvalidPublicKey_Failure(t *testing.T) {
 	}
 }
 
-// --- SignToken ---
-
 func TestJWT_SignToken_Success(t *testing.T) {
 	setupInitializedKeys(t)
 
@@ -160,8 +156,6 @@ func TestJWT_SignToken_NotInitialized_Failure(t *testing.T) {
 		t.Error("expected error when keys are not initialized")
 	}
 }
-
-// --- ValidateToken ---
 
 func TestJWT_ValidateToken_Success(t *testing.T) {
 	setupInitializedKeys(t)
@@ -237,8 +231,6 @@ func TestJWT_ValidateToken_WrongSigningMethod_Failure(t *testing.T) {
 	}
 }
 
-// --- ParseClaims ---
-
 func TestJWT_ParseClaims_Success(t *testing.T) {
 	setupInitializedKeys(t)
 
@@ -290,8 +282,6 @@ func TestJWT_ParseClaims_WrongSigningMethod_Failure(t *testing.T) {
 		t.Error("expected error for token with wrong signing method")
 	}
 }
-
-// --- ExtractTokenFromRequest ---
 
 func TestJWT_ExtractTokenFromRequest_Success(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)

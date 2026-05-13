@@ -16,8 +16,6 @@ import (
 	ctxKeys "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 )
 
-// --- helpers ---
-
 // captureLogger replaces the global slogger with a buffer-based logger for the test.
 func captureLogger(t *testing.T, level slog.Level) *bytes.Buffer {
 	t.Helper()
@@ -32,8 +30,6 @@ func captureLogger(t *testing.T, level slog.Level) *bytes.Buffer {
 func resetInitOnce() {
 	initOnce = sync.Once{}
 }
-
-// ===================== logger.go =====================
 
 func TestRuntimeLogger_Init_LocalEnv_Success(t *testing.T) {
 	old := slogger
@@ -198,8 +194,6 @@ func TestRuntimeLogger_ParseLevel_Success(t *testing.T) {
 	}
 }
 
-// ===================== wrappers.go =====================
-
 func TestLoggerWrapper_Attr_Success(t *testing.T) {
 	a := Attr("custom_key", "custom_value")
 	if a.Key != "custom_key" {
@@ -309,8 +303,6 @@ func TestLoggerWrapper_AttrResponse_NilResponse_Success(t *testing.T) {
 		t.Errorf("Key = %q, want response", a.Key)
 	}
 }
-
-// ===================== handler.go =====================
 
 func TestLoggerHandler_NewKomodoTextHandler_Success(t *testing.T) {
 	var buf bytes.Buffer
@@ -475,8 +467,6 @@ func TestLoggerHandler_ColoredLevel_AllLevels_Success(t *testing.T) {
 	}
 }
 
-// --- formatAttr ---
-
 func TestLoggerHandler_FormatAttr_String_NoQuote_Success(t *testing.T) {
 	a := slog.String("key", "simple")
 	if got := formatAttr(a); got != "key=simple" {
@@ -588,8 +578,6 @@ func TestLoggerHandler_FormatAttr_Time_Success(t *testing.T) {
 	}
 }
 
-// --- needsQuoting ---
-
 func TestLoggerHandler_NeedsQuoting_WithSpace_Success(t *testing.T) {
 	if !needsQuoting("has space") {
 		t.Error("expected needsQuoting=true for string with space")
@@ -613,8 +601,6 @@ func TestLoggerHandler_NeedsQuoting_Plain_Failure(t *testing.T) {
 		t.Error("expected needsQuoting=false for plain string")
 	}
 }
-
-// ===================== redaction.go =====================
 
 func TestLoggerRedaction_Handle_Success(t *testing.T) {
 	var buf bytes.Buffer

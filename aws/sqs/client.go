@@ -21,7 +21,6 @@ type SendInput struct {
 	Attrs    map[string]string // optional string message attributes
 }
 
-// Message is a received SQS message.
 type Message struct {
 	ID            string
 	Body          string
@@ -29,7 +28,6 @@ type Message struct {
 	Attrs         map[string]string
 }
 
-// API is the interface for SQS operations.
 type API interface {
 	Send(ctx context.Context, input SendInput) (messageID string, err error)
 	Receive(ctx context.Context, queueURL string, maxMessages int32) ([]Message, error)
@@ -43,15 +41,14 @@ type Config struct {
 	Endpoint  string
 }
 
-// Client wraps the AWS SQS SDK client.
 type Client struct {
 	sqs *sqs.Client
 }
 
-// New creates and returns a new SQS Client.
+// Creates and returns a new SQS Client.
 func New(config Config) (*Client, error) {
 	if config.Region == "" {
-		return nil, fmt.Errorf("sqs: region is required")
+		return nil, fmt.Errorf("region is required")
 	}
 
 	cfgOpts := []func(*awsconfig.LoadOptions) error{
@@ -69,7 +66,7 @@ func New(config Config) (*Client, error) {
 
 	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), cfgOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("sqs: failed to load config: %w", err)
+		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
 	var opts []func(*sqs.Options)
@@ -81,7 +78,7 @@ func New(config Config) (*Client, error) {
 	return &Client{sqs: sqs.NewFromConfig(cfg, opts...)}, nil
 }
 
-// Send enqueues a message. For FIFO queues, set GroupID and DedupID.
+// Enqueues a message. For FIFO queues, set GroupID and DedupID.
 func (c *Client) Send(ctx context.Context, input SendInput) (string, error) {
 	in := &sqs.SendMessageInput{
 		QueueUrl:    aws.String(input.QueueURL),
@@ -108,12 +105,12 @@ func (c *Client) Send(ctx context.Context, input SendInput) (string, error) {
 
 	result, err := c.sqs.SendMessage(ctx, in)
 	if err != nil {
-		return "", fmt.Errorf("sqs: send failed: %w", err)
+		return "", fmt.Errorf("failed to send message: %w", err)
 	}
 	return aws.ToString(result.MessageId), nil
 }
 
-// Receive long-polls for up to maxMessages (max 10) from the queue.
+// Long-polls for up to maxMessages (max 10) from the queue.
 func (c *Client) Receive(ctx context.Context, queueURL string, maxMessages int32) ([]Message, error) {
 	if maxMessages > 10 {
 		maxMessages = 10
@@ -126,7 +123,7 @@ func (c *Client) Receive(ctx context.Context, queueURL string, maxMessages int32
 		MessageAttributeNames: []string{"All"},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("sqs: receive failed: %w", err)
+		return nil, fmt.Errorf("failed to receive message: %w", err)
 	}
 
 	msgs := make([]Message, len(result.Messages))
@@ -147,14 +144,14 @@ func (c *Client) Receive(ctx context.Context, queueURL string, maxMessages int32
 	return msgs, nil
 }
 
-// Delete removes a message from the queue after successful processing.
+// Removes a message from the queue after successful processing.
 func (c *Client) Delete(ctx context.Context, queueURL, receiptHandle string) error {
 	_, err := c.sqs.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      aws.String(queueURL),
 		ReceiptHandle: aws.String(receiptHandle),
 	})
 	if err != nil {
-		return fmt.Errorf("sqs: delete failed: %w", err)
+		return fmt.Errorf("failed to delete message: %w", err)
 	}
 	return nil
 }

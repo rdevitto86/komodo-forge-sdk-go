@@ -1,4 +1,7 @@
-.PHONY: lint install-hooks
+.PHONY: fmt lint install-hooks
+
+fmt:
+	@gofmt -w .
 
 lint:
 	@golangci-lint run ./...

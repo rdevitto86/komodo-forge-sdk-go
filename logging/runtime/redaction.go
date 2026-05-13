@@ -6,7 +6,7 @@ import (
 	"log/slog"
 )
 
-type RedactingLogger struct { slog.Handler }
+type RedactingLogger struct{ slog.Handler }
 
 func (rl *RedactingLogger) Handle(ctx context.Context, rec slog.Record) error {
 	clean := rec.Clone()

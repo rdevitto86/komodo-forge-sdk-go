@@ -3,7 +3,6 @@ package dynamo
 import (
 	"context"
 	"fmt"
-	"sync"
 
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 
@@ -15,118 +14,141 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-var (
-	client *dynamodb.Client
-	once   sync.Once
-	mu     sync.RWMutex
-	initErr error
-)
+// API is the interface for all DynamoDB operations. Use it in callers so the
+// concrete *Client can be swapped for a test double without modifying call sites.
+type API interface {
+	BuildKey(pk string, pv any, sk string, sv any) (map[string]types.AttributeValue, error)
+	GetItem(ctx context.Context, table string, key map[string]types.AttributeValue, batch bool, keys []map[string]types.AttributeValue) (any, error)
+	GetItemAs(ctx context.Context, table string, key map[string]types.AttributeValue, batch bool, keys []map[string]types.AttributeValue, out any) error
+	WriteItem(ctx context.Context, table string, item map[string]types.AttributeValue, batch bool, items []map[string]types.AttributeValue, cond *string) error
+	WriteItemFrom(ctx context.Context, table string, item any, batch bool, items any, cond *string) error
+	UpdateItem(ctx context.Context, table string, key map[string]types.AttributeValue, expr string, exprVals map[string]types.AttributeValue, exprNames map[string]string, cond *string) (map[string]types.AttributeValue, error)
+	UpdateItemAs(ctx context.Context, table string, key map[string]types.AttributeValue, expr string, exprVals map[string]types.AttributeValue, exprNames map[string]string, cond *string, out any) error
+	DeleteItem(ctx context.Context, table string, key map[string]types.AttributeValue, batch bool, keys []map[string]types.AttributeValue, cond *string) error
+	Query(ctx context.Context, input QueryInput) (*QueryOutput, error)
+	QueryAs(ctx context.Context, input QueryInput, out any) (*QueryOutput, error)
+	QueryAll(ctx context.Context, input QueryInput) ([]map[string]types.AttributeValue, error)
+	QueryAllAs(ctx context.Context, input QueryInput, out any) error
+	Scan(ctx context.Context, input ScanInput) (*ScanOutput, error)
+	ScanAs(ctx context.Context, input ScanInput, out any) (*ScanOutput, error)
+	ScanAll(ctx context.Context, input ScanInput) ([]map[string]types.AttributeValue, error)
+	ScanAllAs(ctx context.Context, input ScanInput, out any) error
+}
 
 type Config struct {
 	Region    string
 	AccessKey string
 	SecretKey string
 	Endpoint  string
+	// MaxConcurrentBatches caps the number of parallel DynamoDB batch requests
+	// sent when an input is split into multiple 25-item chunks. Defaults to 5
+	// when 0. Set to 1 to restore serial behaviour.
+	MaxConcurrentBatches int
 }
 
-// Initialize the DynamoDB client
-func Init(config Config) error {
-	once.Do(func() {
-		if config.Region == "" {
-			logger.Error("dynamodb region is required", fmt.Errorf("dynamodb region is required"))
-			initErr = fmt.Errorf("dynamodb region is required")
-			return
-		}
-
-		ctx := context.Background()
-		var cfg aws.Config
-
-		if config.AccessKey != "" && config.SecretKey != "" {
-			cfg, initErr = awsconfig.LoadDefaultConfig(
-				ctx,
-				awsconfig.WithRegion(config.Region),
-				awsconfig.WithCredentialsProvider(
-					credentials.NewStaticCredentialsProvider(
-						config.AccessKey,
-						config.SecretKey,
-						"",
-					),
-				),
-			)
-		} else {
-			cfg, initErr = awsconfig.LoadDefaultConfig(
-				ctx, awsconfig.WithRegion(config.Region),
-			)
-		}
-
-		if initErr != nil {
-			logger.Error("dynamodb failed to load config", initErr)
-			initErr = WrapError(initErr, "Init")
-			return
-		}
-
-		opts := []func(*dynamodb.Options){}
-		if config.Endpoint != "" {
-			opts = append(opts, func(dbOpts *dynamodb.Options) {
-				dbOpts.BaseEndpoint = aws.String(config.Endpoint)
-			})
-		}
-
-		mu.Lock()
-		client = dynamodb.NewFromConfig(cfg, opts...)
-		mu.Unlock()
-	})
-	return initErr
+// Client wraps the AWS DynamoDB SDK client.
+type Client struct {
+	db          *dynamodb.Client
+	maxParallel int // semaphore cap for batch operations
 }
 
-// Check if the DynamoDB client is initialized
-func IsInitialized() bool {
-	mu.RLock()
-	defer mu.RUnlock()
-	return client != nil
+// New creates and returns a new DynamoDB Client. Returns an error if the AWS
+// config cannot be loaded or the region is missing.
+func New(config Config) (*Client, error) {
+	if config.Region == "" {
+		return nil, fmt.Errorf("dynamodb: region is required")
+	}
+
+	ctx := context.Background()
+	var (
+		cfg aws.Config
+		err error
+	)
+
+	if config.AccessKey != "" && config.SecretKey != "" {
+		cfg, err = awsconfig.LoadDefaultConfig(
+			ctx,
+			awsconfig.WithRegion(config.Region),
+			awsconfig.WithCredentialsProvider(
+				credentials.NewStaticCredentialsProvider(config.AccessKey, config.SecretKey, ""),
+			),
+		)
+	} else {
+		cfg, err = awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(config.Region))
+	}
+
+	if err != nil {
+		logger.Error("dynamodb failed to load config", err)
+		return nil, WrapError(err, "New")
+	}
+
+	var opts []func(*dynamodb.Options)
+	if config.Endpoint != "" {
+		ep := config.Endpoint
+		opts = append(opts, func(o *dynamodb.Options) { o.BaseEndpoint = aws.String(ep) })
+	}
+
+	maxParallel := config.MaxConcurrentBatches
+	if maxParallel <= 0 {
+		maxParallel = 5
+	}
+	return &Client{db: dynamodb.NewFromConfig(cfg, opts...), maxParallel: maxParallel}, nil
 }
 
 const maxBatchSize = 25
 
-// Retrieves a single item or batch of items from DynamoDB
-func GetItem(
-	ctx context.Context,
-	tableName string,
-	key map[string]types.AttributeValue,
-	batch bool,
-	keys []map[string]types.AttributeValue,
-) (interface{}, error) {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return nil, WrapError(ErrClientNotInitialized, "GetItem")
+func (c *Client) BuildKey(
+	partitionKey string,
+	partitionValue any,
+	sortKey string,
+	sortValue any,
+) (map[string]types.AttributeValue, error) {
+	key := make(map[string]types.AttributeValue)
+
+	pkAttr, err := attributevalue.Marshal(partitionValue)
+	if err != nil {
+		logger.Error("failed to marshal partition key", err)
+		return nil, WrapError(err, "BuildKey marshal partition key")
 	}
-	if batch {
-		return batchGetItems(ctx, tableName, keys)
+	key[partitionKey] = pkAttr
+
+	if sortKey != "" && sortValue != nil {
+		skAttr, err := attributevalue.Marshal(sortValue)
+		if err != nil {
+			logger.Error("failed to marshal sort key", err)
+			return nil, WrapError(err, "BuildKey marshal sort key")
+		}
+		key[sortKey] = skAttr
 	}
-	return getItem(ctx, tableName, key)
+	return key, nil
 }
 
-// Retrieves and unmarshals item(s) into the provided output interface
-func GetItemAs(
+func (c *Client) GetItem(
 	ctx context.Context,
 	tableName string,
 	key map[string]types.AttributeValue,
 	batch bool,
 	keys []map[string]types.AttributeValue,
-	out interface{},
-) error {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return WrapError(ErrClientNotInitialized, "GetItemAs")
-	}
-
-	// batch flow
+) (any, error) {
 	if batch {
-		return batchGetItemsAs(ctx, tableName, keys, out)
+		return c.batchGetItems(ctx, tableName, keys)
+	}
+	return c.getItem(ctx, tableName, key)
+}
+
+func (c *Client) GetItemAs(
+	ctx context.Context,
+	tableName string,
+	key map[string]types.AttributeValue,
+	batch bool,
+	keys []map[string]types.AttributeValue,
+	out any,
+) error {
+	if batch {
+		return c.batchGetItemsAs(ctx, tableName, keys, out)
 	}
 
-	// single item flow
-	item, err := getItem(ctx, tableName, key)
+	item, err := c.getItem(ctx, tableName, key)
 	if err != nil {
 		logger.Error("failed to get item", err)
 		return WrapError(err, "GetItemAs get")
@@ -138,8 +160,7 @@ func GetItemAs(
 	return nil
 }
 
-// Writes a single item or batch of items to DynamoDB
-func WriteItem(
+func (c *Client) WriteItem(
 	ctx context.Context,
 	tableName string,
 	item map[string]types.AttributeValue,
@@ -147,31 +168,20 @@ func WriteItem(
 	items []map[string]types.AttributeValue,
 	condition *string,
 ) error {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return WrapError(ErrClientNotInitialized, "WriteItem")
-	}
 	if batch {
-		return batchWriteItems(ctx, tableName, items)
+		return c.batchWriteItems(ctx, tableName, items)
 	}
-	return putItem(ctx, tableName, item, condition)
+	return c.putItem(ctx, tableName, item, condition)
 }
 
-// Marshals and writes item(s) to DynamoDB
-func WriteItemFrom(
+func (c *Client) WriteItemFrom(
 	ctx context.Context,
 	tableName string,
-	item interface{},
+	item any,
 	batch bool,
-	items interface{},
+	items any,
 	condition *string,
 ) error {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return WrapError(ErrClientNotInitialized, "WriteItemFrom")
-	}
-
-	// batch flow
 	if batch {
 		av, err := attributevalue.MarshalList(items)
 		if err != nil {
@@ -187,20 +197,18 @@ func WriteItemFrom(
 				return WrapError(fmt.Errorf("item %d is not a map", i), "WriteItemFrom marshal batch items")
 			}
 		}
-		return batchWriteItems(ctx, tableName, avMaps)
+		return c.batchWriteItems(ctx, tableName, avMaps)
 	}
 
-	// single item flow
 	av, err := attributevalue.MarshalMap(item)
 	if err != nil {
 		logger.Error("failed to marshal item", err)
 		return WrapError(err, "WriteItemFrom marshal single item")
 	}
-	return putItem(ctx, tableName, av, condition)
+	return c.putItem(ctx, tableName, av, condition)
 }
 
-// Updates an item in DynamoDB
-func UpdateItem(
+func (c *Client) UpdateItem(
 	ctx context.Context,
 	tableName string,
 	key map[string]types.AttributeValue,
@@ -209,40 +217,31 @@ func UpdateItem(
 	exprNames map[string]string,
 	condition *string,
 ) (map[string]types.AttributeValue, error) {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return nil, WrapError(ErrClientNotInitialized, "UpdateItem")
-	}
-
-	updateInput := &dynamodb.UpdateItemInput{
+	input := &dynamodb.UpdateItemInput{
 		TableName:        aws.String(tableName),
 		Key:              key,
 		UpdateExpression: aws.String(updateExpr),
 		ReturnValues:     types.ReturnValueAllNew,
 	}
-
-	// optional params
 	if exprValues != nil {
-		updateInput.ExpressionAttributeValues = exprValues
+		input.ExpressionAttributeValues = exprValues
 	}
 	if exprNames != nil {
-		updateInput.ExpressionAttributeNames = exprNames
+		input.ExpressionAttributeNames = exprNames
 	}
 	if condition != nil {
-		updateInput.ConditionExpression = condition
+		input.ConditionExpression = condition
 	}
 
-	// Execute update item
-	result, err := client.UpdateItem(ctx, updateInput)
+	result, err := c.db.UpdateItem(ctx, input)
 	if err != nil {
 		logger.Error("failed to update item", err)
-		return nil, WrapError(err, "update item")
+		return nil, WrapError(err, "UpdateItem")
 	}
 	return result.Attributes, nil
 }
 
-// Updates and unmarshals the result into the provided output interface
-func UpdateItemAs(
+func (c *Client) UpdateItemAs(
 	ctx context.Context,
 	tableName string,
 	key map[string]types.AttributeValue,
@@ -250,15 +249,9 @@ func UpdateItemAs(
 	exprValues map[string]types.AttributeValue,
 	exprNames map[string]string,
 	condition *string,
-	out interface{},
+	out any,
 ) error {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return WrapError(ErrClientNotInitialized, "UpdateItemAs")
-	}
-
-	// Execute update item
-	attrs, err := UpdateItem(ctx, tableName, key, updateExpr, exprValues, exprNames, condition)
+	attrs, err := c.UpdateItem(ctx, tableName, key, updateExpr, exprValues, exprNames, condition)
 	if err != nil {
 		logger.Error("failed to update item", err)
 		return WrapError(err, "UpdateItemAs")
@@ -270,8 +263,7 @@ func UpdateItemAs(
 	return nil
 }
 
-// Deletes a single item or batch of items from DynamoDB
-func DeleteItem(
+func (c *Client) DeleteItem(
 	ctx context.Context,
 	tableName string,
 	key map[string]types.AttributeValue,
@@ -279,40 +271,8 @@ func DeleteItem(
 	keys []map[string]types.AttributeValue,
 	condition *string,
 ) error {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return WrapError(ErrClientNotInitialized, "DeleteItem")
-	}
 	if batch {
-		return batchDeleteItems(ctx, tableName, keys)
+		return c.batchDeleteItems(ctx, tableName, keys)
 	}
-	return deleteItem(ctx, tableName, key, condition)
-}
-
-// Creates a DynamoDB key from partition and optional sort key
-func BuildKey(
-	partitionKey string,
-	partitionValue interface{},
-	sortKey string,
-	sortValue interface{},
-) (map[string]types.AttributeValue, error) {
-	key := make(map[string]types.AttributeValue)
-
-	pkAttr, err := attributevalue.Marshal(partitionValue)
-	if err != nil {
-		logger.Error("failed to marshal partition key", err)
-		return nil, WrapError(err, "BuildKey marshal partition key")
-	}
-
-	key[partitionKey] = pkAttr
-
-	if sortKey != "" && sortValue != nil {
-		skAttr, err := attributevalue.Marshal(sortValue)
-		if err != nil {
-			logger.Error("failed to marshal sort key", err)
-			return nil, WrapError(err, "BuildKey marshal sort key")
-		}
-		key[sortKey] = skAttr
-	}
-	return key, nil
+	return c.deleteItem(ctx, tableName, key, condition)
 }

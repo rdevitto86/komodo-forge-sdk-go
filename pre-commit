@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VERSION_FILE="$(git rev-parse --show-toplevel)/VERSION"
+
+current=$(cat "$VERSION_FILE")
+IFS='.' read -r major minor patch <<< "$current"
+patch=$((patch + 1))
+new="${major}.${minor}.${patch}"
+
+printf '%s' "$new" > "$VERSION_FILE"
+git add "$VERSION_FILE"
+
+echo "sdk: ${current} → ${new}"

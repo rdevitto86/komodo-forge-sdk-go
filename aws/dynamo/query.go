@@ -2,7 +2,6 @@ package dynamo
 
 import (
 	"context"
-	"fmt"
 
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 
@@ -46,48 +45,38 @@ type ScanOutput struct {
 	Count            int32
 }
 
-// Queries DynamoDB and returns the result.
-func Query(ctx context.Context, input QueryInput) (*QueryOutput, error) {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return nil, WrapError(ErrClientNotInitialized, "Query")
-	}
-
-	queryInput := &dynamodb.QueryInput{
-		TableName: aws.String(input.TableName),
+func (c *Client) Query(ctx context.Context, input QueryInput) (*QueryOutput, error) {
+	q := &dynamodb.QueryInput{
+		TableName:              aws.String(input.TableName),
 		KeyConditionExpression: aws.String(input.KeyConditionExpression),
 	}
-
-	// Optional parameters
 	if input.IndexName != nil {
-		queryInput.IndexName = input.IndexName
+		q.IndexName = input.IndexName
 	}
 	if input.FilterExpression != nil {
-		queryInput.FilterExpression = input.FilterExpression
+		q.FilterExpression = input.FilterExpression
 	}
 	if input.ExpressionValues != nil {
-		queryInput.ExpressionAttributeValues = input.ExpressionValues
+		q.ExpressionAttributeValues = input.ExpressionValues
 	}
 	if input.ExpressionNames != nil {
-		queryInput.ExpressionAttributeNames = input.ExpressionNames
+		q.ExpressionAttributeNames = input.ExpressionNames
 	}
 	if input.Limit != nil {
-		queryInput.Limit = input.Limit
+		q.Limit = input.Limit
 	}
 	if input.ScanIndexForward != nil {
-		queryInput.ScanIndexForward = input.ScanIndexForward
+		q.ScanIndexForward = input.ScanIndexForward
 	}
 	if input.ExclusiveStartKey != nil {
-		queryInput.ExclusiveStartKey = input.ExclusiveStartKey
+		q.ExclusiveStartKey = input.ExclusiveStartKey
 	}
 
-	// Execute query
-	result, err := client.Query(ctx, queryInput)
+	result, err := c.db.Query(ctx, q)
 	if err != nil {
 		logger.Error("dynamodb failed to query", err)
 		return nil, WrapError(err, "Query")
 	}
-
 	return &QueryOutput{
 		Items:            result.Items,
 		LastEvaluatedKey: result.LastEvaluatedKey,
@@ -95,19 +84,11 @@ func Query(ctx context.Context, input QueryInput) (*QueryOutput, error) {
 	}, nil
 }
 
-// Unmarshals the query result into the provided output interface.
-func QueryAs(ctx context.Context, input QueryInput, out interface{}) (*QueryOutput, error) {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return nil, WrapError(ErrClientNotInitialized, "QueryAs")
-	}
-
-	// Execute query
-	result, err := Query(ctx, input)
-
+func (c *Client) QueryAs(ctx context.Context, input QueryInput, out any) (*QueryOutput, error) {
+	result, err := c.Query(ctx, input)
 	if err != nil {
 		logger.Error("dynamodb failed to query", err)
-		return nil, WrapError(err, "QueryAs query")
+		return nil, WrapError(err, "QueryAs")
 	}
 	if err := attributevalue.UnmarshalListOfMaps(result.Items, out); err != nil {
 		logger.Error("dynamodb failed to unmarshal items", err)
@@ -116,47 +97,31 @@ func QueryAs(ctx context.Context, input QueryInput, out interface{}) (*QueryOutp
 	return result, nil
 }
 
-// Queries DynamoDB and returns all items.
-func QueryAll(ctx context.Context, input QueryInput) ([]map[string]types.AttributeValue, error) {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return nil, WrapError(ErrClientNotInitialized, "QueryAll")
-	}
-
+func (c *Client) QueryAll(ctx context.Context, input QueryInput) ([]map[string]types.AttributeValue, error) {
 	var allItems []map[string]types.AttributeValue
 	var lastKey map[string]types.AttributeValue
 
 	for {
 		input.ExclusiveStartKey = lastKey
-
-		// Execute query
-		result, err := Query(ctx, input)
+		result, err := c.Query(ctx, input)
 		if err != nil {
 			logger.Error("dynamodb failed to query", err)
-			return nil, WrapError(err, "QueryAll query")
+			return nil, WrapError(err, "QueryAll")
 		}
-
 		allItems = append(allItems, result.Items...)
-
-		if result.LastEvaluatedKey == nil { break }
+		if result.LastEvaluatedKey == nil {
+			break
+		}
 		lastKey = result.LastEvaluatedKey
 	}
 	return allItems, nil
 }
 
-// Unmarshals the query result into the provided output interface.
-func QueryAllAs(ctx context.Context, input QueryInput, out interface{}) error {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return WrapError(ErrClientNotInitialized, "QueryAllAs")
-	}
-
-	// Execute query
-	items, err := QueryAll(ctx, input)
-
+func (c *Client) QueryAllAs(ctx context.Context, input QueryInput, out any) error {
+	items, err := c.QueryAll(ctx, input)
 	if err != nil {
 		logger.Error("dynamodb failed to query", err)
-		return WrapError(err, "QueryAllAs query")
+		return WrapError(err, "QueryAllAs")
 	}
 	if err = attributevalue.UnmarshalListOfMaps(items, out); err != nil {
 		logger.Error("dynamodb failed to unmarshal items", err)
@@ -165,43 +130,34 @@ func QueryAllAs(ctx context.Context, input QueryInput, out interface{}) error {
 	return nil
 }
 
-// Scans DynamoDB and returns the result.
-func Scan(ctx context.Context, input ScanInput) (*ScanOutput, error) {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return nil, WrapError(ErrClientNotInitialized, "Scan")
-	}
-
-	scanInput := &dynamodb.ScanInput{
+func (c *Client) Scan(ctx context.Context, input ScanInput) (*ScanOutput, error) {
+	s := &dynamodb.ScanInput{
 		TableName: aws.String(input.TableName),
 	}
-
 	if input.IndexName != nil {
-		scanInput.IndexName = input.IndexName
+		s.IndexName = input.IndexName
 	}
 	if input.FilterExpression != nil {
-		scanInput.FilterExpression = input.FilterExpression
+		s.FilterExpression = input.FilterExpression
 	}
 	if input.ExpressionValues != nil {
-		scanInput.ExpressionAttributeValues = input.ExpressionValues
+		s.ExpressionAttributeValues = input.ExpressionValues
 	}
 	if input.ExpressionNames != nil {
-		scanInput.ExpressionAttributeNames = input.ExpressionNames
+		s.ExpressionAttributeNames = input.ExpressionNames
 	}
 	if input.Limit != nil {
-		scanInput.Limit = input.Limit
+		s.Limit = input.Limit
 	}
 	if input.ExclusiveStartKey != nil {
-		scanInput.ExclusiveStartKey = input.ExclusiveStartKey
+		s.ExclusiveStartKey = input.ExclusiveStartKey
 	}
 
-	// Execute scan
-	result, err := client.Scan(ctx, scanInput)
+	result, err := c.db.Scan(ctx, s)
 	if err != nil {
 		logger.Error("dynamodb failed to scan", err)
 		return nil, WrapError(err, "Scan")
 	}
-
 	return &ScanOutput{
 		Items:            result.Items,
 		LastEvaluatedKey: result.LastEvaluatedKey,
@@ -209,20 +165,12 @@ func Scan(ctx context.Context, input ScanInput) (*ScanOutput, error) {
 	}, nil
 }
 
-// Unmarshals the scan result into the provided output interface.
-func ScanAs(ctx context.Context, input ScanInput, out interface{}) (*ScanOutput, error) {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return nil, WrapError(ErrClientNotInitialized, "ScanAs")
-	}
-
-	// Execute scan
-	result, err := Scan(ctx, input)
-
+func (c *Client) ScanAs(ctx context.Context, input ScanInput, out any) (*ScanOutput, error) {
+	result, err := c.Scan(ctx, input)
 	if err != nil {
 		logger.Error("dynamodb failed to scan", err)
-		return nil, WrapError(err, "ScanAs scan")
-	} 
+		return nil, WrapError(err, "ScanAs")
+	}
 	if err = attributevalue.UnmarshalListOfMaps(result.Items, out); err != nil {
 		logger.Error("dynamodb failed to unmarshal items", err)
 		return nil, WrapError(err, "ScanAs unmarshal")
@@ -230,47 +178,31 @@ func ScanAs(ctx context.Context, input ScanInput, out interface{}) (*ScanOutput,
 	return result, nil
 }
 
-// Scans DynamoDB and returns all items.
-func ScanAll(ctx context.Context, input ScanInput) ([]map[string]types.AttributeValue, error) {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return nil, WrapError(ErrClientNotInitialized, "ScanAll")
-	}
-
+func (c *Client) ScanAll(ctx context.Context, input ScanInput) ([]map[string]types.AttributeValue, error) {
 	var allItems []map[string]types.AttributeValue
 	var lastKey map[string]types.AttributeValue
 
 	for {
 		input.ExclusiveStartKey = lastKey
-
-		// Execute scan
-		result, err := Scan(ctx, input)
+		result, err := c.Scan(ctx, input)
 		if err != nil {
 			logger.Error("dynamodb failed to scan", err)
-			return nil, WrapError(err, "ScanAll scan")
+			return nil, WrapError(err, "ScanAll")
 		}
-
 		allItems = append(allItems, result.Items...)
-
-		if result.LastEvaluatedKey == nil { break }
+		if result.LastEvaluatedKey == nil {
+			break
+		}
 		lastKey = result.LastEvaluatedKey
 	}
 	return allItems, nil
 }
 
-// Unmarshals the scan result into the provided output interface.
-func ScanAllAs(ctx context.Context, input ScanInput, out interface{}) error {
-	if client == nil {
-		logger.Error("dynamodb client not initialized", fmt.Errorf("dynamodb client not initialized"))
-		return WrapError(ErrClientNotInitialized, "ScanAllAs")
-	}
-
-	// Execute scan
-	items, err := ScanAll(ctx, input)
-
+func (c *Client) ScanAllAs(ctx context.Context, input ScanInput, out any) error {
+	items, err := c.ScanAll(ctx, input)
 	if err != nil {
 		logger.Error("dynamodb failed to scan all", err)
-		return WrapError(err, "ScanAllAs scan")
+		return WrapError(err, "ScanAllAs")
 	}
 	if err = attributevalue.UnmarshalListOfMaps(items, out); err != nil {
 		logger.Error("dynamodb failed to unmarshal items", err)

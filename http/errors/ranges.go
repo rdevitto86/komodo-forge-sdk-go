@@ -22,6 +22,7 @@ const (
 	RangeReturns        = 42 // komodo-returns-api
 	RangeCart           = 43 // komodo-cart-api
 	RangeInventory      = 44 // komodo-inventory-api
+	RangeShipping       = 45 // komodo-shipping-api
 	RangePayment        = 50 // komodo-payments-api
 	RangeShopItem       = 60 // komodo-shop-items-api
 	RangeSearch         = 61 // komodo-search-api

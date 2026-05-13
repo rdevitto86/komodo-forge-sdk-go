@@ -5,6 +5,7 @@ import (
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -182,11 +183,10 @@ func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePa
 		}
 	}
 
-	// Sort patterns by specificity
+	// Sort patterns by specificity — more literal segments rank higher.
 	specificityScore := func(tpl string) int {
 		parts := strings.Split(strings.TrimPrefix(tpl, "/"), "/")
 		literal, wild := 0, 0
-
 		for _, p := range parts {
 			if p == "*" || strings.HasPrefix(p, ":") || (strings.HasPrefix(p, "{") && strings.HasSuffix(p, "}")) {
 				wild++
@@ -194,18 +194,73 @@ func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePa
 				literal++
 			}
 		}
-		return literal * 10 - wild
-	} // end
+		return literal*10 - wild
+	}
 
-	for i := 0; i < len(patterns); i++ {
-		for j := i + 1; j < len(patterns); j++ {
-			if specificityScore(patterns[j].template) > specificityScore(patterns[i].template) {
-				patterns[i], patterns[j] = patterns[j], patterns[i]
-			}
-		}
+	sort.SliceStable(patterns, func(i, j int) bool {
+		return specificityScore(patterns[i].template) > specificityScore(patterns[j].template)
+	})
+
+	if err := compileRulePatterns(cfg); err != nil {
+		return nil, nil, err
 	}
 
 	return cfg, patterns, nil
+}
+
+// compileRulePatterns pre-compiles all non-empty Pattern fields across every
+// rule in the config. This runs once at load time so eval hot paths can use
+// spec.compiled directly instead of calling regexp.Compile per request.
+func compileRulePatterns(cfg RuleConfig) error {
+	compile := func(pattern string) (*regexp.Regexp, error) {
+		if pattern == "" {
+			return nil, nil
+		}
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, fmt.Errorf("invalid pattern %q: %w", pattern, err)
+		}
+		return re, nil
+	}
+
+	for _, methods := range cfg {
+		for method, rule := range methods {
+			for name, spec := range rule.Headers {
+				re, err := compile(spec.Pattern)
+				if err != nil {
+					return fmt.Errorf("rules: header %q: %w", name, err)
+				}
+				spec.compiled = re
+				rule.Headers[name] = spec
+			}
+			for name, spec := range rule.PathParams {
+				re, err := compile(spec.Pattern)
+				if err != nil {
+					return fmt.Errorf("rules: path param %q: %w", name, err)
+				}
+				spec.compiled = re
+				rule.PathParams[name] = spec
+			}
+			for name, spec := range rule.QueryParams {
+				re, err := compile(spec.Pattern)
+				if err != nil {
+					return fmt.Errorf("rules: query param %q: %w", name, err)
+				}
+				spec.compiled = re
+				rule.QueryParams[name] = spec
+			}
+			for name, spec := range rule.Body {
+				re, err := compile(spec.Pattern)
+				if err != nil {
+					return fmt.Errorf("rules: body field %q: %w", name, err)
+				}
+				spec.compiled = re
+				rule.Body[name] = spec
+			}
+			methods[method] = rule
+		}
+	}
+	return nil
 }
 
 // Converts a route template into a regex string

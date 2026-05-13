@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"sync"
 
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 
@@ -16,12 +15,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-var (
-	client  *s3.Client
-	once    sync.Once
-	mu      sync.RWMutex
-	initErr error
-)
+// API is the interface for S3 operations.
+type API interface {
+	GetObject(ctx context.Context, bucket, key string) ([]byte, error)
+	GetObjectAs(ctx context.Context, bucket, key string, out any) error
+	PutObject(ctx context.Context, bucket, key string, data []byte, contentType string) error
+	DeleteObject(ctx context.Context, bucket, key string) error
+}
 
 type Config struct {
 	Region    string
@@ -30,74 +30,51 @@ type Config struct {
 	Endpoint  string
 }
 
-// Initialize the S3 client
-func Init(config Config) error {
-	once.Do(func() {
-		if config.Region == "" {
-			logger.Error("s3 region is required", fmt.Errorf("s3 region is required"))
-			initErr = fmt.Errorf("s3 region is required")
-			return
-		}
-
-		ctx := context.Background()
-		var cfg aws.Config
-
-		cfgOpts := []func(*awsconfig.LoadOptions) error{
-			awsconfig.WithRegion(config.Region),
-		}
-
-		if config.AccessKey != "" && config.SecretKey != "" {
-			cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(
-				credentials.NewStaticCredentialsProvider(
-					config.AccessKey,
-					config.SecretKey,
-					"",
-				),
-			))
-		} else if config.Endpoint != "" {
-			// For LocalStack, provide dummy credentials to avoid EC2 IMDS lookup
-			cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(
-				credentials.NewStaticCredentialsProvider("test", "test", ""),
-			))
-		}
-
-		cfg, initErr = awsconfig.LoadDefaultConfig(ctx, cfgOpts...)
-		if initErr != nil {
-			logger.Error("s3 failed to load config", initErr)
-			initErr = WrapError(initErr, "Init")
-			return
-		}
-
-		opts := []func(*s3.Options){}
-		if config.Endpoint != "" {
-			opts = append(opts, func(s3Opts *s3.Options) {
-				s3Opts.BaseEndpoint = aws.String(config.Endpoint)
-				s3Opts.UsePathStyle = true
-			})
-		}
-
-		mu.Lock()
-		client = s3.NewFromConfig(cfg, opts...)
-		mu.Unlock()
-	})
-	return initErr
+// Client wraps the AWS S3 SDK client.
+type Client struct {
+	s3 *s3.Client
 }
 
-// Check if the S3 client is initialized
-func IsInitialized() bool {
-	mu.RLock()
-	defer mu.RUnlock()
-	return client != nil
-}
-
-// Retrieves an object from S3 as raw bytes
-func GetObject(ctx context.Context, bucket string, key string) ([]byte, error) {
-	if client == nil {
-		logger.Error("s3 client not initialized", fmt.Errorf("s3 client not initialized"))
-		return nil, WrapError(ErrClientNotInitialized, "GetObject")
+// New creates and returns a new S3 Client.
+func New(config Config) (*Client, error) {
+	if config.Region == "" {
+		return nil, fmt.Errorf("s3: region is required")
 	}
 
-	result, err := client.GetObject(ctx, &s3.GetObjectInput{
+	cfgOpts := []func(*awsconfig.LoadOptions) error{
+		awsconfig.WithRegion(config.Region),
+	}
+	if config.AccessKey != "" && config.SecretKey != "" {
+		cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(config.AccessKey, config.SecretKey, ""),
+		))
+	} else if config.Endpoint != "" {
+		cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider("test", "test", ""),
+		))
+	}
+
+	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), cfgOpts...)
+	if err != nil {
+		logger.Error("s3 failed to load config", err)
+		return nil, WrapError(err, "New")
+	}
+
+	var opts []func(*s3.Options)
+	if config.Endpoint != "" {
+		ep := config.Endpoint
+		opts = append(opts, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(ep)
+			o.UsePathStyle = true
+		})
+	}
+
+	return &Client{s3: s3.NewFromConfig(cfg, opts...)}, nil
+}
+
+// GetObject retrieves an object from S3 as raw bytes.
+func (c *Client) GetObject(ctx context.Context, bucket, key string) ([]byte, error) {
+	result, err := c.s3.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 	})
@@ -115,9 +92,9 @@ func GetObject(ctx context.Context, bucket string, key string) ([]byte, error) {
 	return data, nil
 }
 
-// Retrieves an S3 object and unmarshals JSON into the provided output interface
-func GetObjectAs(ctx context.Context, bucket string, key string, out interface{}) error {
-	data, err := GetObject(ctx, bucket, key)
+// GetObjectAs retrieves an S3 object and unmarshals the JSON body into out.
+func (c *Client) GetObjectAs(ctx context.Context, bucket, key string, out any) error {
+	data, err := c.GetObject(ctx, bucket, key)
 	if err != nil {
 		return err
 	}
@@ -128,13 +105,8 @@ func GetObjectAs(ctx context.Context, bucket string, key string, out interface{}
 	return nil
 }
 
-// Uploads an object to S3
-func PutObject(ctx context.Context, bucket string, key string, data []byte, contentType string) error {
-	if client == nil {
-		logger.Error("s3 client not initialized", fmt.Errorf("s3 client not initialized"))
-		return WrapError(ErrClientNotInitialized, "PutObject")
-	}
-
+// PutObject uploads data to S3 at bucket/key with an optional contentType.
+func (c *Client) PutObject(ctx context.Context, bucket, key string, data []byte, contentType string) error {
 	input := &s3.PutObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
@@ -143,22 +115,16 @@ func PutObject(ctx context.Context, bucket string, key string, data []byte, cont
 	if contentType != "" {
 		input.ContentType = aws.String(contentType)
 	}
-
-	if _, err := client.PutObject(ctx, input); err != nil {
+	if _, err := c.s3.PutObject(ctx, input); err != nil {
 		logger.Error("failed to put s3 object", err)
 		return WrapError(err, "PutObject")
 	}
 	return nil
 }
 
-// Deletes an object from S3
-func DeleteObject(ctx context.Context, bucket string, key string) error {
-	if client == nil {
-		logger.Error("s3 client not initialized", fmt.Errorf("s3 client not initialized"))
-		return WrapError(ErrClientNotInitialized, "DeleteObject")
-	}
-
-	if _, err := client.DeleteObject(ctx, &s3.DeleteObjectInput{
+// DeleteObject removes an object from S3.
+func (c *Client) DeleteObject(ctx context.Context, bucket, key string) error {
+	if _, err := c.s3.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 	}); err != nil {

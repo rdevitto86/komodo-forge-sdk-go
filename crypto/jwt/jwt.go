@@ -26,6 +26,12 @@ func ValidateToken(tokenString string) (bool, error) {
 	return securejwt.ValidateToken(tokenString)
 }
 
+// ValidateAndParseClaims validates the token and returns its claims in a single parse.
+// Prefer this over ValidateToken + ParseClaims.
+func ValidateAndParseClaims(tokenString string) (*CustomClaims, error) {
+	return securejwt.ValidateAndParseClaims(tokenString)
+}
+
 // ParseClaims parses the token string and returns the embedded CustomClaims.
 func ParseClaims(tokenString string) (*CustomClaims, error) {
 	return securejwt.ParseClaims(tokenString)

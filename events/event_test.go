@@ -5,29 +5,34 @@ import (
 	"time"
 )
 
-// --- New ---
+// Publisher-defined constants — each service defines these locally.
+// Shown here to demonstrate the intended usage pattern.
+const (
+	evtOrderCreated   EventType = "order.created"
+	evtOrderCancelled EventType = "order.cancelled"
+	evtPaymentSuccess EventType = "payment.succeeded"
+	evtUserCreated    EventType = "user.created"
+
+	srcOrderAPI    Source = "komodo-order-api"
+	srcUserAPI     Source = "komodo-user-api"
+	srcPaymentsAPI Source = "komodo-payments-api"
+)
 
 func TestEvents_Envelope_New_Success(t *testing.T) {
 	before := time.Now().UTC()
 
-	evt := New(
-		EventOrderCreated,
-		SourceOrderAPI,
-		"order-123",
-		EntityOrder,
-		map[string]any{"amount": 99.99},
-	)
+	evt := New(evtOrderCreated, srcOrderAPI, "order-123", EntityOrder, map[string]any{"amount": 99.99})
 
 	after := time.Now().UTC()
 
 	if evt.ID == "" {
 		t.Error("expected non-empty event ID")
 	}
-	if evt.Type != EventOrderCreated {
-		t.Errorf("Type = %q, want %q", evt.Type, EventOrderCreated)
+	if evt.Type != evtOrderCreated {
+		t.Errorf("Type = %q, want %q", evt.Type, evtOrderCreated)
 	}
-	if evt.Source != SourceOrderAPI {
-		t.Errorf("Source = %q, want %q", evt.Source, SourceOrderAPI)
+	if evt.Source != srcOrderAPI {
+		t.Errorf("Source = %q, want %q", evt.Source, srcOrderAPI)
 	}
 	if evt.EntityID != "order-123" {
 		t.Errorf("EntityID = %q, want order-123", evt.EntityID)
@@ -50,7 +55,7 @@ func TestEvents_Envelope_New_Success(t *testing.T) {
 }
 
 func TestEvents_Envelope_New_NilPayload_Success(t *testing.T) {
-	evt := New(EventUserCreated, SourceUserAPI, "user-1", EntityUser, nil)
+	evt := New(evtUserCreated, srcUserAPI, "user-1", EntityUser, nil)
 
 	if evt.ID == "" {
 		t.Error("expected non-empty event ID")
@@ -61,29 +66,25 @@ func TestEvents_Envelope_New_NilPayload_Success(t *testing.T) {
 }
 
 func TestEvents_Envelope_New_UniqueIDs_Success(t *testing.T) {
-	evt1 := New(EventOrderCreated, SourceOrderAPI, "e1", EntityOrder, nil)
-	evt2 := New(EventOrderCreated, SourceOrderAPI, "e2", EntityOrder, nil)
+	evt1 := New(evtOrderCreated, srcOrderAPI, "e1", EntityOrder, nil)
+	evt2 := New(evtOrderCreated, srcOrderAPI, "e2", EntityOrder, nil)
 
 	if evt1.ID == evt2.ID {
 		t.Error("expected unique IDs for each event")
 	}
 }
 
-// --- WithCorrelation ---
-
 func TestEvents_Envelope_WithCorrelation_Success(t *testing.T) {
-	evt := New(EventPaymentSucceeded, SourcePaymentsAPI, "pay-1", EntityPayment, nil)
+	evt := New(evtPaymentSuccess, srcPaymentsAPI, "pay-1", EntityPayment, nil)
 
 	correlated := evt.WithCorrelation("corr-abc-123")
 
 	if correlated.CorrelationID != "corr-abc-123" {
 		t.Errorf("CorrelationID = %q, want corr-abc-123", correlated.CorrelationID)
 	}
-	// Original must be immutable (value copy).
 	if evt.CorrelationID != "" {
 		t.Errorf("original CorrelationID mutated to %q", evt.CorrelationID)
 	}
-	// Other fields must be preserved.
 	if correlated.ID != evt.ID {
 		t.Errorf("ID changed after WithCorrelation: %q vs %q", correlated.ID, evt.ID)
 	}
@@ -93,7 +94,7 @@ func TestEvents_Envelope_WithCorrelation_Success(t *testing.T) {
 }
 
 func TestEvents_Envelope_WithCorrelation_Empty_Success(t *testing.T) {
-	evt := New(EventOrderCancelled, SourceOrderAPI, "o-1", EntityOrder, nil)
+	evt := New(evtOrderCancelled, srcOrderAPI, "o-1", EntityOrder, nil)
 	correlated := evt.WithCorrelation("")
 
 	if correlated.CorrelationID != "" {
@@ -101,51 +102,10 @@ func TestEvents_Envelope_WithCorrelation_Empty_Success(t *testing.T) {
 	}
 }
 
-// --- EventType constants ---
-
-func TestEvents_EventType_Constants_Success(t *testing.T) {
-	all := []EventType{
-		EventOrderCreated, EventOrderStatusUpdated, EventOrderCancelled, EventOrderFulfilled,
-		EventUserCreated, EventUserProfileUpdated, EventUserDeleted,
-		EventPaymentInitiated, EventPaymentSucceeded, EventPaymentFailed, EventPaymentRefunded,
-		EventCartCheckedOut, EventInventoryReserved, EventInventoryReleased,
-	}
-	seen := make(map[EventType]bool)
-	for _, c := range all {
-		if string(c) == "" {
-			t.Errorf("EventType constant is empty: %v", c)
-		}
-		if seen[c] {
-			t.Errorf("duplicate EventType constant: %q", c)
-		}
-		seen[c] = true
-	}
-}
-
-// --- Source constants ---
-
-func TestEvents_Source_Constants_Success(t *testing.T) {
-	all := []Source{
-		SourceAuthAPI, SourceUserAPI, SourceOrderAPI, SourceCartAPI,
-		SourceInventoryAPI, SourcePaymentsAPI, SourceShopItemsAPI, SourceCommunicationsAPI,
-	}
-	seen := make(map[Source]bool)
-	for _, s := range all {
-		if string(s) == "" {
-			t.Errorf("Source constant is empty: %v", s)
-		}
-		if seen[s] {
-			t.Errorf("duplicate Source constant: %q", s)
-		}
-		seen[s] = true
-	}
-}
-
-// --- EntityType constants ---
-
 func TestEvents_EntityType_Constants_Success(t *testing.T) {
 	all := []EntityType{
-		EntityOrder, EntityUser, EntityPayment, EntityCart, EntityInventory, EntityProduct,
+		EntityOrder, EntityUser, EntityPayment, EntityCart,
+		EntityInventory, EntityProduct, EntityShipment, EntityReview,
 	}
 	seen := make(map[EntityType]bool)
 	for _, e := range all {

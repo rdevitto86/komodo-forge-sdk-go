@@ -132,6 +132,51 @@ func ValidateToken(tokenString string) (bool, error) {
 	return true, nil
 }
 
+// ValidateAndParseClaims validates signature, expiration, issuer, and audience in one parse,
+// and returns the embedded claims. Prefer this over ValidateToken + ParseClaims.
+func ValidateAndParseClaims(tokenString string) (*CustomClaims, error) {
+	if !keysInitialized {
+		return nil, fmt.Errorf("failed to validate token: jwt keys not initialized")
+	}
+
+	keyMutex.RLock()
+	pub := cachedPublicKey
+	keyMutex.RUnlock()
+
+	if iss == "" {
+		return nil, fmt.Errorf("missing jwt issuer")
+	}
+	if aud == "" {
+		return nil, fmt.Errorf("missing jwt audience")
+	}
+
+	token, err := jwt.ParseWithClaims(
+		tokenString,
+		&CustomClaims{},
+		func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
+			}
+			return pub, nil
+		},
+		jwt.WithIssuer(iss),
+		jwt.WithAudience(aud),
+		jwt.WithValidMethods([]string{"RS256"}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("verification failed: %w", err)
+	}
+	if !token.Valid {
+		return nil, fmt.Errorf("invalid token")
+	}
+
+	claims, ok := token.Claims.(*CustomClaims)
+	if !ok {
+		return nil, fmt.Errorf("invalid claims type")
+	}
+	return claims, nil
+}
+
 // Parses and returns claims from a token string
 func ParseClaims(tokenString string) (*CustomClaims, error) {
 	if !keysInitialized {

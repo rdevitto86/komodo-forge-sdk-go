@@ -3,18 +3,13 @@ package ratelimit
 import (
 	"context"
 	"os"
-	"sync"
 	"testing"
 	"time"
 )
 
 // resetState resets all package-level rate limiter state between tests.
 func resetState() {
-	rlOnce = sync.Once{}
-	evictOnce = sync.Once{}
-	rps = 0
-	burst = 0
-	buckets = sync.Map{}
+	ResetForTesting()
 }
 
 func TestRateLimit_Allow(t *testing.T) {
@@ -74,10 +69,7 @@ func TestRateLimit_Allow(t *testing.T) {
 		os.Setenv("ENV", "prod")
 		defer os.Unsetenv("ENV")
 
-		// This will call elasticache.AllowDistributed which will fail with no
-		// real elasticache connection, but exercises the prod/staging code path.
 		_, _, _ = Allow(context.Background(), "prod-key")
-		// We just verify no panic; result may be error from elasticache
 	})
 
 	t.Run("staging env attempts distributed rate limit (fails gracefully)", func(t *testing.T) {
@@ -99,7 +91,6 @@ func TestRateLimit_GetUsage(t *testing.T) {
 		os.Unsetenv("RATE_LIMIT_BURST")
 	}()
 
-	// Consume one token
 	Allow(context.Background(), "usage-key")
 
 	used, remaining, reset, err := GetUsage(context.Background(), "usage-key")
@@ -118,35 +109,30 @@ func TestRateLimit_GetUsage(t *testing.T) {
 }
 
 func TestRateLimit_GetUsage_NegativeUsed(t *testing.T) {
-	// When tokens > burstVal, usedF would be < 0 → should be clamped to 0
 	resetState()
 	os.Unsetenv("ENV")
 	os.Setenv("RATE_LIMIT_RPS", "100")
-	os.Setenv("RATE_LIMIT_BURST", "1") // burst=1
+	os.Setenv("RATE_LIMIT_BURST", "1")
 	defer func() {
 		os.Unsetenv("RATE_LIMIT_RPS")
 		os.Unsetenv("RATE_LIMIT_BURST")
 	}()
 
-	// Call Allow to initialize bucket
 	Allow(context.Background(), "neg-usage-key")
 
-	// Wait for token refill - with 100 RPS and 1 burst, after a tiny wait tokens could be > 1
-	// Instead, manually manipulate the bucket to have tokens > burst
 	v, ok := buckets.Load("neg-usage-key")
 	if !ok {
 		t.Skip("bucket not found, skipping negative usage test")
 	}
 	bkt := v.(*bucket)
 	bkt.mu.Lock()
-	bkt.tokens = 5 // Set tokens > burst (which is 1 after rlOnce runs)
+	bkt.tokens = 5 // tokens > burst (1) → usedF should be clamped to 0
 	bkt.mu.Unlock()
 
 	used, _, _, err := GetUsage(context.Background(), "neg-usage-key")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// usedF = burstVal - tokens = 1 - 5 = -4, should be clamped to 0
 	if used != 0 {
 		t.Errorf("used = %d, want 0 (clamped from negative)", used)
 	}
@@ -156,10 +142,8 @@ func TestRateLimit_Reset(t *testing.T) {
 	resetState()
 	os.Unsetenv("ENV")
 
-	// Create a bucket by calling Allow
 	Allow(context.Background(), "reset-key")
 
-	// Verify bucket exists
 	if _, ok := buckets.Load("reset-key"); !ok {
 		t.Error("bucket should exist before Reset")
 	}
@@ -169,7 +153,6 @@ func TestRateLimit_Reset(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 
-	// Verify bucket was removed
 	if _, ok := buckets.Load("reset-key"); ok {
 		t.Error("bucket should be removed after Reset")
 	}
@@ -178,11 +161,11 @@ func TestRateLimit_Reset(t *testing.T) {
 func TestRateLimit_LoadConfig(t *testing.T) {
 	t.Run("valid config sets rps and burst", func(t *testing.T) {
 		resetState()
-		cfg := Config{RPS: 50, Burst: 100}
-		err := LoadConfig(cfg)
+		err := LoadConfig(Config{RPS: 50, Burst: 100})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
+		rps, burst := rateConfig()
 		if rps != 50 {
 			t.Errorf("rps = %v, want 50", rps)
 		}
@@ -193,10 +176,9 @@ func TestRateLimit_LoadConfig(t *testing.T) {
 
 	t.Run("zero values do not override", func(t *testing.T) {
 		resetState()
-		rps = 5
-		burst = 15
-		cfg := Config{RPS: 0, Burst: 0}
-		LoadConfig(cfg)
+		cfgPtr.Store(&rlCfg{rps: 5, burst: 15})
+		LoadConfig(Config{RPS: 0, Burst: 0})
+		rps, burst := rateConfig()
 		if rps != 5 {
 			t.Errorf("rps should remain 5, got %v", rps)
 		}
@@ -207,9 +189,9 @@ func TestRateLimit_LoadConfig(t *testing.T) {
 
 	t.Run("partial config only sets provided fields", func(t *testing.T) {
 		resetState()
-		rps = 3
-		burst = 7
+		cfgPtr.Store(&rlCfg{rps: 3, burst: 7})
 		LoadConfig(Config{RPS: 25})
+		rps, burst := rateConfig()
 		if rps != 25 {
 			t.Errorf("rps = %v, want 25", rps)
 		}
@@ -239,6 +221,7 @@ func TestRateLimit_ShouldFailOpen(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			resetState()
 			os.Unsetenv("RATE_LIMIT_FAIL_OPEN")
 			if tc.setVal {
 				os.Setenv("RATE_LIMIT_FAIL_OPEN", tc.val)
@@ -286,7 +269,6 @@ func TestRateLimit_RateConfig_FromConfig(t *testing.T) {
 }
 
 func TestRateLimit_RateConfig_InvalidValues(t *testing.T) {
-	// invalid (non-positive) rps/burst fall back to defaults
 	resetState()
 	os.Setenv("RATE_LIMIT_RPS", "-5")
 	os.Setenv("RATE_LIMIT_BURST", "0")
@@ -305,8 +287,6 @@ func TestRateLimit_RateConfig_InvalidValues(t *testing.T) {
 }
 
 func TestRateLimit_BucketEvictor_Started(t *testing.T) {
-	// Calling Allow triggers getBucket which triggers evictOnce.Do(startBucketEvictor)
-	// This just ensures no panic occurs and the goroutine is launched.
 	resetState()
 	os.Unsetenv("ENV")
 	os.Setenv("RATE_LIMIT_BUCKET_TTL_SEC", "1")
@@ -319,7 +299,6 @@ func TestRateLimit_BucketEvictor_Started(t *testing.T) {
 }
 
 func TestRateLimit_GetBucket_Existing(t *testing.T) {
-	// Calling getBucket twice with same key returns same bucket
 	resetState()
 	b1 := getBucket("same-key")
 	b2 := getBucket("same-key")
@@ -329,7 +308,6 @@ func TestRateLimit_GetBucket_Existing(t *testing.T) {
 }
 
 func TestRateLimit_Allow_TokenRefill(t *testing.T) {
-	// Test the token refill branch in allow() when last is not zero
 	resetState()
 	os.Unsetenv("ENV")
 	os.Setenv("RATE_LIMIT_RPS", "100")
@@ -339,11 +317,9 @@ func TestRateLimit_Allow_TokenRefill(t *testing.T) {
 		os.Unsetenv("RATE_LIMIT_BURST")
 	}()
 
-	// First Allow: sets tokens = burst, consumes one
 	Allow(context.Background(), "refill-key")
-	Allow(context.Background(), "refill-key") // second call with elapsed > 0
+	Allow(context.Background(), "refill-key")
 
-	// After second call, elapsed > 0, tokens refilled
 	_, _, _, err := GetUsage(context.Background(), "refill-key")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -351,7 +327,6 @@ func TestRateLimit_Allow_TokenRefill(t *testing.T) {
 }
 
 func TestRateLimit_Allow_TokensCapAtBurst(t *testing.T) {
-	// Test that tokens are capped at burst during refill
 	resetState()
 	os.Unsetenv("ENV")
 	os.Setenv("RATE_LIMIT_RPS", "1000")
@@ -363,33 +338,27 @@ func TestRateLimit_Allow_TokensCapAtBurst(t *testing.T) {
 
 	Allow(context.Background(), "cap-key")
 
-	// Set the bucket's last time in the past to trigger large refill that would exceed burst
 	v, ok := buckets.Load("cap-key")
 	if !ok {
 		t.Skip("bucket not found")
 	}
 	bkt := v.(*bucket)
 	bkt.mu.Lock()
-	bkt.last = bkt.last.Add(-10 * time.Second) // 10 seconds ago → 1000 tokens refilled
+	bkt.last = bkt.last.Add(-10 * time.Second)
 	bkt.mu.Unlock()
 
-	// Call allow() - should refill but cap at burst
 	bkt.allow()
 }
 
 func TestRateLimit_BucketRetryAfter_ZeroRPS(t *testing.T) {
-	// retryAfter returns time.Second when rps <= 0
-	bkt := &bucket{}
 	resetState()
-	rps = 0
-	burst = 0
-	// Force rlOnce to be done so rateConfig returns 0
-	rlOnce.Do(func() {}) // no-op, rps/burst remain 0
+	// Store a zero-rps config so retryAfter returns the fallback duration.
+	cfgPtr.Store(&rlCfg{rps: 0, burst: 0})
+	cfgOnce.Do(func() {}) // mark once as done so loadCfg won't overwrite
 
+	bkt := &bucket{}
 	d := bkt.retryAfter()
-	if d.Seconds() != 1 {
-		// Note: after reset rps=0, but rateConfig's Do was called, so it returns 0
-		// retryAfter should return time.Second when rps<=0
-		_ = d // acceptable either way
+	if d != time.Second {
+		_ = d // acceptable — retryAfter returns time.Second when rps <= 0
 	}
 }

@@ -6,9 +6,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"time"
 )
+
+// DefaultTransport is a tuned *http.Transport used by NewClient when no
+// WithTransport option is supplied. Callers that need TLS customisation or
+// proxy support should supply their own via WithTransport.
+var DefaultTransport http.RoundTripper = &http.Transport{
+	MaxIdleConns:          100,
+	MaxIdleConnsPerHost:   20,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   10 * time.Second,
+	ResponseHeaderTimeout: 10 * time.Second,
+	DialContext: (&net.Dialer{
+		Timeout:   5 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).DialContext,
+}
 
 // Client wraps net/http.Client as the canonical HTTP transport for Komodo services.
 type Client struct {
@@ -27,20 +43,32 @@ func WithCircuitBreaker(cfg Config) Option {
 	}
 }
 
-// NewClient returns a Client with a 30s default timeout.
-// Callers with no options get a plain client with no circuit breaker overhead.
+// WithTransport replaces the underlying http.RoundTripper. Use this to supply
+// a custom TLS config, proxy, or test transport.
+func WithTransport(t http.RoundTripper) Option {
+	return func(c *Client) {
+		c.httpClient.Transport = t
+	}
+}
+
+// NewClient returns a Client with a 30s default timeout and DefaultTransport.
 func NewClient(opts ...Option) *Client {
 	c := &Client{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: DefaultTransport,
+		},
 	}
-	for _, o := range opts { o(c) }
+	for _, o := range opts {
+		o(c)
+	}
 	return c
 }
 
 // Do executes the request using the underlying http.Client.
 // When a circuit breaker is configured, failures (transport errors and 4xx/5xx
 // responses) are counted per req.URL.Host. If the breaker is open, Do returns
-// nil, circuitbreaker.ErrOpen without making a network call.
+// nil, ErrOpen without making a network call.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	if c.breaker == nil {
 		return c.httpClient.Do(req)
@@ -124,6 +152,10 @@ func PostJSON[T any](c *Client, ctx context.Context, url string, body any) (*T, 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		return nil, fmt.Errorf("client.PostJSON: %w", err)
+	}
+	// Set GetBody so the request can be replayed by redirects or retry logic.
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(bytes.NewReader(payload)), nil
 	}
 
 	req.Header.Set("Content-Type", "application/json")

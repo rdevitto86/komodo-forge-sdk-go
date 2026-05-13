@@ -20,14 +20,14 @@ const (
 
 func (s BreakerState) String() string {
 	switch s {
-		case BreakerClosed:
-			return "Closed"
-		case BreakerOpen:
-			return "Open"
-		case BreakerHalfOpen:
-			return "HalfOpen"
-		default:
-			return "Unknown"
+	case BreakerClosed:
+		return "Closed"
+	case BreakerOpen:
+		return "Open"
+	case BreakerHalfOpen:
+		return "HalfOpen"
+	default:
+		return "Unknown"
 	}
 }
 
@@ -50,6 +50,10 @@ type Config struct {
 	// Recommended default: 1.
 	MaxHalfOpenRequests int
 
+	// MaxHosts caps the number of tracked hosts. When the cap is reached, new
+	// hosts bypass the breaker entirely (fail open). 0 means unlimited.
+	MaxHosts int
+
 	// OnStateChange is called when a breaker for a key transitions state.
 	// nil means no-op.
 	OnStateChange func(key string, from, to BreakerState)
@@ -63,37 +67,62 @@ type breakerState struct {
 	openedAt         time.Time
 }
 
-type breaker struct {
-	cfg   Config
+// breakerEntry pairs per-host state with its own mutex so hosts don't
+// contend with each other.
+type breakerEntry struct {
 	mu    sync.Mutex
-	state map[string]*breakerState
+	state breakerState
+}
+
+type breaker struct {
+	cfg      Config
+	hosts    sync.Map // string → *breakerEntry
+	hostCount int     // approximate; protected by hostMu
+	hostMu   sync.Mutex
 }
 
 func newBreaker(cfg Config) *breaker {
-	return &breaker{
-		cfg:   cfg,
-		state: make(map[string]*breakerState),
-	}
+	return &breaker{cfg: cfg}
 }
 
-func (b *breaker) stateFor(key string) *breakerState {
-	s, ok := b.state[key]
-	if !ok {
-		s = &breakerState{}
-		b.state[key] = s
+func (b *breaker) entryFor(key string) (*breakerEntry, bool) {
+	if v, ok := b.hosts.Load(key); ok {
+		return v.(*breakerEntry), true
 	}
-	return s
+
+	// Check host cap before creating a new entry.
+	if b.cfg.MaxHosts > 0 {
+		b.hostMu.Lock()
+		if b.hostCount >= b.cfg.MaxHosts {
+			b.hostMu.Unlock()
+			return nil, false // caller must bypass breaker
+		}
+		b.hostCount++
+		b.hostMu.Unlock()
+	}
+
+	entry := &breakerEntry{}
+	actual, loaded := b.hosts.LoadOrStore(key, entry)
+	if loaded {
+		// Another goroutine stored first — decrement the counter we pre-incremented.
+		if b.cfg.MaxHosts > 0 {
+			b.hostMu.Lock()
+			b.hostCount--
+			b.hostMu.Unlock()
+		}
+	}
+	return actual.(*breakerEntry), true
 }
 
-func (b *breaker) transition(key string, s *breakerState, to BreakerState) {
-	from := s.state
-	s.state = to
-	s.failures = 0
-	s.successes = 0
-	s.halfOpenInFlight = 0
+func (b *breaker) transition(key string, e *breakerEntry, to BreakerState) {
+	from := e.state.state
+	e.state.state = to
+	e.state.failures = 0
+	e.state.successes = 0
+	e.state.halfOpenInFlight = 0
 
 	if to == BreakerOpen {
-		s.openedAt = time.Now()
+		e.state.openedAt = time.Now()
 	}
 	if b.cfg.OnStateChange != nil {
 		b.cfg.OnStateChange(key, from, to)
@@ -101,61 +130,84 @@ func (b *breaker) transition(key string, s *breakerState, to BreakerState) {
 }
 
 func (b *breaker) execute(key string, fn func() error) error {
-	b.mu.Lock()
-	s := b.stateFor(key)
+	entry, ok := b.entryFor(key)
+	if !ok {
+		// Host cap exceeded — bypass breaker.
+		return fn()
+	}
+
+	entry.mu.Lock()
+	s := &entry.state
 
 	switch s.state {
-		case BreakerOpen:
-			if time.Since(s.openedAt) < b.cfg.OpenTimeout {
-				b.mu.Unlock()
-				return ErrOpen
-			}
-			b.transition(key, s, BreakerHalfOpen)
-			fallthrough
+	case BreakerOpen:
+		if time.Since(s.openedAt) < b.cfg.OpenTimeout {
+			entry.mu.Unlock()
+			return ErrOpen
+		}
+		b.transition(key, entry, BreakerHalfOpen)
+		fallthrough
 
-		case BreakerHalfOpen:
-			if s.halfOpenInFlight >= b.cfg.MaxHalfOpenRequests {
-				b.mu.Unlock()
-				return ErrOpen
-			}
+	case BreakerHalfOpen:
+		if s.halfOpenInFlight >= b.cfg.MaxHalfOpenRequests {
+			entry.mu.Unlock()
+			return ErrOpen
+		}
+		s.halfOpenInFlight++
+		entry.mu.Unlock()
 
-			s.halfOpenInFlight++
-			b.mu.Unlock()
+		err := fn()
 
-			err := fn()
-
-			b.mu.Lock()
-			s.halfOpenInFlight--
-
-			if err != nil {
-				b.transition(key, s, BreakerOpen)
-				b.mu.Unlock()
-				return err
-			}
-
-			s.successes++
-			if s.successes >= b.cfg.SuccessThreshold {
-				b.transition(key, s, BreakerClosed)
-			}
-
-			b.mu.Unlock()
-			return nil
+		entry.mu.Lock()
+		s.halfOpenInFlight--
+		if err != nil {
+			b.transition(key, entry, BreakerOpen)
+			entry.mu.Unlock()
+			return err
+		}
+		s.successes++
+		if s.successes >= b.cfg.SuccessThreshold {
+			b.transition(key, entry, BreakerClosed)
+		}
+		entry.mu.Unlock()
+		return nil
 
 	// BreakerClosed
 	default:
-		b.mu.Unlock()
+		entry.mu.Unlock()
 
 		err := fn()
-		if err == nil { return nil }
-
-		b.mu.Lock()
-		s.failures++
-
-		if s.failures >= b.cfg.FailureThreshold {
-			b.transition(key, s, BreakerOpen)
+		if err == nil {
+			return nil
 		}
 
-		b.mu.Unlock()
+		entry.mu.Lock()
+		s.failures++
+		if s.failures >= b.cfg.FailureThreshold {
+			b.transition(key, entry, BreakerOpen)
+		}
+		entry.mu.Unlock()
 		return err
 	}
+}
+
+// Prune removes closed, zero-failure entries from the host map, reclaiming
+// memory for hosts that are no longer actively failing. Call periodically
+// from application code if the service contacts many distinct hosts.
+func (b *breaker) Prune() {
+	b.hosts.Range(func(k, v any) bool {
+		e := v.(*breakerEntry)
+		e.mu.Lock()
+		removable := e.state.state == BreakerClosed && e.state.failures == 0
+		e.mu.Unlock()
+		if removable {
+			b.hosts.Delete(k)
+			if b.cfg.MaxHosts > 0 {
+				b.hostMu.Lock()
+				b.hostCount--
+				b.hostMu.Unlock()
+			}
+		}
+		return true
+	})
 }

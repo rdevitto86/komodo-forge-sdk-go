@@ -3,72 +3,101 @@ package elasticache
 import (
 	"context"
 	"fmt"
-	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 	"strconv"
-	"sync"
 	"time"
+
+	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 
 	"github.com/redis/go-redis/v9"
 )
 
-var (
-	client   *redis.Client
-	initOnce sync.Once
-	initErr  error
-)
+// API is the interface for ElastiCache/Redis operations.
+type API interface {
+	Get(ctx context.Context, key string) (string, error)
+	Set(ctx context.Context, key string, value string, ttl int64) error
+	Delete(ctx context.Context, key string) error
+	Close() error
+	AllowDistributed(ctx context.Context, key string, rate, burst float64, ttlSec int) (bool, time.Duration, error)
+}
 
 type Config struct {
-	Endpoint    string
-	Password    string
-	DB          string
+	Endpoint string
+	Password string
+	DB       int
 }
 
-// Initialize Elasticache/Redis client with provided config
-func Init(cfg Config) error {
-	initOnce.Do(func() {
-		logger.Info("initializing elasticache client")
-
-		if cfg.Endpoint == "" {
-			logger.Error("elasticache endpoint not provided", fmt.Errorf("elasticache endpoint not provided"))
-			initErr = fmt.Errorf("elasticache endpoint not provided")
-			return
-		}
-
-		// Create redis client
-		client = redis.NewClient(&redis.Options{
-			Addr: cfg.Endpoint,
-			Password: cfg.Password,
-			DB: func() int { db, _ := strconv.Atoi(cfg.DB); return db }(),
-		})
-
-		// Ping with timeout to verify connectivity
-		ctx, cancel := context.WithTimeout(context.Background(), 3 * time.Second)
-		defer cancel()
-
-		if err := client.Ping(ctx).Err(); err != nil {
-			logger.Error("failed to ping elasticache", err)
-			initErr = err
-			return
-		}
-
-		logger.Info("elasticache client initialized successfully")
-	})
-	return initErr
+// Client wraps a Redis client for ElastiCache.
+type Client struct {
+	rc *redis.Client
 }
 
-// Get retrieves the string value stored at key
-func Get(key string) (string, error) {
-	if client == nil {
-		logger.Error("elasticache client not initialized", fmt.Errorf("elasticache client not initialized"))
-		return "", fmt.Errorf("elasticache client not initialized")
+// New creates a Client and pings the endpoint to verify connectivity.
+func New(cfg Config) (*Client, error) {
+	if cfg.Endpoint == "" {
+		return nil, fmt.Errorf("elasticache: endpoint is required")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2 * time.Second)
+	rc := redis.NewClient(&redis.Options{
+		Addr:     cfg.Endpoint,
+		Password: cfg.Password,
+		DB:       cfg.DB,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	val, err := client.Get(ctx, key).Result()
+	if err := rc.Ping(ctx).Err(); err != nil {
+		logger.Error("failed to ping elasticache", err)
+		return nil, fmt.Errorf("elasticache: ping failed: %w", err)
+	}
+
+	logger.Info("elasticache client initialized")
+	return &Client{rc: rc}, nil
+}
+
+// NewFromString creates a Client from a Redis connection URL (redis://:password@host:port/db).
+func NewFromString(connStr string) (*Client, error) {
+	opts, err := redis.ParseURL(connStr)
+	if err != nil {
+		return nil, fmt.Errorf("elasticache: invalid connection string: %w", err)
+	}
+
+	rc := redis.NewClient(opts)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	if err := rc.Ping(ctx).Err(); err != nil {
+		logger.Error("failed to ping elasticache", err)
+		return nil, fmt.Errorf("elasticache: ping failed: %w", err)
+	}
+
+	logger.Info("elasticache client initialized from connection string")
+	return &Client{rc: rc}, nil
+}
+
+// NewFromDBString creates a Client from discrete string fields for callers
+// still carrying a legacy string-typed DB value.
+func NewFromDBString(endpoint, password, dbStr string) (*Client, error) {
+	db, _ := strconv.Atoi(dbStr)
+	return New(Config{Endpoint: endpoint, Password: password, DB: db})
+}
+
+// withTimeout wraps ctx in a 2s deadline only when ctx has no deadline set.
+func withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	if _, ok := ctx.Deadline(); ok {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, 2*time.Second)
+}
+
+// Get retrieves the string value stored at key. Returns ("", nil) on cache miss.
+func (c *Client) Get(ctx context.Context, key string) (string, error) {
+	ctx, cancel := withTimeout(ctx)
+	defer cancel()
+
+	val, err := c.rc.Get(ctx, key).Result()
 	if err == redis.Nil {
-		logger.Warn("cache item not found")
 		return "", nil
 	}
 	if err != nil {
@@ -78,14 +107,9 @@ func Get(key string) (string, error) {
 	return val, nil
 }
 
-// Set stores a value with the provided TTL (in seconds). Use ttl=0 for no expiration
-func Set(key string, value string, ttl int64) error {
-	if client == nil {
-		logger.Error("elasticache client not initialized", fmt.Errorf("elasticache client not initialized"))
-		return fmt.Errorf("elasticache client not initialized")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2 * time.Second)
+// Set stores a value with the given TTL in seconds. Use ttl=0 for no expiration.
+func (c *Client) Set(ctx context.Context, key string, value string, ttl int64) error {
+	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 
 	var dur time.Duration
@@ -93,37 +117,28 @@ func Set(key string, value string, ttl int64) error {
 		dur = time.Duration(ttl) * time.Second
 	}
 
-	if err := client.Set(ctx, key, value, dur).Err(); err != nil {
+	if err := c.rc.Set(ctx, key, value, dur).Err(); err != nil {
 		logger.Error("failed to set cache item", err)
 		return err
 	}
 	return nil
 }
 
-// Delete removes a key from the cache
-func Delete(key string) error {
-	if client == nil {
-		logger.Error("elasticache client not initialized", fmt.Errorf("elasticache client not initialized"))
-		return fmt.Errorf("elasticache client not initialized")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 2 * time.Second)
+// Delete removes a key from the cache.
+func (c *Client) Delete(ctx context.Context, key string) error {
+	ctx, cancel := withTimeout(ctx)
 	defer cancel()
 
-	if err := client.Del(ctx, key).Err(); err != nil {
+	if err := c.rc.Del(ctx, key).Err(); err != nil {
 		logger.Error("failed to delete cache item", err)
 		return err
 	}
 	return nil
 }
 
-// Close closes the Elasticache client connection
-func Close() error {
-	if client == nil {
-		logger.Warn("elasticache client not initialized - skipping close")
-		return nil
-	}
-	return client.Close()
+// Close closes the underlying Redis connection.
+func (c *Client) Close() error {
+	return c.rc.Close()
 }
 
 // token bucket Lua script (atomic): returns {allowed, wait_ms}
@@ -163,40 +178,29 @@ redis.call('EXPIRE', KEYS[1], ttl)
 return {allowed, tostring(wait_ms)}
 `)
 
-// AllowDistributed attempts to consume a token from a distributed token bucket
-// Returns (allowed, retryAfter, error)
-func AllowDistributed(ctx context.Context, key string, rate, burst float64, ttlSec int) (bool, time.Duration, error) {
-	if client == nil {
-		logger.Error("elasticache client not initialized", fmt.Errorf("elasticache client not initialized"))
-		return false, 0, fmt.Errorf("elasticache client not initialized")
-	}
-
+// Attempts to consume a token from a distributed token bucket.
+// Returns (allowed, retryAfter, error).
+func (c *Client) AllowDistributed(ctx context.Context, key string, rate, burst float64, ttlSec int) (bool, time.Duration, error) {
 	now := time.Now().UnixMilli()
-	res, err := tokenBucketScript.Run(ctx, client, []string{key}, now, rate, burst, 1, ttlSec).Result()
+	res, err := tokenBucketScript.Run(ctx, c.rc, []string{key}, now, rate, burst, 1, ttlSec).Result()
 	if err != nil {
 		logger.Error("failed to execute token bucket script", err)
 		return false, 0, err
 	}
 
-	// Script returns [allowed, wait_ms]
 	arr, ok := res.([]interface{})
 	if !ok || len(arr) < 2 {
-		logger.Error("unexpected script result", fmt.Errorf("unexpected result: %v", res))
-		return false, 0, fmt.Errorf("unexpected script result")
+		return false, 0, fmt.Errorf("elasticache: unexpected script result: %v", res)
 	}
 
-	// Parse allowed (may be number or string)
 	var allowed bool
 	switch v := arr[0].(type) {
 		case int64:
 			allowed = v == 1
 		case string:
 			allowed = v == "1"
-		default:
-			allowed = false
 	}
 
-	// Parse wait time
 	var waitMs int64
 	switch v := arr[1].(type) {
 		case int64:

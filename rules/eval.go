@@ -9,7 +9,6 @@ import (
 	httpReq "github.com/rdevitto86/komodo-forge-sdk-go/http/request"
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -131,10 +130,10 @@ func areValidHeaders(req *http.Request, rule *EvalRule) bool {
 		if val == "" { continue }
 
 		// Check exact value match if specified
-		if spec.Value != "" {
+		if valStr, _ := spec.Value.(string); valStr != "" {
 			// Support wildcard matching for "Bearer *" etc
-			if spec.Value[len(spec.Value)-1] == '*' {
-				prefix := spec.Value[:len(spec.Value)-1]
+			if valStr[len(valStr)-1] == '*' {
+				prefix := valStr[:len(valStr)-1]
 				if !strings.HasPrefix(val, prefix) {
 					logger.Error(
 						fmt.Sprintf("header %q value %q does not match required prefix %q", hName, val, prefix),
@@ -142,25 +141,22 @@ func areValidHeaders(req *http.Request, rule *EvalRule) bool {
 					)
 					return false
 				}
-			} else if val != spec.Value {
+			} else if val != valStr {
 				logger.Error(
-					fmt.Sprintf("header %q value %q does not match required value %q", hName, val, spec.Value),
+					fmt.Sprintf("header %q value %q does not match required value %q", hName, val, valStr),
 					fmt.Errorf("header value mismatch"),
 				)
 				return false
 			}
 		}
 
-		// if pattern provided, verify
-		if spec.Pattern != "" {
-			re, err := regexp.Compile(spec.Pattern)
-			if err != nil || !re.MatchString(val) {
-				logger.Error(
-					fmt.Sprintf("header %q value %q does not match pattern %q", hName, val, spec.Pattern),
-					fmt.Errorf("header pattern mismatch"),
-				)
-				return false
-			}
+		// Use pre-compiled pattern (compiled at config load time).
+		if spec.compiled != nil && !spec.compiled.MatchString(val) {
+			logger.Error(
+				fmt.Sprintf("header %q value %q does not match pattern %q", hName, val, spec.Pattern),
+				fmt.Errorf("header pattern mismatch"),
+			)
+			return false
 		}
 
 		// enum check
@@ -243,16 +239,13 @@ func areValidPathParams(req *http.Request, rule *EvalRule) bool {
 			continue
 		}
 
-		// pattern check
-		if spec.Pattern != "" {
-			re, err := regexp.Compile(spec.Pattern)
-			if err != nil || !re.MatchString(val) {
-				logger.Error(
-					fmt.Sprintf("path param %q value %q does not match pattern %q", name, val, spec.Pattern),
-					fmt.Errorf("path param pattern mismatch"),
-				)
-				return false
-			}
+		// Use pre-compiled pattern (compiled at config load time).
+		if spec.compiled != nil && !spec.compiled.MatchString(val) {
+			logger.Error(
+				fmt.Sprintf("path param %q value %q does not match pattern %q", name, val, spec.Pattern),
+				fmt.Errorf("path param pattern mismatch"),
+			)
+			return false
 		}
 
 		// enum check
@@ -330,15 +323,13 @@ func areValidQueryParams(req *http.Request, rule *EvalRule) bool {
 			continue
 		}
 
-		if spec.Pattern != "" {
-			re, err := regexp.Compile(spec.Pattern)
-			if err != nil || !re.MatchString(val) {
-				logger.Error(
-					fmt.Sprintf("query param %q value %q does not match pattern %q", name, val, spec.Pattern),
-					fmt.Errorf("query param pattern mismatch"),
-				)
-				return false
-			}
+		// Use pre-compiled pattern (compiled at config load time).
+		if spec.compiled != nil && !spec.compiled.MatchString(val) {
+			logger.Error(
+				fmt.Sprintf("query param %q value %q does not match pattern %q", name, val, spec.Pattern),
+				fmt.Errorf("query param pattern mismatch"),
+			)
+			return false
 		}
 
 		if len(spec.Enum) > 0 {

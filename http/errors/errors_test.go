@@ -147,6 +147,24 @@ func TestError_WithOverrides(t *testing.T) {
 	}
 }
 
+func TestAPIError_WithDetail(t *testing.T) {
+	e := &APIError{Service: "komodo-auth-api", Code: "20001", Message: "unauthorized", Detail: "token expired"}
+	got := e.Error()
+	want := "komodo-auth-api [20001] unauthorized: token expired"
+	if got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}
+
+func TestAPIError_WithoutDetail(t *testing.T) {
+	e := &APIError{Service: "komodo-auth-api", Code: "20001", Message: "unauthorized"}
+	got := e.Error()
+	want := "komodo-auth-api [20001] unauthorized"
+	if got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}
+
 func TestCodeID(t *testing.T) {
 	tests := []struct {
 		rangeRoot int

@@ -6,11 +6,21 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.10.4]
+
+### Changed
+
+- **`aws/dynamodb` — package renamed** (`aws/dynamo/` → `aws/dynamodb/`) — directory and package declaration renamed from `dynamo` to `dynamodb` to match the official AWS service name. Import path is now `github.com/rdevitto86/komodo-forge-sdk-go/aws/dynamodb`.
+- **`README.md`** — corrected `http/client` option list: `WithTimeout` (non-existent) replaced with `WithCircuitBreaker`; updated `aws/dynamodb` import path.
+- **`TODO.md`** — removed completed `api/circuitbreaker` stub items (circuit breaker is fully implemented in `http/client`); retained the Komodo service wiring item under `http/client — circuit breaker wiring`.
+
+---
+
 ## [0.10.3]
 
 ### Changed
 
-- **Codebase-wide error message cleanup** — removed service-name prefixes (`"sqs: ..."`, `"events: ..."`, etc.) from all `fmt.Errorf` calls and `logger` calls across `aws/sqs`, `aws/sns`, `aws/dynamo`, `aws/elasticache`, `aws/secretsmanager`, `events`, `http/ratelimit`, and `rules`. Messages now read as actions (`"failed to receive message: ..."`) rather than repeating the package name.
+- **Codebase-wide error message cleanup** — removed service-name prefixes (`"sqs: ..."`, `"events: ..."`, etc.) from all `fmt.Errorf` calls and `logger` calls across `aws/sqs`, `aws/sns`, `aws/dynamodb`, `aws/elasticache`, `aws/secretsmanager`, `events`, `http/ratelimit`, and `rules`. Messages now read as actions (`"failed to receive message: ..."`) rather than repeating the package name.
 - **`Makefile` — `release` target** — `make release` now reads `VERSION`, creates the git tag, and pushes it to origin in one step.
 - **`README.md`** — corrected package paths, API signatures, and package inventory to match current SDK state.
 - **`CHANGELOG.md`** — corrected version entries to accurately reflect what shipped in each tag.
@@ -44,7 +54,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   - `rps` and `burst` package vars replaced with `atomic.Pointer[rlCfg]`. `LoadConfig` atomically stores a new config; `loadCfg` atomically loads — eliminates the data race between concurrent `LoadConfig` writes and `allow`/`retryAfter` reads.
   - Added `ResetForTesting()` to reset all atomic and `sync.Once` state between tests; updated test suite to use it.
 
-- **`aws/dynamo` — parallel batch operations** (`aws/dynamo/client.go`, `aws/dynamo/operations.go`)
+- **`aws/dynamodb` — parallel batch operations** (`aws/dynamo/client.go`, `aws/dynamo/operations.go`)
   - Added `MaxConcurrentBatches int` to `Config` (default 5 when 0; set to 1 to restore serial behaviour).
   - `batchGetItems`, `batchWriteItems`, and `batchDeleteItems` dispatch 25-item chunks in parallel using goroutines bounded by a semaphore channel. Results for `batchGetItems` are pre-allocated by chunk index and merged in order.
   - Single-chunk inputs skip the goroutine overhead entirely.

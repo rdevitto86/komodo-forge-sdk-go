@@ -51,11 +51,11 @@ rules.RuleValidationMiddleware(next http.Handler) http.Handler
 
 ## AWS Packages
 
-### `aws/dynamo`
+### `aws/dynamodb`
 DynamoDB client with typed CRUD, query/scan helpers, and parallel batch operations.
 
 ```go
-c, err := dynamo.New(config)
+c, err := dynamodb.New(config)
 c.BuildKey(pk, pv, sk, sv)
 c.GetItem(ctx, table, key, batch, keys)
 c.GetItemAs(ctx, table, key, batch, keys, &out)
@@ -174,7 +174,7 @@ s.Subscribe(ctx, func(ctx context.Context, event events.Event) error { ... })
 HTTP client with circuit breaker, tuned transport, and typed JSON helpers.
 
 ```go
-c := client.NewClient(opts...)                        // options: WithTimeout, WithTransport, etc.
+c := client.NewClient(opts...)                        // options: WithCircuitBreaker, WithTransport
 client.GetJSON[T](c, ctx, url)                        // returns (*T, error)
 client.PostJSON[T](c, ctx, url, body)                 // returns (*T, error)
 ```

@@ -13,7 +13,7 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **M** Query builder helpers (select, insert, update, delete)
 - [ ] **M** AWS Aurora-specific error wrapping
 
-### `aws/dynamo`
+### `aws/dynamodb`
 - [ ] **H** Retry logic for unprocessed items in batch write/delete
 - [ ] **H** Transaction support (`TransactWriteItems`, `TransactGetItems`)
 - [ ] **M** Conditional expression helpers beyond raw strings
@@ -72,10 +72,8 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 ### `security/encryption`
 - [ ] **H** Implement encryption package (`encryption.go` is empty stub)
 
-### `api/circuitbreaker`
-- [ ] **H** Implement circuit breaker (`breaker.go` is empty stub)
-- [ ] **M** Configurable failure threshold, half-open state probe, exponential backoff, fallback to degraded mode (cache-only, async queue, or fail-fast with clear error codes)
-- [ ] **M** Document and wire into the following Komodo call sites once implemented:
+### `http/client` — circuit breaker wiring
+- [ ] **M** Wire `WithCircuitBreaker` into the following Komodo call sites:
   - **komodo-auth-api**: ElastiCache token revocation checks (`oauth_token_handler.go:173`)
   - **komodo-cart-api**: `shop-items-api` (product snapshots), `shop-inventory-api` (stock holds)
   - **komodo-support-api**: Anthropic Haiku LLM calls (`anthropic.go:39`)
@@ -335,7 +333,7 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 
 ### Latency / performance
 
-- [ ] **H** `aws/dynamo/query.go:100-117, 181-198` `QueryAll`/`ScanAll` accumulate all items into a single in-memory slice with no limit. Add a streaming iterator (`Next() bool` / `Item()`) and a `MaxItems` guard to prevent OOM on large tables.
+- [ ] **H** `aws/dynamodb/query.go:100-117, 181-198` `QueryAll`/`ScanAll` accumulate all items into a single in-memory slice with no limit. Add a streaming iterator (`Next() bool` / `Item()`) and a `MaxItems` guard to prevent OOM on large tables.
 - [ ] **H** AWS clients (`dynamo`, `s3`, `sns`, `sqs`, `secretsmanager`, `elasticache`) each call `awsconfig.LoadDefaultConfig` independently — a service wiring 5+ clients pays 5+ IMDS/STS resolutions on cold start. Provide a shared `aws.Config` factory or accept an `aws.Config` in each `New()`.
 - [ ] **M** `http/redaction/redaction.go:9-14` PII regex with multiple alternation groups runs on every log key/value pair. Benchmark; consider splitting into anchored sub-expressions or a string-scan fast path.
 

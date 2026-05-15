@@ -6,6 +6,43 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.11.0]
+
+### Added
+
+- **`api/adapters/` — SDK adapters for Komodo internal services.** New top-level package housing outbound HTTP clients for sibling services. Cross-cutting conventions documented in `api/adapters/README.md`:
+  - **Per-client API version.** `NewClient(baseURL string, ver int) (*Client, error)` builds URLs as `baseURL + "/v" + ver + path`. Constructor rejects empty `baseURL` and any `ver` outside the package-level `supportedVersions` set. One process can hold multiple `*Client` values targeting different versions of the same service for rolling migration.
+  - **Per-client base URL.** Fixed at construction; per-call override is intentionally not supported. Canary / blue-green routing belongs at the LB / service-mesh layer.
+  - **Two-layer surface.** Hand-curated typed methods (e.g. `comms.SendOTP`) for high-level operations + `Raw() *httpc.Client` escape hatch for routes not yet covered. Adapters stay thin — retry / timeout / circuit-breaker remain in `http/client`.
+  - **Hand-curated typed-method registry.** Typed methods are added per consuming-service demand, not generated. Codegen (when it lands) emits low-level types + raw HTTP calls; the typed layer on top is the deliberate consumer surface.
+- **`api/adapters/v1/communications/` — reference implementation.** Full typed surface with `SendEmail` and `SendOTP` (encapsulates the `"otp-request"` template ID). Unblocks `komodo-auth-api` OTP delivery — `handlers.CommsClient` satisfied by `*comms.Client`.
+- **10 service adapter scaffolds** following the reference template: `api/adapters/v1/{auth,user,payments,cart,shop-items,order,order-reservations,search,support,reviews}/`. Each provides constructor + `Raw()` + `--- Typed surface ---` marker; typed methods are added one at a time as consuming services need them.
+
+### Changed
+
+- **Repository layout — split `/http` into transport vs. API layer.** `/http` now contains only protocol primitives (`client`, `context`, `websocket`); everything server-side moved to `/api`:
+  - `http/server/` → `api/server/`
+  - `http/handlers/` → `api/handlers/`
+  - `http/middleware/` → `api/middleware/`
+  - `http/cors/` → `api/cors/`
+  - `http/csrf/` → `api/csrf/`
+  - `http/headers/` → `api/headers/`
+  - `http/sanitization/` → `api/sanitization/`
+  - `http/normalization/` → `api/normalization/`
+  - `http/ratelimit/` → `api/ratelimit/`
+  - `http/redaction/` → `api/redaction/`
+  - `http/telemetry/` → `api/telemetry/`
+  - `http/ipaccess/` → `api/ipaccess/`
+  - `http/errors/` → `api/errors/`
+  - `http/request/` → `api/request/`
+  - `http/response/` → `api/response/`
+  - `idempotency/` → `api/idempotency/`
+  - Mental model: `/http` = "how bytes move"; `/api` = "how Komodo services expose and consume APIs." All `git mv` to preserve history; all import paths updated repo-wide.
+- **`server` / `api/server` deduplication.** Root `/server/` (real implementation: `Run`, `InitAndServe` with AWS Lambda detection) consolidated into `api/server/`, replacing the re-export shim previously at `http/server/`. The duplicate import-path pair flagged in the 2026-05-12 audit is resolved.
+- **`TODO.md` / `README.md`** — package paths updated to the new `api/...` locations; cross-cutting adapter convention items checked off.
+
+---
+
 ## [0.10.4]
 
 ### Changed

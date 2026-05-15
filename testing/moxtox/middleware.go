@@ -1,7 +1,7 @@
 package moxtox
 
 import (
-	httpErr "github.com/rdevitto86/komodo-forge-sdk-go/http/errors"
+	httpErr "github.com/rdevitto86/komodo-forge-sdk-go/api/errors"
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 	"net/http"
 	"os"

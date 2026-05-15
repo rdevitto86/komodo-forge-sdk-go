@@ -96,21 +96,21 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **M** Event schema validation
 - [ ] **L** Event versioning beyond hardcoded `"1"`
 
-### `http/errors`
+### `api/errors`
 - [ ] **M** Register `RangePromotions = 62` in `ranges.go` — claimed by `komodo-shop-promotions-api`; services currently use a local constant with a TODO comment pending this registration
 - [ ] **M** Register `RangeWishlist = 32` in `ranges.go` — claimed by `komodo-user-wishlist-api`; same pattern
 
-### `http/cors/middleware`
+### `api/cors/middleware`
 - [ ] **H** Full CORS implementation (currently a pass-through stub with a TODO comment)
 - [ ] **H** Preflight (`OPTIONS`) handling
 - [ ] **M** Configurable allowed origins, methods, headers
 
-### `http/csrf/middleware`
+### `api/csrf/middleware`
 - [ ] **H** `ValidateHeaderValue` currently returns `true` unconditionally — wire up real check
 - [ ] **H** CSRF token generation
 - [ ] **M** Token storage and retrieval (cookie + header double-submit)
 
-### `http/headers/eval`
+### `api/headers/eval`
 - [ ] **H** CSRF token header validation (stub / TODO)
 - [ ] **M** Cookie validation (stub / TODO)
 - [ ] **M** Tighten `Content-Length` default (currently 4096 — too small for most APIs)
@@ -120,12 +120,12 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **H** Wire up ElastiCache storage (code is commented out in middleware)
 - [ ] **M** Thread-safe in-memory store for single-instance fallback
 
-### `http/request`
+### `api/request`
 - [ ] **H** Implement `GetPathParams` (currently returns empty map — placeholder)
 - [ ] **H** Implement `IsValidAPIKey` (TODO comment on lines 166–175)
 - [ ] **L** Multipart / form-data request building
 
-### `http/sanitization/middleware`
+### `api/sanitization/middleware`
 - [ ] **H** Reduce false-positive rate on sanitization patterns
 - [ ] **M** Preserve numeric precision when re-encoding JSON body
 - [ ] **L** Confirm `req.SetPathValue` compatibility with minimum Go version target
@@ -134,7 +134,7 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **H** Client IP extraction (commented out on line 36)
 - [ ] **M** Path params extraction (placeholder)
 
-### `http/telemetry/middleware`
+### `api/telemetry/middleware`
 - [ ] **H** Re-raise panics after logging (currently swallows them)
 - [ ] **M** Distributed trace propagation (trace ID in / out of headers)
 
@@ -145,8 +145,15 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **H** Observability hooks (metrics, structured logging, distributed tracing)
 - [ ] **M** Rate limiting support
 
-### `http/response`
+### `api/response`
 - [ ] **M** Fix `Bind()` — uses `json.Marshal` on `res.Body` instead of `io.ReadAll`
+
+### `api/server` — opinionated Server wrapper
+- [ ] **M** Add `server.Server` struct that embeds `*http.Server` and carries shared dependencies (logger, metrics emitter, downstream SDK adapter clients, redis/db handles). Consumers register handlers as methods on `*Server` and access deps via `srv.Comms.SendOTP(...)` etc. — matches enterprise patterns (F100 Go shops, Java/.NET muscle memory) and reduces per-handler constructor boilerplate when many handlers share the same dep set. Keep current `Run(*http.Server, ...)` entrypoint working — the new type wraps stdlib `*http.Server`, doesn't replace it. Document the trade-off vs. per-handler constructor injection in the package doc.
+
+### `concurrency/safego` (new)
+- [ ] **M** Add `safego.Go(ctx, name string, fn func(context.Context))` — wraps a goroutine with `defer recover()` + structured log of the panic + restart policy hook (caller-supplied or default no-op). For request goroutines, the existing telemetry middleware recover is sufficient; this helper is specifically for long-lived background workers (cache refreshers, queue subscribers, scheduled jobs) where an unrecovered panic would silently kill the worker and the service would keep running half-broken. Init goroutines should NOT use this — startup failures should crash the process to trigger container restart.
+- [ ] **L** Add `safego.GoEvery(ctx, name, interval, fn)` — convenience for periodic background work (cache TTL refresh, metric flush). Same recover semantics.
 
 ### `testing/performance`
 - [ ] **H** Implement latency measurement (`latency.go` is empty stub)
@@ -191,7 +198,7 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 #### Open Source Decoupling
 - [ ] **H** Extract into a standalone module with its own `go.mod` — no imports from `komodo-forge-sdk-go`; only external dependency should be `gopkg.in/yaml.v3`
 - [ ] **H** Remove `logging/runtime` import — define a `Logger` interface (`Info(msg string)`, `Error(msg string, err error)`, `Debug(msg string)`); default implementation wraps stdlib `log/slog` (Go 1.21+); consumers inject their own via functional option
-- [ ] **H** Remove `http/errors` import — replace `httpErr.SendError` and `httpErr.SendCustomError` calls with stdlib `http.Error` as the default; expose an injectable `ErrorHandler func(w http.ResponseWriter, r *http.Request, status int, code, message string)` so consumers can plug in RFC 7807, JSON:API, or any other error format
+- [ ] **H** Remove `api/errors` import — replace `httpErr.SendError` and `httpErr.SendCustomError` calls with stdlib `http.Error` as the default; expose an injectable `ErrorHandler func(w http.ResponseWriter, r *http.Request, status int, code, message string)` so consumers can plug in RFC 7807, JSON:API, or any other error format
 - [ ] **H** Adopt functional options pattern — replace `InitMoxtoxMiddleware(env string, configPath ...string)` signature with `New(env string, opts ...Option) *Moxtox`; options include `WithLogger`, `WithErrorHandler`, `WithConfigPath`, `WithNoMatchHandler`, `WithDefaultDelay`
 - [ ] **M** Make no-match behavior injectable — currently hardcodes `418 Teapot` + `"MOXTOX_001"` error code (SDK-specific format); default to a plain JSON `404` with a generic message; allow override via `WithNoMatchHandler`
 - [ ] **M** Make config format pluggable — define a `ConfigLoader interface { Load(path string) ([]byte, error) }` with a default YAML implementation; allows consumers to source config from embedded files, S3, environment variables, etc.
@@ -238,7 +245,7 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **M** `api/adapters/v1/order-reservations/` — generated from `komodo-order-reservations-api/docs/openapi.yaml`
 - [ ] **M** `api/adapters/v1/search/` — generated from `komodo-search-api/docs/openapi.yaml`
 - [ ] **M** `api/adapters/v1/support/` — generated from `komodo-support-api/docs/openapi.yaml`
-- [ ] **M** `api/adapters/v1/communications/` — generated from `komodo-communications-api/docs/openapi.yaml`
+- [ ] **H** `api/adapters/v1/communications/` — generated from `komodo-communications-api/docs/openapi.yaml`. **Bumped from M to H**: komodo-auth-api OTP delivery is blocked on this — the `handlers.CommsClient` interface and nil-tolerant wiring is already in place, just needs a concrete client. Auth-api expects `SendOTP(ctx, email, code, ttlSeconds) error` semantics; align the generated client (or a thin SDK-side wrapper around it) so consumers don't have to compose `POST /v1/send/email` + template_id themselves.
 - [ ] **M** `api/adapters/v1/reviews/` — generated from `komodo-reviews-api/docs/openapi.yaml`
 - [ ] **L** Add unversioned re-export at `api/adapters/<service>/` pointing to current stable version — consumers can import the unversioned path and stay on latest without code changes
 
@@ -322,47 +329,47 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 
 ### Critical correctness / security bugs
 
-- [ ] **H** `http/request/parser.go:124-160` `GetClientType` decodes JWT payload **without verifying signature** and uses the result to exempt requests from CSRF/idempotency enforcement — any browser can forge `client_type:"api"` and bypass CSRF. Derive client type solely from context populated by `AuthMiddleware` after `ValidateAndParseClaims`.
+- [ ] **H** `api/request/parser.go:124-160` `GetClientType` decodes JWT payload **without verifying signature** and uses the result to exempt requests from CSRF/idempotency enforcement — any browser can forge `client_type:"api"` and bypass CSRF. Derive client type solely from context populated by `AuthMiddleware` after `ValidateAndParseClaims`.
 - [ ] **H** `http/websocket/websocket.go:13` `CheckOrigin` returns `true` unconditionally — cross-site WebSocket hijacking. Require a configurable origin allowlist; no default-allow.
-- [ ] **H** `http/headers/eval.go:20` `case "authorization": return jwt.ValidateToken(val)` passes the literal `"Bearer …"` string to a validator that expects the bare token — authorization header validation fails every request. Strip `"Bearer "` prefix before calling `ValidateToken`.
+- [ ] **H** `api/headers/eval.go:20` `case "authorization": return jwt.ValidateToken(val)` passes the literal `"Bearer …"` string to a validator that expects the bare token — authorization header validation fails every request. Strip `"Bearer "` prefix before calling `ValidateToken`.
 - [ ] **H** `security/jwt/jwt.go:34-63` `keysInitialized` is read outside the lock before write-lock is taken — data race on concurrent first callers. Replace with `sync.Once` for key loading.
-- [ ] **H** `idempotency/idempotency.go` `LocalCache.Store` ignores TTL — entries never expire; map grows unbounded indefinitely. `Check`+`Set` is non-atomic (TOCTOU): two concurrent identical requests can both pass. Use SETNX semantics with a per-entry expiry sweep.
-- [ ] **H** `http/csrf/middleware.go:31` delegates to `headers.ValidateHeaderValue("X-Csrf-Token", …)` which returns `true` unconditionally — CSRF protection is effectively off. Wire real token validation.
-- [ ] **H** `http/sanitization/middleware.go:127-138` runs `html.EscapeString` on **all** header, query, and body strings — destructively mutates legitimate user input (`&`, `<`, `>` in URLs, JSON values, tokens). Scope to display-only fields or remove from middleware; do not silently rewrite payloads.
-- [ ] **H** `http/telemetry/middleware.go:22-37` `recover()` swallows panics; also attempts `SendError` to the outer writer after a partial body write may have already occurred, and only sends if `status == 0`. Log the panic with stack trace via `debug.Stack()` and re-panic so the runtime handler can respond cleanly.
+- [ ] **H** `api/idempotency/idempotency.go` `LocalCache.Store` ignores TTL — entries never expire; map grows unbounded indefinitely. `Check`+`Set` is non-atomic (TOCTOU): two concurrent identical requests can both pass. Use SETNX semantics with a per-entry expiry sweep.
+- [ ] **H** `api/csrf/middleware.go:31` delegates to `headers.ValidateHeaderValue("X-Csrf-Token", …)` which returns `true` unconditionally — CSRF protection is effectively off. Wire real token validation.
+- [ ] **H** `api/sanitization/middleware.go:127-138` runs `html.EscapeString` on **all** header, query, and body strings — destructively mutates legitimate user input (`&`, `<`, `>` in URLs, JSON values, tokens). Scope to display-only fields or remove from middleware; do not silently rewrite payloads.
+- [ ] **H** `api/telemetry/middleware.go:22-37` `recover()` swallows panics; also attempts `SendError` to the outer writer after a partial body write may have already occurred, and only sends if `status == 0`. Log the panic with stack trace via `debug.Stack()` and re-panic so the runtime handler can respond cleanly.
 
 ### Latency / performance
 
 - [ ] **H** `aws/dynamodb/query.go:100-117, 181-198` `QueryAll`/`ScanAll` accumulate all items into a single in-memory slice with no limit. Add a streaming iterator (`Next() bool` / `Item()`) and a `MaxItems` guard to prevent OOM on large tables.
 - [ ] **H** AWS clients (`dynamo`, `s3`, `sns`, `sqs`, `secretsmanager`, `elasticache`) each call `awsconfig.LoadDefaultConfig` independently — a service wiring 5+ clients pays 5+ IMDS/STS resolutions on cold start. Provide a shared `aws.Config` factory or accept an `aws.Config` in each `New()`.
-- [ ] **M** `http/redaction/redaction.go:9-14` PII regex with multiple alternation groups runs on every log key/value pair. Benchmark; consider splitting into anchored sub-expressions or a string-scan fast path.
+- [ ] **M** `api/redaction/redaction.go:9-14` PII regex with multiple alternation groups runs on every log key/value pair. Benchmark; consider splitting into anchored sub-expressions or a string-scan fast path.
 
 ### Design / API issues
 
 - [ ] **H** `aws/aurora`, `aws/lambda`, `aws/ses`, `aws/cloudwatch`, `aws/contactlens`, `aws/connect`, `aws/elasticsearch`, `aws/bedrock` — `New()` returns a non-nil `*Client{}` whose methods immediately `panic`. A caller has no way to know the client is unusable. Return `(nil, ErrNotImplemented)` from `New()` until real implementations land.
-- [ ] **H** `http/request/builder.go:51` `FromRequest` passes the original `req.Body` reader to a new request — the body is consumed on first read; a second request reads nothing. Buffer the body and set `GetBody` on both.
+- [ ] **H** `api/request/builder.go:51` `FromRequest` passes the original `req.Body` reader to a new request — the body is consumed on first read; a second request reads nothing. Buffer the body and set `GetBody` on both.
 - [ ] **H** `events/client.go:84-117` `Subscribe` processes messages serially — one slow handler stalls the entire queue. Add a bounded worker pool (`Concurrency int` on `SubscriberConfig`). On `sqs.Receive` error, no backoff — tight error loop hammers SQS on transient failure; add exponential backoff.
 - [ ] **H** `events/client.go` on handler error, relies entirely on the queue's static visibility timeout with no `ChangeMessageVisibility` for explicit backoff or retry extension. Add configurable visibility extension during processing and on failure.
 - [ ] **H** `rules/middleware.go:27-32` returns `400 BadRequest` when **no rule is defined** for a path — every unconfigured endpoint returns 400. Default should be allow-with-warning; add a `Strict bool` option to opt into deny-on-missing.
-- [ ] **M** `http/normalization/normalization.go:52-55` writes to `req.RequestURI` for inbound server requests — this field is supplied by the runtime and rewriting it can confuse adapters (e.g. `aws-lambda-go-api-proxy`). Remove.
-- [ ] **M** `http/normalization/normalization.go:68-78` switch cases for `"sort"`, `"asc"`, `"desc"` normalize a query **value** called literally "sort" — these look like key names, not values. Clarify intent or remove.
-- [ ] **M** `http/errors/responses.go:39-47` calls `wtr.WriteHeader` before encoding the body; encode errors go undetected leaving a truncated response. Marshal to a buffer first, set `Content-Length`, then `Write` once.
-- [ ] **M** `http/errors/responses.go:45` reads `X-Request-ID` from the request header — absent if `RequestIDMiddleware` hasn't run yet (e.g. early panic). Fall back to `req.Context().Value(REQUEST_ID_KEY)`.
+- [ ] **M** `api/normalization/normalization.go:52-55` writes to `req.RequestURI` for inbound server requests — this field is supplied by the runtime and rewriting it can confuse adapters (e.g. `aws-lambda-go-api-proxy`). Remove.
+- [ ] **M** `api/normalization/normalization.go:68-78` switch cases for `"sort"`, `"asc"`, `"desc"` normalize a query **value** called literally "sort" — these look like key names, not values. Clarify intent or remove.
+- [ ] **M** `api/errors/responses.go:39-47` calls `wtr.WriteHeader` before encoding the body; encode errors go undetected leaving a truncated response. Marshal to a buffer first, set `Content-Length`, then `Write` once.
+- [ ] **M** `api/errors/responses.go:45` reads `X-Request-ID` from the request header — absent if `RequestIDMiddleware` hasn't run yet (e.g. early panic). Fall back to `req.Context().Value(REQUEST_ID_KEY)`.
 - [ ] **M** AWS `New()` constructors all call `awsconfig.LoadDefaultConfig(context.Background(), …)` — an IMDS or STS hang stalls process startup indefinitely. Accept a `ctx` parameter or apply a bounded default deadline (e.g. 5s).
-- [ ] **M** `http/middleware/exports.go:30` `ClientTypeMiddleware` is an alias for `ClientSourceMiddleware` — appears to be an unfinished rename. Remove the alias or complete the rename across all call sites.
-- [ ] **M** `crypto/jwt` / `security/jwt` and `crypto/oauth` / `security/oauth` and `server` / `http/server` are duplicated import paths to the same implementations. Pick one canonical path per type, hard-deprecate the aliases, and delete once all services migrate.
+- [ ] **M** `api/middleware/exports.go:30` `ClientTypeMiddleware` is an alias for `ClientSourceMiddleware` — appears to be an unfinished rename. Remove the alias or complete the rename across all call sites.
+- [ ] **M** `crypto/jwt` / `security/jwt` and `crypto/oauth` / `security/oauth` are duplicated import paths to the same implementations. Pick one canonical path per type, hard-deprecate the aliases, and delete once all services migrate. (`server` / `api/server` resolved: consolidated to `api/server`.)
 - [ ] **L** `connectors/{apple,google,paypal,stripe}/*` are all single-line empty package declarations — indistinguishable from implemented packages. Remove or mark explicitly as stubs in this file.
 
 ### State / lifecycle
 
-- [ ] **H** `security/jwt` (cached key globals), `idempotency` (`defaultStore`), `rules` (`ruleMap`, `patternRoutes`, `loadOnce`), `http/ratelimit` (`buckets`, `rps`, `burst`, `ecClient`), and `logging/runtime` (`slogger`, `initOnce`) all use package-level globals — makes multi-config usage and parallel tests impossible. Provide constructor-based instances for all of these (consistent with the existing global-state TODO that names only moxtox).
-- [ ] **M** `http/ratelimit/ratelimiter.go:198-219` background bucket-eviction goroutine is started via `sync.Once` with no shutdown channel — goroutine leaks on test teardown and Lambda warm-cycle cleanup. Add a `Stop()` method or accept a `ctx` for cancellation.
+- [ ] **H** `security/jwt` (cached key globals), `idempotency` (`defaultStore`), `rules` (`ruleMap`, `patternRoutes`, `loadOnce`), `api/ratelimit` (`buckets`, `rps`, `burst`, `ecClient`), and `logging/runtime` (`slogger`, `initOnce`) all use package-level globals — makes multi-config usage and parallel tests impossible. Provide constructor-based instances for all of these (consistent with the existing global-state TODO that names only moxtox).
+- [ ] **M** `api/ratelimit/ratelimiter.go:198-219` background bucket-eviction goroutine is started via `sync.Once` with no shutdown channel — goroutine leaks on test teardown and Lambda warm-cycle cleanup. Add a `Stop()` method or accept a `ctx` for cancellation.
 - [ ] **M** `events/client.go:69` `NewSubscriber` silently clamps `MaxBatch > 10` to 10. Return a validation error or at minimum log a warning during construction.
 
 ### Observability
 
 - [ ] **H** `http/client.Client.Do` does not propagate `traceparent`/`tracestate` headers or instrument with `httptrace.ClientTrace` — outbound requests are invisible to distributed tracing. Add trace propagation alongside the existing `logging/otel` work.
-- [ ] **M** `http/telemetry/middleware.go` logs a flat `map[string]any` per request via `fmt.Errorf` wrapping — wastes structured logging. Use `slog` attributes directly on the logger call.
+- [ ] **M** `api/telemetry/middleware.go` logs a flat `map[string]any` per request via `fmt.Errorf` wrapping — wastes structured logging. Use `slog` attributes directly on the logger call.
 - [ ] **M** No metrics emission anywhere (request counts, circuit-breaker state changes, rate-limit denials, DynamoDB retry counts). Define a minimal `Metrics` interface (`Counter`, `Histogram`) with a no-op default; wire into client, middleware, and breaker.
 
 ### Cleanup / housekeeping
@@ -371,4 +378,4 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **L** `coverage.out` (62KB) is committed to version control — add to `.gitignore`.
 - [ ] **L** `pre-commit` hook script lives in the repo root alongside source files — move to `scripts/` or `.githooks/`.
 - [ ] **L** `go.mod` includes `aws-lambda-go` and `aws-lambda-go-api-proxy` as direct dependencies for all consumers including Fargate services. Move Lambda adapter support behind a `//go:build lambda` tag or a dedicated `server/lambda` sub-package to slim non-Lambda binaries.
-- [ ] **L** `http/redaction/redaction.go:5` lone `// TODO - move common code over from middleware to here` comment — resolve or delete.
+- [ ] **L** `api/redaction/redaction.go:5` lone `// TODO - move common code over from middleware to here` comment — resolve or delete.

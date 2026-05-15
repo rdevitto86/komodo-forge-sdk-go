@@ -189,13 +189,13 @@ httpctx.GetRequestID(ctx)
 // ... see http/context/getters.go
 ```
 
-### `http/cors`
+### `api/cors`
 CORS middleware (planned).
 
-### `http/csrf`
+### `api/csrf`
 CSRF token validation middleware.
 
-### `http/errors`
+### `api/errors`
 RFC 7807 Problem+JSON error responses.
 
 ```go
@@ -206,36 +206,36 @@ errors.WithDetail(detail)
 errors.WithStatus(status)
 ```
 
-### `http/handlers`
+### `api/handlers`
 Shared handler exports.
 
 ```go
 handlers.HealthHandler  // http.HandlerFunc for /health
 ```
 
-### `http/headers`
+### `api/headers`
 Header validation and evaluation middleware.
 
-### `http/ipaccess`
+### `api/ipaccess`
 IP whitelist/blacklist enforcement middleware.
 
-### `http/middleware/chain`
+### `api/middleware/chain`
 Middleware chain composition.
 
 ```go
 mwchain.Chain(handlerFunc, middleware...)  // returns http.Handler; first listed = outermost
 ```
 
-### `http/normalization`
+### `api/normalization`
 Request path and header normalization middleware.
 
-### `http/ratelimit`
+### `api/ratelimit`
 Token bucket rate limiting middleware. Reads `RATE_LIMIT_RPS`, `RATE_LIMIT_BURST`, and `ENV` from environment at startup.
 
-### `http/redaction`
+### `api/redaction`
 Sensitive field redaction from logs.
 
-### `http/request`
+### `api/request`
 Request parsing helpers and middleware.
 
 ```go
@@ -248,7 +248,7 @@ request.RequestIDMiddleware(next http.Handler) http.Handler
 request.ClientTypeMiddleware(next http.Handler) http.Handler
 ```
 
-### `http/response`
+### `api/response`
 Response writer wrapper with status tracking.
 
 ```go
@@ -257,10 +257,10 @@ response.IsSuccess(status)
 response.IsError(status)
 ```
 
-### `http/sanitization`
+### `api/sanitization`
 Input sanitization (XSS, injection) middleware.
 
-### `http/telemetry`
+### `api/telemetry`
 Request/response telemetry logging middleware.
 
 ### `http/websocket`
@@ -335,7 +335,7 @@ Third-party service connectors:
 ## Server
 
 ### `server`
-Universal service entry point. Auto-detects Lambda vs Fargate/local. Also importable at `http/server` (re-export shim).
+Universal service entry point. Auto-detects Lambda vs Fargate/local. Also importable at `api/server` (re-export shim).
 
 ```go
 // On AWS Lambda (AWS_LAMBDA_FUNCTION_NAME set): starts lambda.Start with API Gateway v2 httpadapter.

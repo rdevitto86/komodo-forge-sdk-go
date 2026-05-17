@@ -14,6 +14,13 @@
 /build/
 /out/
 
+# AI / MCP
+.mcp.json
+.komodo/
+CLAUDE.md
+claude.md
+.claude/
+
 # Go workspace files (local development only)
 go.work
 go.work.sum

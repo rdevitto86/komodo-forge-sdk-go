@@ -6,6 +6,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.12.0]
+
+### Added
+
+- **`codegen/templates/` — oapi-codegen template override.** New top-level `codegen/` package shipping a `client-with-responses.tmpl` that appends a Komodo-standard `New(baseURL string) (*ClientWithResponses, error)` constructor to every generated client. The constructor wires the client to `http/client.NewClient()`, so each consumer service inherits the SDK's HTTP defaults (30s timeout, tuned connection pool, and — when configured — rate limiting + circuit breaker) without hand-writing a wrapper file.
+  - **Consumer setup** is two lines in the service's `oapi-codegen.yaml`: a `user-templates` mapping pointing at the SDK template, plus an `additional-imports` entry for `github.com/rdevitto86/komodo-forge-sdk-go/http/client` aliased as `sdkhttp`. After regeneration, calling code reads `comms.New(baseURL)` — no hand-written `client.go` in the service at all.
+  - **Deviation** is opt-in: a service that needs custom construction logic drops the `user-templates` line, the generated file falls back to upstream behaviour (no `New` function), and the service hand-writes its own `client.go`. `grep -L user-templates apis/*/internal/clients/*/oapi-codegen.yaml` finds anyone deviating.
+  - **Template maintenance:** the override is a verbatim copy of upstream's `client-with-responses.tmpl` plus a clearly-delimited `─── Komodo additions ───` block at the bottom. When oapi-codegen ships a major upgrade that touches the template, re-diff and merge — preserve everything below the divider. Upstream is stable across minor versions; expect this maintenance roughly once per major bump.
+  - **Tests** in `codegen/templates_test.go` parse the template with stdlib `text/template` (catching syntax errors without pulling oapi-codegen into the SDK dependency graph) and assert the Komodo additions block remains intact. End-to-end generation is exercised by every consumer service's `go generate`.
+- **`codegen/README.md`** documents the pattern, the wiring snippet, deviation strategy, and the upstream-resync procedure.
+
+---
+
 ## [0.11.0]
 
 ### Added

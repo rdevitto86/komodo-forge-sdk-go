@@ -9,8 +9,8 @@ import (
 
 var errFake = errors.New("fake error")
 
-func cfgWith(threshold, successThreshold int, timeout time.Duration, maxHalfOpen int) Config {
-	return Config{
+func cfgWith(threshold, successThreshold int, timeout time.Duration, maxHalfOpen int) BreakerConfig {
+	return BreakerConfig{
 		FailureThreshold:    threshold,
 		SuccessThreshold:    successThreshold,
 		OpenTimeout:         timeout,
@@ -93,7 +93,7 @@ func TestBreaker_OnStateChangeCallback(t *testing.T) {
 	var mu sync.Mutex
 	var transitions []struct{ from, to BreakerState }
 
-	cfg := Config{
+	cfg := BreakerConfig{
 		FailureThreshold:    2,
 		SuccessThreshold:    1,
 		OpenTimeout:         50 * time.Millisecond,

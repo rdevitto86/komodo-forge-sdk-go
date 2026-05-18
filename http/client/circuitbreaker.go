@@ -30,8 +30,8 @@ func (s BreakerState) String() string {
 	}
 }
 
-// Controls the behaviour of the circuit breaker attached via WithCircuitBreaker.
-type Config struct {
+// Controls the behaviour of the circuit breaker attached via ClientConfig.CircuitBreaker.
+type BreakerConfig struct {
 	// FailureThreshold is the number of failures before the breaker opens.
 	// Recommended default: 5.
 	FailureThreshold int
@@ -74,13 +74,13 @@ type breakerEntry struct {
 }
 
 type breaker struct {
-	cfg       Config
+	cfg       BreakerConfig
 	hosts     sync.Map // string → *breakerEntry
 	hostCount int      // approximate; protected by hostMu
 	hostMu    sync.Mutex
 }
 
-func newBreaker(cfg Config) *breaker {
+func newBreaker(cfg BreakerConfig) *breaker {
 	return &breaker{cfg: cfg}
 }
 

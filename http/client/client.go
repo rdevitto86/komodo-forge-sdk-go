@@ -11,9 +11,6 @@ import (
 	"time"
 )
 
-// DefaultTransport is a tuned *http.Transport used by NewClient when no
-// WithTransport option is supplied. Callers that need TLS customisation or
-// proxy support should supply their own via WithTransport.
 var DefaultTransport http.RoundTripper = &http.Transport{
 	MaxIdleConns:          100,
 	MaxIdleConnsPerHost:   20,
@@ -26,40 +23,39 @@ var DefaultTransport http.RoundTripper = &http.Transport{
 	}).DialContext,
 }
 
-// Wraps net/http.Client as the canonical HTTP transport for Komodo services.
+type ClientConfig struct {
+	Timeout        time.Duration
+	Transport      http.RoundTripper
+	CircuitBreaker *BreakerConfig
+}
+
 type Client struct {
 	httpClient *http.Client
 	breaker    *breaker
 }
 
-type Option func(*Client)
-
-// Attaches a circuit breaker to the client. When set, Do()
-// tracks failures (transport errors and 4xx/5xx responses) per request host.
-func WithCircuitBreaker(cfg Config) Option {
-	return func(c *Client) {
-		c.breaker = newBreaker(cfg)
+// Returns a Client configured from cfg. Zero-value cfg is valid and produces a
+// client with a 30s timeout, DefaultTransport, and no circuit breaker.
+func NewClient(cfg ClientConfig) *Client {
+	timeout := cfg.Timeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
 	}
-}
 
-// Replaces the underlying http.RoundTripper. Use this to supply
-// a custom TLS config, proxy, or test transport.
-func WithTransport(t http.RoundTripper) Option {
-	return func(c *Client) {
-		c.httpClient.Transport = t
+	transport := cfg.Transport
+	if transport == nil {
+		transport = DefaultTransport
 	}
-}
 
-// Returns a Client with a 30s default timeout and DefaultTransport.
-func NewClient(opts ...Option) *Client {
 	c := &Client{
 		httpClient: &http.Client{
-			Timeout:   30 * time.Second,
-			Transport: DefaultTransport,
+			Timeout:   timeout,
+			Transport: transport,
 		},
 	}
-	for _, opt := range opts {
-		opt(c)
+
+	if cfg.CircuitBreaker != nil {
+		c.breaker = newBreaker(*cfg.CircuitBreaker)
 	}
 	return c
 }
@@ -98,8 +94,6 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
-// HTTPError is returned by GetJSON and PostJSON when the server responds with a non-2xx status.
-// Callers can errors.As to inspect the status code (e.g. distinguish 409 conflict from 503).
 type HTTPError struct {
 	StatusCode int
 	Body       []byte

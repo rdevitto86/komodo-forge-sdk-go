@@ -23,7 +23,7 @@ func TestGetJSON_200(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient()
+	c := NewClient(ClientConfig{})
 	got, err := GetJSON[testPayload](c, context.Background(), srv.URL)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -39,7 +39,7 @@ func TestGetJSON_404(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient()
+	c := NewClient(ClientConfig{})
 	_, err := GetJSON[testPayload](c, context.Background(), srv.URL)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -62,7 +62,7 @@ func TestPostJSON_201(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient()
+	c := NewClient(ClientConfig{})
 	got, err := PostJSON[testPayload](c, context.Background(), srv.URL, map[string]string{"key": "val"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -78,7 +78,7 @@ func TestPostJSON_409(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewClient()
+	c := NewClient(ClientConfig{})
 	_, err := PostJSON[testPayload](c, context.Background(), srv.URL, nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -96,7 +96,7 @@ func TestGetJSON_TransportError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	srv.Close() // close immediately so the request fails at transport layer
 
-	c := NewClient()
+	c := NewClient(ClientConfig{})
 	_, err := GetJSON[testPayload](c, context.Background(), srv.URL)
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -108,12 +108,14 @@ func TestGetJSON_TransportError(t *testing.T) {
 }
 
 func newBreakerClient(threshold int, timeout time.Duration) *Client {
-	return NewClient(WithCircuitBreaker(Config{
-		FailureThreshold:    threshold,
-		SuccessThreshold:    1,
-		OpenTimeout:         timeout,
-		MaxHalfOpenRequests: 1,
-	}))
+	return NewClient(ClientConfig{
+		CircuitBreaker: &BreakerConfig{
+			FailureThreshold:    threshold,
+			SuccessThreshold:    1,
+			OpenTimeout:         timeout,
+			MaxHalfOpenRequests: 1,
+		},
+	})
 }
 
 func TestWithCircuitBreaker_TripsAfterNFailures(t *testing.T) {
@@ -166,7 +168,7 @@ func TestNoBreaker_TransportErrorPassesThrough(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	srv.Close()
 
-	c := NewClient() // no circuit breaker
+	c := NewClient(ClientConfig{}) // no circuit breaker
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
 
 	_, err := c.Do(req)

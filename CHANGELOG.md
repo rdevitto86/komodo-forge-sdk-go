@@ -6,6 +6,54 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.13.0]
+
+### Added
+
+- **`gcp/` — GCP service package scaffold (14 packages).** New top-level `gcp/` directory mirroring the `aws/` layout. Each package provides a `Config`, `Client`, `API` interface, and stub methods that return `ErrNotImplemented` until implementation lands. Goal: callers swap providers by changing the import path; method signatures match the AWS counterparts where semantics map cleanly. Packages scaffolded:
+  - `gcp/gcs/` — Cloud Storage (parity with `aws/s3`)
+  - `gcp/firestore/` — Firestore (parity with `aws/dynamodb`; document-ID model — `BuildKey` intentionally omitted)
+  - `gcp/pubsubpub/` — Pub/Sub publisher (parity with `aws/sns`)
+  - `gcp/pubsubsub/` — Pub/Sub pull subscriber (parity with `aws/sqs`; no native FIFO ordering keys — divergence documented)
+  - `gcp/cloudfunctions/` — Cloud Functions / Cloud Run invoke (parity with `aws/lambda`)
+  - `gcp/secretmanager/` — Secret Manager (parity with `aws/secretsmanager`)
+  - `gcp/cloudlogging/` — Cloud Logging (parity with CloudWatch logs)
+  - `gcp/cloudmonitoring/` — Cloud Monitoring (parity with CloudWatch metrics)
+  - `gcp/vertexai/` — Vertex AI generative models (parity with `aws/bedrock`)
+  - `gcp/cloudsql/` — Cloud SQL (parity with `aws/aurora`)
+  - `gcp/memorystore/` — Memorystore Redis (parity with `aws/elasticache`)
+  - `gcp/vertexsearch/` — Vertex AI Search (parity with `aws/elasticsearch`)
+  - `gcp/dialogflow/` — Dialogflow CX / CCAI agents (parity with `aws/connect`)
+  - `gcp/ccaiinsights/` — Contact Center AI Insights (parity with `aws/contactlens`)
+
+### Changed
+
+- **Performance — per-request regex eliminated.** Five inline `regexp.MustCompile` calls in `api/headers/eval.go` (`isValidUserAgent`, `isValidReferer`, `isValidRequestedBy`, `isValidIdempotencyKey`, `isValidCORS`) and one in `api/redaction/middleware.go` (`sensitiveHeaderRE`) were compiled on every request invocation. All moved to package-level vars. `rules/parser.go` `normalizePath` regex replaced with a 2-byte compare. `api/redaction/redaction.go` adds a fast-path skip for strings shorter than 4 chars or purely numeric.
+
+- **Performance — `api/ratelimit/ratelimiter.go` race fix + single-lock deny path.** `SetElasticacheClient` used an `unsafe.Pointer` atomic store while `Allow` read the field non-atomically — a data race. Replaced with `atomic.Value` + a thin `ecHolder` wrapper; `unsafe` import removed. `allow()` now returns `(bool, time.Duration)` computed while holding the bucket lock, so a denied request no longer re-acquires the lock via a second `retryAfter()` call.
+
+- **Performance — `auth/middleware.go` single JWT parse.** `ValidateToken` + `ParseClaims` parsed the JWT twice per authenticated request. Replaced with a single `jwt.ValidateAndParseClaims` call.
+
+- **Performance — `http/client/client.go` streaming response decode.** `GetJSON` and `PostJSON` replaced `io.ReadAll` + `json.Unmarshal` with `json.NewDecoder(res.Body).Decode` — responses stream without buffering the full body. Error-path bodies are still read to allow connection reuse.
+
+- **Performance — `api/sanitization/middleware.go` redundant regex pass removed.** `sanitizeString` called `SqlInjectionPattern.MatchString(s)` before `ReplaceAllString` — the match check was redundant; removed.
+
+- **Performance — `rules/eval.go` body allocation + log volume.** Body restored via `bytes.NewReader` instead of `bytes.NewBuffer` (avoids an extra copy). Success-path `logger.Info` calls ("all validations passed", "version validation passed", "all headers passed validation") demoted to `logger.Debug` — these fired on every valid request.
+
+- **Performance — `logging/runtime/logger.go` pre-`Init` output suppressed.** Default `slogger` now writes to `io.Discard` until `Init` is called, preventing fully-formatted log output before the service configures a handler.
+
+- **Performance — `api/idempotency/idempotency.go` TTL evictor.** `LocalCache` stored TTL-expiring entries in a `sync.Map` but only deleted them on access — unused expired keys leaked indefinitely. Added a background evictor goroutine (started lazily on first `Store`, runs every minute) that sweeps and deletes expired entries.
+
+- **Performance — `events/client.go` SQS error backoff.** `Subscribe` previously tight-looped on consecutive SQS receive errors with no delay, spinning CPU on misconfigured queues. Replaced with exponential backoff (1s → 30s max, reset on success), respecting context cancellation.
+
+- **Performance — `api/normalization/normalization.go` skip no-op re-encode.** `normalizeQueryParams` parsed and re-encoded `RawQuery` unconditionally. Now skips the `Encode()` write if no key or value was actually changed.
+
+- **Performance — `api/telemetry/middleware.go` structured log fields.** Request telemetry was built into a `map[string]any` then lost via `fmt.Errorf("%v", payload)` string formatting. Replaced with `logger.Attr` calls so fields reach the structured log handler as typed attributes.
+
+- **`api/errors/responses.go` — consistent request ID source.** `RequestId` field was read directly from `req.Header.Get("X-Request-ID")`. Now uses `httpReq.GetRequestID(req)` (reads from context, consistent with the rest of the stack).
+
+---
+
 ## [0.12.0]
 
 ### Added

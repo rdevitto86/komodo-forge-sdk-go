@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -8,7 +9,7 @@ import (
 )
 
 var (
-	slogger  *slog.Logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slogger  *slog.Logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
 	logLevel              = &slog.LevelVar{}
 	initOnce sync.Once
 )

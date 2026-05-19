@@ -21,16 +21,12 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		valid, err := jwt.ValidateToken(tokenString)
-		if !valid || err != nil {
+		claims, err := jwt.ValidateAndParseClaims(tokenString)
+		if err != nil {
 			logger.Error("token validation failed", err)
 			httpErr.SendError(wtr, req, httpErr.Auth.InvalidToken, httpErr.WithDetail(err.Error()))
 			return
 		}
-
-		// called after ValidateToken confirms the signature, issuer,
-		// and audience are valid; an error here would be unreachable in practice.
-		claims, _ := jwt.ParseClaims(tokenString)
 
 		ctx := context.WithValue(req.Context(), ctxKeys.AUTH_VALID_KEY, true)
 

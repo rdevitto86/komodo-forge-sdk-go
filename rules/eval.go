@@ -45,7 +45,7 @@ func IsRuleValid(req *http.Request, rule *EvalRule) bool {
 		return false
 	}
 
-	logger.Info("all validations passed")
+	logger.Debug("all validations passed")
 	return true
 }
 
@@ -69,7 +69,7 @@ func isValidVersion(req *http.Request, rule *EvalRule) bool {
 			logger.Warn(fmt.Sprintf("version mismatch: required %d, got %d (lenient mode - allowing)", rule.RequiredVersion, version))
 			return true
 		}
-		logger.Info(fmt.Sprintf("version validation passed (lenient): v%d", version))
+		logger.Debug(fmt.Sprintf("version validation passed (lenient): v%d", version))
 		return true
 	}
 
@@ -110,7 +110,7 @@ func isValidVersion(req *http.Request, rule *EvalRule) bool {
 		return false
 	}
 
-	logger.Info(fmt.Sprintf("version validation passed (strict): v%d", version))
+	logger.Debug(fmt.Sprintf("version validation passed (strict): v%d", version))
 	return true
 }
 
@@ -203,7 +203,7 @@ func areValidHeaders(req *http.Request, rule *EvalRule) bool {
 			return false
 		}
 	}
-	logger.Info("all headers passed validation")
+	logger.Debug("all headers passed validation")
 	return true
 }
 
@@ -389,7 +389,7 @@ func isValidBody(req *http.Request, rule *EvalRule) bool {
 
 	// Restore the original body for downstream handlers
 	req.Body.Close()
-	req.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+	req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
 	// If body is empty, that's valid for some requests
 	if len(bodyBytes) == 0 {

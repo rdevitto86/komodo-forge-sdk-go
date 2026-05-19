@@ -59,33 +59,45 @@ func normalizeURL(req *http.Request) {
 
 // Normalizes query parameters
 func normalizeQueryParams(req *http.Request) {
-	if req.URL == nil {
+	if req.URL == nil || req.URL.RawQuery == "" {
 		return
 	}
 	normalized := url.Values{}
+	changed := false
 
 	for key, values := range req.URL.Query() {
 		normalizedKey := strings.TrimSpace(key)
+		if normalizedKey != key {
+			changed = true
+		}
 		for _, value := range values {
 			normalizedValue := strings.TrimSpace(value)
 
 			switch normalizedValue {
-			case "true", "True", "TRUE":
+			case "True", "TRUE":
 				normalizedValue = "true"
-			case "false", "False", "FALSE":
+				changed = true
+			case "False", "FALSE":
 				normalizedValue = "false"
-			case "sort", "Sort", "SORT":
+				changed = true
+			case "Sort", "SORT":
 				normalizedValue = "sort"
-			case "asc", "Asc", "ASC":
+				changed = true
+			case "Asc", "ASC":
 				normalizedValue = "asc"
-			case "desc", "Desc", "DESC":
+				changed = true
+			case "Desc", "DESC":
 				normalizedValue = "desc"
-			default:
-				// do nothing
+				changed = true
+			}
+			if normalizedValue != value {
+				changed = true
 			}
 
 			normalized.Add(normalizedKey, normalizedValue)
 		}
 	}
-	req.URL.RawQuery = normalized.Encode()
+	if changed {
+		req.URL.RawQuery = normalized.Encode()
+	}
 }

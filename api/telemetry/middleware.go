@@ -42,30 +42,29 @@ func TelemetryMiddleware(next http.Handler) http.Handler {
 				status = http.StatusOK
 			}
 
-			// Get request ID safely
 			reqID := httpReq.GetRequestID(req)
 
-			payload := map[string]any{
-				"request_id":  reqID,
-				"method":      req.Method,
-				"path":        req.URL.Path,
-				"query":       req.URL.RawQuery,
-				"status":      status,
-				"bytes":       bytesWritten,
-				"latency_ms":  ms,
-				"ip":          req.RemoteAddr,
-				"user_agent":  req.UserAgent(),
-				"referer":     req.Referer(),
-				"proto":       req.Proto,
-				"host":        req.Host,
-				"start_time":  start.UTC().Format(time.RFC3339Nano),
-				"finish_time": time.Now().UTC().Format(time.RFC3339Nano),
+			attrs := []any{
+				logger.Attr("request_id", reqID),
+				logger.Attr("method", req.Method),
+				logger.Attr("path", req.URL.Path),
+				logger.Attr("query", req.URL.RawQuery),
+				logger.Attr("status", status),
+				logger.Attr("bytes", bytesWritten),
+				logger.Attr("latency_ms", ms),
+				logger.Attr("ip", req.RemoteAddr),
+				logger.Attr("user_agent", req.UserAgent()),
+				logger.Attr("referer", req.Referer()),
+				logger.Attr("proto", req.Proto),
+				logger.Attr("host", req.Host),
+				logger.Attr("start_time", start.UTC().Format(time.RFC3339Nano)),
+				logger.Attr("finish_time", time.Now().UTC().Format(time.RFC3339Nano)),
 			}
 
 			if status >= 400 {
-				logger.Error("telemetry request failed", fmt.Errorf("telemetry request failed: %v", payload))
+				logger.Error("request failed", fmt.Errorf("status %d", status), attrs...)
 			} else {
-				logger.Info("telemetry request completed")
+				logger.Info("request completed", attrs...)
 			}
 		}()
 

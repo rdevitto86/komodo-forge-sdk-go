@@ -15,7 +15,10 @@ var (
 )
 
 func RedactString(val string) string {
-	if val == "" {
+	if len(val) < 4 {
+		return val
+	}
+	if isNumeric(val) {
 		return val
 	}
 	return piiRegex.ReplaceAllString(val, "[REDACTED]")
@@ -25,8 +28,17 @@ func RedactPair(key string, val any) any {
 	if keyRegex.MatchString(key) {
 		return "[REDACTED]"
 	}
-	if s, ok := val.(string); ok && s != "" {
+	if s, ok := val.(string); ok && len(s) >= 4 && !isNumeric(s) {
 		return piiRegex.ReplaceAllString(s, "[REDACTED]")
 	}
 	return val
+}
+
+func isNumeric(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }

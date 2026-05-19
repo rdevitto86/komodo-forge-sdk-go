@@ -10,6 +10,13 @@ import (
 	"github.com/rdevitto86/komodo-forge-sdk-go/security/jwt"
 )
 
+var (
+	userAgentRE     = regexp.MustCompile(`^[A-Za-z0-9\-\._ /(),:;]+$`)
+	urlOriginRE     = regexp.MustCompile(`^https?://[A-Za-z0-9\-.%]+(?::\d{1,5})?(?:/.*)?$`)
+	requestedByRE   = regexp.MustCompile(`^[A-Za-z0-9_\-/]+$`)
+	idempotencyKeyRE = regexp.MustCompile(`^[A-Za-z0-9_\-]{8,64}$`)
+)
+
 // Runs lightweight validation for known header names.
 func ValidateHeaderValue(hdr string, req *http.Request) (bool, error) {
 	val := req.Header.Get(hdr)
@@ -83,14 +90,12 @@ func isValidUserAgent(s string) bool {
 	s = strings.TrimSpace(s)
 	if len(s) > 256 {
 		return false
-	} // max length
-	re := regexp.MustCompile(`^[A-Za-z0-9\-\._ /(),:;]+$`)
-	return re.MatchString(s)
+	}
+	return userAgentRE.MatchString(s)
 }
 
 func isValidReferer(s string) bool {
-	re := regexp.MustCompile(`^https?://[A-Za-z0-9\-.%]+(?::\d{1,5})?(?:/.*)?$`)
-	return re.MatchString(strings.TrimSpace(s))
+	return urlOriginRE.MatchString(strings.TrimSpace(s))
 }
 
 func isValidCacheControl(s string) bool {
@@ -98,11 +103,11 @@ func isValidCacheControl(s string) bool {
 }
 
 func isValidRequestedBy(s string) bool {
-	return s != "" && len(s) <= 64 && regexp.MustCompile(`^[A-Za-z0-9_\-/]+$`).MatchString(s)
+	return s != "" && len(s) <= 64 && requestedByRE.MatchString(s)
 }
 
 func isValidIdempotencyKey(s string) bool {
-	return regexp.MustCompile(`^[A-Za-z0-9_\-]{8,64}$`).MatchString(s)
+	return idempotencyKeyRE.MatchString(s)
 }
 
 func isValidCSRF(s string) bool {
@@ -120,6 +125,5 @@ func isValidCORS(s string) bool {
 	if s == "*" {
 		return true
 	}
-	re := regexp.MustCompile(`^https?://[A-Za-z0-9\-.%]+(?::\d{1,5})?(?:/.*)?$`)
-	return re.MatchString(strings.TrimSpace(s))
+	return urlOriginRE.MatchString(strings.TrimSpace(s))
 }

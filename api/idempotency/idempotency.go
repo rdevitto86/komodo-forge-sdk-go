@@ -6,6 +6,26 @@ import (
 	"time"
 )
 
+var evictOnce sync.Once
+
+func startEvictor(c *LocalCache) {
+	evictOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				now := time.Now().Unix()
+				c.store.Range(func(k, v any) bool {
+					if until, ok := v.(int64); ok && until <= now {
+						c.store.Delete(k)
+					}
+					return true
+				})
+			}
+		}()
+	})
+}
+
 const DEFAULT_IDEM_TTL_SEC int64 = 300 // 5 minutes
 
 // Implementations can be local (in-memory) or distributed (Redis, ElastiCache, etc.).
@@ -25,6 +45,7 @@ func (c *LocalCache) Load(key string) (any, bool) {
 }
 
 func (c *LocalCache) Store(key string, value any, ttl int64) error {
+	startEvictor(c)
 	c.store.Store(key, value)
 	return nil
 }

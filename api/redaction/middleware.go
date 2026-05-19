@@ -44,8 +44,6 @@ func redactHeaders(header http.Header) http.Header {
 	}
 
 	out := make(http.Header, len(header))
-	sensitiveHeaderRE := regexp.MustCompile(`(?i)authorization|cookie|set-cookie|x-api-key|x-amz-signature`)
-
 	for k, val := range header {
 		// if header name matches sensitive pattern, redact values
 		if sensitiveHeaderRE.MatchString(k) {
@@ -66,7 +64,10 @@ func redactHeaders(header http.Header) http.Header {
 	return out
 }
 
-var bearerRE = regexp.MustCompile(`(?i)^\s*bearer\s+[A-Za-z0-9\-\._~\+/]+=*$`)
+var (
+	sensitiveHeaderRE = regexp.MustCompile(`(?i)authorization|cookie|set-cookie|x-api-key|x-amz-signature`)
+	bearerRE          = regexp.MustCompile(`(?i)^\s*bearer\s+[A-Za-z0-9\-\._~\+/]+=*$`)
+)
 var longTokenRE = regexp.MustCompile(`[A-Za-z0-9\-\._~\+/]{20,}`)
 
 func looksLikeToken(s string) bool {

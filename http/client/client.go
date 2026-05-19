@@ -118,17 +118,13 @@ func GetJSON[T any](c *Client, ctx context.Context, url string) (*T, error) {
 	}
 	defer res.Body.Close()
 
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
-	}
-
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		body, _ := io.ReadAll(res.Body)
 		return nil, &HTTPError{StatusCode: res.StatusCode, Body: body}
 	}
 
 	var result T
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
 	return &result, nil
@@ -160,17 +156,13 @@ func PostJSON[T any](c *Client, ctx context.Context, url string, body any) (*T, 
 	}
 	defer res.Body.Close()
 
-	raw, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
-	}
-
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
+		raw, _ := io.ReadAll(res.Body)
 		return nil, &HTTPError{StatusCode: res.StatusCode, Body: raw}
 	}
 
 	var result T
-	if err := json.Unmarshal(raw, &result); err != nil {
+	if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
 	return &result, nil

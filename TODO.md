@@ -49,6 +49,33 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **H** `aws/lambda/client.go` — empty stub
 - [ ] **H** `aws/ses/client.go` — empty stub
 
+### GCP Service Stubs (Empty)
+
+> Scaffolded 2026-05-18 to mirror AWS layout. Each package has a `Config`, `Client` struct, `API` interface, and stub methods that panic. `New()` returns `ErrNotImplemented` until the real client lands. Goal: callers swap providers by changing import path; method signatures stay identical to the AWS counterpart where the underlying semantics map cleanly. Divergences (Firestore vs DynamoDB key model, Pub/Sub vs SNS+SQS split, no SES equivalent) are called out per-package.
+
+- [ ] **H** `gcp/gcs/` — Cloud Storage (parity with `aws/s3`): `GetObject`, `GetObjectAs`, `PutObject`, `DeleteObject`. Use `cloud.google.com/go/storage`. Tests via `fake-gcs-server` or storage emulator.
+- [ ] **H** `gcp/firestore/` — Firestore (parity with `aws/dynamodb`): `GetItem`, `PutItem`, `UpdateItem`, `DeleteItem`, `Query`, `QueryAs`. Use `cloud.google.com/go/firestore`. **Divergence:** Firestore uses document IDs, not composite PK/SK — `BuildKey` is intentionally omitted. Decide whether composite-key callers map to a synthetic `id = pk + "#" + sk` or whether the SDK exposes a parallel `BuildPath` helper. Tests via Firestore emulator.
+- [ ] **H** `gcp/pubsubpub/` — Pub/Sub publisher (parity with `aws/sns`): `Publish`. Use `cloud.google.com/go/pubsub`. Tests via Pub/Sub emulator.
+- [ ] **H** `gcp/pubsubsub/` — Pub/Sub pull subscriber (parity with `aws/sqs`): `Receive`, `Ack`, `Nack`. Use `cloud.google.com/go/pubsub`. **Divergence:** Pub/Sub has no native FIFO `MessageGroupId` / `MessageDeduplicationId` — ordering keys are per-topic; document the gap. Tests via emulator.
+- [ ] **H** `gcp/cloudfunctions/` — Cloud Functions / Cloud Run invoke (parity with `aws/lambda`): `Invoke`. Use `cloud.google.com/go/functions` or HTTP-trigger via authenticated `http/client`. Decide sync vs async semantics.
+- [ ] **H** `gcp/secretmanager/` — Secret Manager (parity with `aws/secretsmanager`): `GetSecret`, `GetSecrets`. Use `cloud.google.com/go/secretmanager`. Distinguish "not found" via `ErrNotFound`. Add proper timeout `ctx` (don't replicate the `context.TODO()` bug from AWS).
+- [ ] **H** `gcp/cloudlogging/` — Cloud Logging (parity with `aws/cloudwatch` logs side): `Write`, `WriteBatch`. Use `cloud.google.com/go/logging`.
+- [ ] **H** `gcp/cloudmonitoring/` — Cloud Monitoring (parity with `aws/cloudwatch` metrics side): `PutMetric`, `PutMetrics`. Use `cloud.google.com/go/monitoring`. Decide custom-metric type prefix convention (`custom.googleapis.com/komodo/<name>`).
+- [ ] **H** `gcp/vertexai/` — Vertex AI generative models (parity with `aws/bedrock`): `Invoke`, `InvokeStream`. Use `cloud.google.com/go/vertexai`. Map model IDs (`gemini-*`) to align with Bedrock model selection conventions in `komodo-support-api`.
+- [ ] **H** `gcp/cloudsql/` — Cloud SQL (parity with `aws/aurora`): `DB()`, `Ping`, `Close`, connection pool config, transactions, query helpers. Use `cloud.google.com/go/cloudsqlconn` with `database/sql`. IAM auth flag.
+- [ ] **H** `gcp/memorystore/` — Memorystore Redis (parity with `aws/elasticache`): `Get`, `Set`, `Delete`, `Exists`. Use `github.com/redis/go-redis/v9` with Memorystore connector. Configurable timeouts (don't replicate elasticache's 3s/2s hardcoded bug).
+- [ ] **M** `gcp/vertexsearch/` — Vertex AI Search (parity with `aws/elasticsearch`): `Search`, `Index`, `Delete`. Use `cloud.google.com/go/discoveryengine`. **Note:** semantics differ significantly from Elasticsearch — managed retrieval vs raw inverted index; document tradeoffs and what features (custom mappings, aggregations) are not supported.
+- [ ] **M** `gcp/dialogflow/` — Dialogflow CX / CCAI agents (parity with `aws/connect`): `DetectIntent`. Use `cloud.google.com/go/dialogflow`. Connect's flow-builder semantics don't map directly — document.
+- [ ] **M** `gcp/ccaiinsights/` — Contact Center AI Insights (parity with `aws/contactlens`): `AnalyzeConversation`, `GetAnalysis`. Use `cloud.google.com/go/contactcenterinsights`.
+
+### GCP — cross-cutting
+
+- [ ] **H** Shared `gcp/internal/clientopts` (or top-level `gcp/clientopts`) for `option.ClientOption` assembly — every GCP client takes a credentials JSON path/blob, endpoint override (emulator), and project ID; centralize the option-builder to avoid 14× duplication of the same boilerplate, mirroring the AWS-side gap called out in the audit (`awsconfig.LoadDefaultConfig` called per client).
+- [ ] **H** Provider-neutral interfaces — lift the `API` interfaces from `aws/<svc>` and `gcp/<svc>` into a shared package (e.g. `storage`, `queue`, `secrets`, `database`) so callers depend on the interface, not the concrete provider. Required to deliver on the "swap by import path" promise; otherwise consumers still hard-code `aws/s3.Client` or `gcp/gcs.Client`. Pair with the existing top-level **AWS client interfaces** TODO under General SDK Health.
+- [ ] **M** `gcp/ses-equivalent` decision — there is no native GCP transactional email service. Either (a) document `connectors/sendgrid` as the GCP-region default, (b) wire `connectors/mailgun`, or (c) accept that email delivery is provider-agnostic (lives outside `gcp/`). Pick one before consumers start picking ad-hoc.
+- [ ] **M** `gcp/dynamostreams` equivalent — Firestore change streams via `firestore.Listen` / Eventarc → Pub/Sub. Mirror the planned `aws/dynamostreams` package (see entry above) once that one's design lands.
+- [ ] **L** README / docs — once stubs are filled in, add `gcp/README.md` with the AWS↔GCP mapping table and per-package divergences (currently embedded in each `client.go` doc comment).
+
 ### `config`
 - [ ] **H** File-based config loading (YAML / JSON)
 - [ ] **M** Multi-environment support (dev / staging / prod profiles)
@@ -71,6 +98,25 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 
 ### `security/encryption`
 - [ ] **H** Implement encryption package (`encryption.go` is empty stub)
+
+### `codegen/templates`
+
+Surfaced by the `komodo-auth-api` rollout (2026-05-17). The existing `client-with-responses.tmpl` only fires when consumers generate `client: true`; auth-api generates `models: true, client: false` and hand-writes both a thin `clients/{comms,user}.go` HTTP layer **and** a `paths.go` file of `Path<Operation>` consts. The header in those files literally says: *"When a custom oapi-codegen paths template is available, replace this file with generated output."* Standardize before more consumers copy the pattern.
+
+- [ ] **M** **Path-constants template** (`paths.tmpl`) — emit a `paths.go` next to `types.gen.go` containing `const Path<OperationID> = "<path>"` for every operation in the spec. Templating-only: no runtime deps, no imports beyond the package declaration. Document the same "drop `user-templates` to deviate" pattern as the existing client template. This is the immediate ask — auth-api ships hand-written `internal/models/comms/paths.go` and `internal/models/user/paths.go` that should disappear on next regenerate.
+  - Decide naming when `operationId` is absent (fall back to method + path-segments PascalCased).
+  - Decide how to expose path params: bare template string (`"/v1/users/{id}"`) is simplest; a typed helper (`PathUser(id string) string`) is nicer but requires the consumer to import it. Lean simple — bare strings — and let consumers `fmt.Sprintf` or `strings.NewReplacer` if they want.
+  - Add a `templates_test.go` case mirroring the existing one (parseable + Komodo additions divider present).
+- [ ] **M** **Models-only preset config** — ship `codegen/oapi-codegen.models.yaml` as a documented base for consumers who want types + path constants but not a full generated client (auth-api's case: it talks to downstream services via a hand-written shared `HttpClient` wrapping `http/client`, not a per-service generated client). Today each consumer re-types the same `generate.models: true / client: false / skip-prune: true` block.
+- [ ] **L** **README cross-link** — once `paths.tmpl` lands, update `codegen/README.md` to document both templates side-by-side and add a "which template do I want?" decision flow at the top (`generated client` vs `models + paths only`).
+- [ ] **L** **Scaffolder command** — `scripts/add-client.sh <consumer-service> <provider-service>` that drops a starter `oapi-codegen.yaml` (correct relative path to the provider's `openapi.yaml`, both templates wired), runs `oapi-codegen`, and prints next-step guidance. Removes the copy-paste-an-existing-consumer pattern.
+
+### `http/client` — service-to-service auth
+
+Surfaced by `komodo-auth-api/internal/clients/user.go` and the inline `jwt.SignToken("komodo-auth-api", "komodo-auth-api", "komodo-apis:service", 30, nil)` call in `internal/api/otp.go`. Every consumer of a private endpoint will need to mint and attach a short-lived service JWT on each outbound call — currently hand-rolled per call site.
+
+- [ ] **M** **`WithServiceAuth(serviceName, scope, ttl)` round-tripper option** — composes with the existing `http/client.Client`. Internally signs a service JWT via `crypto/jwt.SignToken`, caches it in-process keyed by `(name, scope)` with refresh ~10–20% before expiry, and sets `Authorization: Bearer <token>` on every outbound request. Auth-api's `clients/user.go` collapses from 35 lines of manual `http.NewRequestWithContext` + header-set + status-check + unmarshal into a 1-liner call against the generated client.
+- [ ] **L** **`ServiceClient` helper** — thin wrapper that pairs `client-with-responses.tmpl`'s generated `New(baseURL)` with `WithServiceAuth`, so a consumer wires a downstream service in one constructor instead of stitching the round-tripper, base URL, and generated client together by hand.
 
 ### `http/client` — circuit breaker wiring
 - [ ] **M** Wire `WithCircuitBreaker` into the following Komodo call sites:
@@ -278,6 +324,20 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **M** **ElasticSearch / OpenSearch** — index / search / bulk helpers
 - [ ] **L** **CloudFront** — signed URL / signed cookie generation, cache invalidation
 - [ ] **L** **Pinpoint / SNS Mobile Push** — push notification helpers
+
+---
+
+## Planned: GCP Service Connectors
+
+> Stubs for each are already scaffolded in `gcp/` (see "GCP Service Stubs (Empty)" above). This section tracks additional GCP services that don't yet have a stub package — analogous to the AWS planned-connectors list. Add a stub directory before implementation work begins so signatures can be reviewed independently.
+
+- [ ] **M** **BigQuery** — query execution, dataset/table management, streaming inserts; common analytics destination, no AWS equivalent in this SDK (Redshift / Athena were never added)
+- [ ] **M** **Eventarc** — event routing from GCP services into Pub/Sub / Cloud Run / Cloud Functions; parallel to AWS EventBridge entry below
+- [ ] **M** **Cloud Tasks** — durable task queue with scheduled execution; no direct AWS equivalent (closest: SQS delay queues + Step Functions)
+- [ ] **M** **Cloud Scheduler** — cron-as-a-service for HTTP / Pub/Sub / App Engine targets; parallel to AWS EventBridge Scheduler
+- [ ] **L** **Cloud KMS** — envelope encryption, key rotation; pairs with the planned `security/encryption` package
+- [ ] **L** **Cloud CDN / Cloud Armor** — signed URL generation, WAF rule management; parallel to the planned AWS CloudFront entry
+- [ ] **L** **Cloud Translation / Speech-to-Text / Text-to-Speech** — only if downstream consumers (support-api, communications-api) need them; otherwise defer
 
 ---
 

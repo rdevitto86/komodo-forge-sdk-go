@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	httpReq "github.com/rdevitto86/komodo-forge-sdk-go/api/request"
 )
 
 type ErrorResponse struct {
@@ -48,7 +50,7 @@ func SendError(wtr http.ResponseWriter, req *http.Request, errCode ErrorCode, ov
 		Message:   message,
 		Code:      errCode.ID,
 		Detail:    detail,
-		RequestId: req.Header.Get("X-Request-ID"),
+		RequestId: httpReq.GetRequestID(req),
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	})
 }

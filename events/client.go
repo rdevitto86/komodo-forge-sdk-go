@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 
@@ -80,6 +81,9 @@ func NewSubscriber(sqsClient sqs.API, cfg SubscriberConfig) *Subscriber {
 //   - On handler error the message is left in-flight so SQS visibility timeout
 //     and the queue's redrive policy handle retries and DLQ routing.
 func (s *Subscriber) Subscribe(ctx context.Context, handler func(ctx context.Context, event Event) error) error {
+	var backoff time.Duration
+	const maxBackoff = 30 * time.Second
+
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -91,8 +95,22 @@ func (s *Subscriber) Subscribe(ctx context.Context, handler func(ctx context.Con
 				return ctx.Err()
 			}
 			logger.Error("failed to receive messages", err)
+			if backoff == 0 {
+				backoff = time.Second
+			} else {
+				backoff *= 2
+				if backoff > maxBackoff {
+					backoff = maxBackoff
+				}
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
 			continue
 		}
+		backoff = 0
 
 		for _, msg := range msgs {
 			var evt Event

@@ -330,13 +330,9 @@ func normalizePath(p string) string {
 	trimmed := strings.TrimPrefix(p, "/")
 	segs := strings.Split(trimmed, "/")
 
-	if len(segs) > 0 && len(segs[0]) > 0 && segs[0][0] == 'v' {
-		// basic check: next characters are digits or digit+dot
-		if regexp.MustCompile(`^v[0-9]`).MatchString(segs[0]) {
-			// remove first segment
-			segs = segs[1:]
-			p = "/" + strings.Join(segs, "/")
-		}
+	if len(segs) > 0 && len(segs[0]) > 1 && segs[0][0] == 'v' && segs[0][1] >= '0' && segs[0][1] <= '9' {
+		segs = segs[1:]
+		p = "/" + strings.Join(segs, "/")
 	}
 	if !strings.HasPrefix(p, "/") {
 		p = "/" + p

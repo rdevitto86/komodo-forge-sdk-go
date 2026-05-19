@@ -9,7 +9,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/rdevitto86/komodo-forge-sdk-go/aws/elasticache"
 )
@@ -57,9 +56,9 @@ var (
 	envPtr  atomic.Pointer[envCfg]
 	envOnce sync.Once
 
-	buckets   sync.Map
-	evictOnce sync.Once
-	ecClient  elasticache.API
+	buckets     sync.Map
+	evictOnce   sync.Once
+	ecClientVal atomic.Value // stores *ecHolder; use loadEC() to read
 
 	// failOpen is stored as an atomic int32 (0 = not loaded, 1 = open, 2 = closed).
 	// Separate from envCfg so ShouldFailOpen stays cheap.
@@ -67,10 +66,21 @@ var (
 	failOnce    sync.Once
 )
 
+// ecHolder wraps the elasticache.API interface so atomic.Value can store it.
+type ecHolder struct{ c elasticache.API }
+
+// loadEC returns the current elasticache client, or nil if none is set.
+func loadEC() elasticache.API {
+	if h, ok := ecClientVal.Load().(*ecHolder); ok {
+		return h.c
+	}
+	return nil
+}
+
 // Wires a distributed ElastiCache client for prod/staging
 // rate limiting. Must be called before the first Allow call in those environments.
 func SetElasticacheClient(c elasticache.API) {
-	atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&ecClient)), *(*unsafe.Pointer)(unsafe.Pointer(&c)))
+	ecClientVal.Store(&ecHolder{c: c})
 }
 
 // Attempts to consume a token for the given client key.
@@ -78,7 +88,7 @@ func Allow(ctx context.Context, key string) (allowed bool, wait time.Duration, e
 	env := loadEnv().env
 
 	if env == "prod" || env == "staging" {
-		ec := ecClient
+		ec := loadEC()
 		if ec == nil {
 			return false, 0, fmt.Errorf("no distributed client configured for env %q", env)
 		}
@@ -88,8 +98,8 @@ func Allow(ctx context.Context, key string) (allowed bool, wait time.Duration, e
 	}
 
 	b := getBucket(key)
-	if !b.allow() {
-		return false, b.retryAfter(), nil
+	if ok, wait := b.allow(); !ok {
+		return false, wait, nil
 	}
 	return true, 0, nil
 }
@@ -131,7 +141,7 @@ func LoadConfig(cfg Config) error {
 	return nil
 }
 
-func (bkt *bucket) allow() bool {
+func (bkt *bucket) allow() (bool, time.Duration) {
 	cfg := loadCfg()
 	now := time.Now()
 	bkt.mu.Lock()
@@ -152,10 +162,16 @@ func (bkt *bucket) allow() bool {
 	if bkt.tokens >= 1 {
 		bkt.tokens--
 		bkt.last = now
-		return true
+		return true, 0
 	}
 	bkt.last = now
-	return false
+
+	// compute wait while still holding the lock, avoiding a second lock round-trip
+	deficit := 1 - bkt.tokens
+	if deficit <= 0 || cfg.rps <= 0 {
+		return false, time.Second
+	}
+	return false, time.Duration(deficit / cfg.rps * float64(time.Second))
 }
 
 func (bkt *bucket) retryAfter() time.Duration {

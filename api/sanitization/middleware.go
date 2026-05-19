@@ -134,9 +134,7 @@ func sanitizeString(str string) string {
 	str = html.EscapeString(str)
 	str = strings.TrimSpace(str)
 
-	if SqlInjectionPattern.MatchString(str) {
-		str = SqlInjectionPattern.ReplaceAllString(str, "")
-	}
+	str = SqlInjectionPattern.ReplaceAllString(str, "")
 	str = XssPattern.ReplaceAllString(str, "")
 
 	return str

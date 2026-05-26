@@ -6,6 +6,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.14.1]
+
+### Added
+
+- **`db/redis` — three new atomic operations on `API` interface and `Client`.**
+  - `Incr(ctx context.Context, key string) (int64, error)` — atomically increments the integer value at key by one and returns the new value. Key is created with value `1` if it does not exist (standard Redis `INCR` semantics). Consumed by `komodo-auth-api` to fix a read-increment-write race in `IncrOTPAttempts`.
+  - `SetNX(ctx context.Context, key, value string, ttl int64) (bool, error)` — sets key to value only if the key does not already exist; returns `true` if the write occurred, `false` if the key was already present. TTL of 0 sets no expiry. Unblocks atomic OTP-cooldown enforcement, distributed lock patterns, and the `api/idempotency` distributed-cache stub.
+  - `Exists(ctx context.Context, key string) (bool, error)` — reports whether a key exists without fetching its value. Aligns `db/redis` with the `gcp/memorystore` API stub contract (`Exists` was already present there). Useful for cache-hit checks on the hot path where the value itself is not needed.
+
+---
+
 ## [0.14.0]
 
 ### Changed

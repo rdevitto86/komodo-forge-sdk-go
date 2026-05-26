@@ -16,6 +16,9 @@ type API interface {
 	Get(ctx context.Context, key string) (string, error)
 	Set(ctx context.Context, key string, value string, ttl int64) error
 	Delete(ctx context.Context, key string) error
+	Incr(ctx context.Context, key string) (int64, error)
+	SetNX(ctx context.Context, key string, value string, ttl int64) (bool, error)
+	Exists(ctx context.Context, key string) (bool, error)
 	Close() error
 	AllowDistributed(ctx context.Context, key string, rate, burst float64, ttlSec int) (bool, time.Duration, error)
 }
@@ -136,6 +139,50 @@ func (c *Client) Set(ctx context.Context, key string, value string, ttl int64) e
 		return err
 	}
 	return nil
+}
+
+// Atomically increments the integer value at key by one and returns the new value.
+func (c *Client) Incr(ctx context.Context, key string) (int64, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
+	val, err := c.rc.Incr(ctx, key).Result()
+	if err != nil {
+		logger.Error("failed to increment redis key", err)
+		return 0, err
+	}
+	return val, nil
+}
+
+// Sets key to value only if the key does not already exist; returns true if the write occurred.
+func (c *Client) SetNX(ctx context.Context, key string, value string, ttl int64) (bool, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
+	var dur time.Duration
+	if ttl > 0 {
+		dur = time.Duration(ttl) * time.Second
+	}
+
+	ok, err := c.rc.SetNX(ctx, key, value, dur).Result()
+	if err != nil {
+		logger.Error("failed to set redis key if not exists", err)
+		return false, err
+	}
+	return ok, nil
+}
+
+// Reports whether a key exists in Redis.
+func (c *Client) Exists(ctx context.Context, key string) (bool, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
+	n, err := c.rc.Exists(ctx, key).Result()
+	if err != nil {
+		logger.Error("failed to check redis key existence", err)
+		return false, err
+	}
+	return n > 0, nil
 }
 
 // Removes a key from Redis.

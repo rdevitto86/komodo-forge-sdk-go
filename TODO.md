@@ -20,6 +20,9 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **L** Projection expression support
 
 ### `db/redis` (was `aws/elasticache`)
+- [x] **M** `Incr(ctx, key) (int64, error)` — atomic increment; added to `API` interface + `Client` in v0.14.1. Consumed by `komodo-auth-api` `IncrOTPAttempts`.
+- [x] **M** `SetNX(ctx, key, value string, ttl int64) (bool, error)` — set-if-not-exists; added in v0.14.1. Returns true on write, false if key already existed. Unblocks atomic OTP cooldown, distributed locks, and the `api/idempotency` stub.
+- [x] **M** `Exists(ctx, key string) (bool, error)` — key existence check without fetching the value; added in v0.14.1. Aligns `db/redis` with the `gcp/memorystore` API stub contract.
 - [ ] **M** Connection pool configuration
 - [ ] **M** Bulk ops: `MGET`, `MSET`, `MDEL`
 - [ ] **L** Pub/sub support

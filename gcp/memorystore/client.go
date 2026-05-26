@@ -1,9 +1,5 @@
 package memorystore
 
-// GCP Memorystore (Redis) client — equivalent to aws/elasticache.
-//
-// Stub: methods panic until implementation lands. New returns ErrNotImplemented.
-
 import (
 	"context"
 	"time"

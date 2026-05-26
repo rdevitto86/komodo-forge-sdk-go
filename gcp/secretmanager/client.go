@@ -1,9 +1,5 @@
 package secretmanager
 
-// GCP Secret Manager client — equivalent to aws/secretsmanager.
-//
-// Stub: methods panic until implementation lands. New returns ErrNotImplemented.
-
 import "context"
 
 type API interface {

@@ -1,15 +1,11 @@
 package pubsubpub
 
-// GCP Pub/Sub publisher — equivalent to aws/sns.
-//
-// Stub: methods panic until implementation lands. New returns ErrNotImplemented.
-
 import "context"
 
 type PublishInput struct {
-	Topic      string
-	Body       []byte
-	Attributes map[string]string
+	Topic       string
+	Body        []byte
+	Attributes  map[string]string
 	OrderingKey string
 }
 

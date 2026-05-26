@@ -20,12 +20,7 @@ func AttrDetails(details map[string]any) slog.Attr { return slog.Any("details", 
 
 // --- Context extraction ---
 
-// Extracts standard log fields from a request context and returns
-// them as slog args. Attach to any log call for automatic E2E correlation:
-//
-//	logger.Info("Processing order", logger.FromContext(ctx)...)
-//
-// Fields populated (if present in ctx): request_id, correlation_id, user_id, session_id.
+// Extracts standard correlation fields (request_id, correlation_id, user_id, session_id) from ctx as slog args.
 func FromContext(ctx context.Context) []any {
 	var args []any
 	if id, ok := ctx.Value(ctxKeys.REQUEST_ID_KEY).(string); ok && id != "" {
@@ -45,8 +40,7 @@ func FromContext(ctx context.Context) []any {
 
 // --- HTTP helpers ---
 
-// Logs method + path only. Headers are intentionally omitted —
-// they frequently contain Authorization tokens and other PII.
+// Returns a slog.Attr grouping method and path; headers are intentionally omitted to avoid logging PII.
 func AttrRequest(req *http.Request) slog.Attr {
 	if req == nil {
 		return slog.Any("request", nil)
@@ -57,7 +51,7 @@ func AttrRequest(req *http.Request) slog.Attr {
 	)
 }
 
-// Logs status code only.
+// Returns a slog.Attr grouping the response status code.
 func AttrResponse(res *http.Response) slog.Attr {
 	if res == nil {
 		return slog.Any("response", nil)

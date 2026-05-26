@@ -1,9 +1,5 @@
 package vertexsearch
 
-// GCP Vertex AI Search client — equivalent to aws/elasticsearch.
-//
-// Stub: methods panic until implementation lands. New returns ErrNotImplemented.
-
 import "context"
 
 type SearchInput struct {

@@ -14,6 +14,7 @@ var (
 	)
 )
 
+// Redacts PII patterns (email, SSN, credit card, bearer token) in val, leaving short or numeric values unchanged.
 func RedactString(val string) string {
 	if len(val) < 4 {
 		return val
@@ -24,6 +25,7 @@ func RedactString(val string) string {
 	return piiRegex.ReplaceAllString(val, "[REDACTED]")
 }
 
+// Redacts val when key matches a sensitive field name, or when val is a string containing PII patterns.
 func RedactPair(key string, val any) any {
 	if keyRegex.MatchString(key) {
 		return "[REDACTED]"

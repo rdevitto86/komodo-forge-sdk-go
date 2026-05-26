@@ -1,9 +1,5 @@
 package cloudlogging
 
-// GCP Cloud Logging client — pairs with cloudmonitoring as the equivalent of aws/cloudwatch (logs side).
-//
-// Stub: methods panic until implementation lands. New returns ErrNotImplemented.
-
 import "context"
 
 type Entry struct {

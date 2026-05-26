@@ -11,8 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sns/types"
 )
 
-// PublishInput carries all parameters for an SNS publish call, including the
-// optional FIFO fields GroupID and DedupID.
+// Carries all parameters for an SNS publish call, including the optional FIFO fields GroupID and DedupID.
 type PublishInput struct {
 	TopicARN string
 	Message  string
@@ -36,10 +35,14 @@ type Client struct {
 	sns *sns.Client
 }
 
-// Creates and returns a new SNS Client.
-func New(config Config) (*Client, error) {
+// Creates and returns a new SNS Client. Returns an error if the region is
+// missing or not a known AWS region code.
+func New(ctx context.Context, config Config) (*Client, error) {
 	if config.Region == "" {
-		return nil, fmt.Errorf("region is required")
+		return nil, fmt.Errorf("missing region")
+	}
+	if config.Region == "" {
+		return nil, fmt.Errorf("missing region")
 	}
 
 	cfgOpts := []func(*awsconfig.LoadOptions) error{
@@ -55,7 +58,7 @@ func New(config Config) (*Client, error) {
 		))
 	}
 
-	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), cfgOpts...)
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, cfgOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
@@ -86,7 +89,6 @@ func (c *Client) Publish(ctx context.Context, input PublishInput) (string, error
 	if len(input.Attrs) > 0 {
 		in.MessageAttributes = make(map[string]types.MessageAttributeValue, len(input.Attrs))
 		for k, v := range input.Attrs {
-			v := v
 			in.MessageAttributes[k] = types.MessageAttributeValue{
 				DataType:    aws.String("String"),
 				StringValue: &v,

@@ -50,14 +50,15 @@ type Client struct {
 	maxParallel int // semaphore cap for batch operations
 }
 
-// Creates and returns a new DynamoDB Client. Returns an error if the AWS
-// config cannot be loaded or the region is missing.
-func New(config Config) (*Client, error) {
+// Creates a DynamoDB client; returns an error if the region is missing or invalid, or if the AWS config cannot be loaded.
+func New(ctx context.Context, config Config) (*Client, error) {
 	if config.Region == "" {
-		return nil, fmt.Errorf("region is required")
+		return nil, fmt.Errorf("missing region")
+	}
+	if config.Region == "" {
+		return nil, fmt.Errorf("missing region")
 	}
 
-	ctx := context.Background()
 	var (
 		cfg aws.Config
 		err error

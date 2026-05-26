@@ -10,7 +10,7 @@ import (
 // Sentinel errors for DynamoDB operations
 var ErrClientNotInitialized = fmt.Errorf("client not initialized")
 
-// Wraps AWS DynamoDB errors with descriptive messages
+// Wraps an AWS DynamoDB error, mapping known SDK error types to descriptive messages.
 func WrapError(err error, operation string) error {
 	if err == nil {
 		return nil

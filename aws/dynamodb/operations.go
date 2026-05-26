@@ -81,8 +81,7 @@ func chunks[T any](items []T) [][]T {
 	return out
 }
 
-// runParallel runs fn for each chunk index in parallel, bounded by the client's
-// maxParallel semaphore. Returns the first error encountered.
+// Runs fn for each of n chunk indices in parallel, bounded by the maxParallel semaphore; returns the first error.
 func (c *Client) runParallel(n int, fn func(i int) error) error {
 	if n == 1 {
 		return fn(0)

@@ -1,9 +1,5 @@
 package gcs
 
-// GCP Cloud Storage client — equivalent to aws/s3.
-//
-// Stub: methods panic until implementation lands. New returns ErrNotImplemented.
-
 import (
 	"context"
 )

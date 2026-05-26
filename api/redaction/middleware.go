@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Redacts sensitive information from requests for logging purposes
+// Redacts sensitive headers, query params, and JSON body fields from the request before passing it downstream.
 func RedactionMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 		// shallow copy of request
@@ -139,7 +139,7 @@ func redactBody(b []byte, contentType string) []byte {
 
 	// only attempt JSON redaction; for others, do a simple token mask
 	if strings.Contains(strings.ToLower(contentType), "application/json") {
-		var v interface{}
+		var v any
 		if err := json.Unmarshal(b, &v); err == nil {
 			redactInterface(v)
 			if out, err := json.Marshal(v); err == nil {
@@ -155,9 +155,9 @@ func redactBody(b []byte, contentType string) []byte {
 	return []byte(rb)
 }
 
-func redactInterface(val interface{}) {
+func redactInterface(val any) {
 	switch t := val.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		for k, v := range t {
 			if containsSensitiveKey(strings.ToLower(k)) {
 				t[k] = "REDACTED"
@@ -165,7 +165,7 @@ func redactInterface(val interface{}) {
 			}
 			redactInterface(v)
 		}
-	case []interface{}:
+	case []any:
 		for i := range t {
 			redactInterface(t[i])
 		}

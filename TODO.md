@@ -6,12 +6,11 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 
 ## In-Progress / Stubs to Complete
 
-### `aws/aurora`
-- [ ] **H** Implement Aurora RDS client (`client.go`, `errors.go` are empty stubs)
+### `db/sql` (was `aws/aurora`)
+- [ ] **H** Implement wire-protocol SQL client (`client.go`, `errors.go` are still stubs — pgx + `database/sql`)
 - [ ] **H** Connection pool configuration (max open/idle conns, lifetime)
 - [ ] **H** Transaction support
 - [ ] **M** Query builder helpers (select, insert, update, delete)
-- [ ] **M** AWS Aurora-specific error wrapping
 
 ### `aws/dynamodb`
 - [ ] **H** Retry logic for unprocessed items in batch write/delete
@@ -20,8 +19,7 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **L** Consistent read flag on Scan
 - [ ] **L** Projection expression support
 
-### `aws/elasticache`
-- [ ] **H** Configurable timeouts (currently hardcoded to 3s/2s)
+### `db/redis` (was `aws/elasticache`)
 - [ ] **M** Connection pool configuration
 - [ ] **M** Bulk ops: `MGET`, `MSET`, `MDEL`
 - [ ] **L** Pub/sub support
@@ -41,13 +39,18 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 - [ ] **M** Pagination for batch secret retrieval
 - [ ] **L** Support binary secrets
 
-### AWS Service Stubs (Empty)
-- [ ] **H** `aws/cloudwatch/` — directory exists but is empty
-- [ ] **H** `aws/connect/client.go` — empty stub
-- [ ] **H** `aws/contactlens/client.go` — empty stub
-- [ ] **H** `aws/elasticsearch/client.go` — empty stub
-- [ ] **H** `aws/lambda/client.go` — empty stub
-- [ ] **H** `aws/ses/client.go` — empty stub
+### AWS Service Stubs
+
+All previously-empty AWS service packages were implemented in 0.14.0 — see `CHANGELOG.md`. Remaining follow-ups:
+
+- [ ] **M** `aws/bedrock` — `ConverseStream` streaming via `bedrockruntime.ConverseStream` + AWS event-stream protocol. Add `ConverseStream(ctx, ConverseInput) (<-chan ConverseStreamEvent, <-chan error)` to `API`.
+- [ ] **M** `aws/rds` — `time.Time` parameter helper (currently caller must format dates as strings). `TimeToField(t time.Time, hint types.TypeHint)` would reduce boilerplate.
+- [ ] **M** `aws/rds` — `TypeHint` support on `ExecuteStatementInput.Parameters` (DATE, TIME, TIMESTAMP, UUID, JSON, DECIMAL) so Aurora can coerce string-encoded values correctly.
+- [ ] **L** `aws/cloudwatch/metrics` — `GetMetricStatisticsPaged` for multi-day windows that exceed the 1440-datapoint single-call cap.
+- [ ] **L** `aws/opensearch` — multi-AZ / VPC-mode endpoint mapping via `DomainStatus.Endpoints` (map). Currently only single-AZ `DomainStatus.Endpoint` is mapped.
+- [ ] **L** `aws/ses` — templated email support (`SendTemplatedEmail`) — dropped from 0.14.0 to keep scope tight.
+- [ ] **L** `aws/lambda` — streaming response invocations via `InvokeWithResponseStream`.
+- [ ] **L** `aws/connect` — pagination control on `ListContactFlows` for callers with >1000 flows.
 
 ### GCP Service Stubs (Empty)
 
@@ -315,13 +318,8 @@ Surfaced by `komodo-auth-api/internal/clients/user.go` and the inline `jwt.SignT
 
 ## Planned: AWS Service Connectors
 
-- [ ] **H** **SES** — transactional email sending (templated + raw)
-- [ ] **H** **CloudWatch** — metrics publishing, log group / stream management
 - [ ] **M** **EventBridge** — rule-based event routing, put-events helper
-- [ ] **M** **RDS (non-Aurora)** — PostgreSQL / MySQL client wrapper (connection pool, query helpers)
-- [ ] **M** **Lambda** — invoke (sync + async), event source mapping
 - [ ] **M** **Kinesis** — stream producer / consumer helpers
-- [ ] **M** **ElasticSearch / OpenSearch** — index / search / bulk helpers
 - [ ] **L** **CloudFront** — signed URL / signed cookie generation, cache invalidation
 - [ ] **L** **Pinpoint / SNS Mobile Push** — push notification helpers
 
@@ -381,6 +379,42 @@ Surfaced by `komodo-auth-api/internal/clients/user.go` and the inline `jwt.SignT
 
 ---
 
+## Audit Findings — 2026-05-25
+
+> Net-new gaps found during full SDK re-audit. Items already tracked in the 2026-05-12 section or package-specific sections above are excluded.
+
+---
+
+### Security
+
+- [ ] **H** `auth/middleware.go:26` — JWT validation `err.Error()` sent verbatim to client in `WithDetail`; log full error internally and return a generic `"token validation failed"` string to callers
+- [ ] **H** `api/request/utils.go:178` — `GetClientKey` trusts the first `X-Forwarded-For` value unconditionally, allowing IP spoofing that bypasses rate limiting and IP access control; strip client-supplied hops and read only from a configured proxy trust depth
+- [ ] **H** `api/redaction/middleware.go:67` — `longTokenRE` (20+ char alphanumeric run) matches base64 content, UUIDs, and long numeric strings, corrupting legitimate request body fields passed to downstream handlers; restrict the regex to the logging/audit copy path only
+
+### Latency
+
+- [ ] **H** `aws/dynamodb/operations.go:84` — `runParallel` does not propagate context cancellation; inflight goroutines continue running to completion after the parent context is cancelled; add `ctx.Done()` select inside each goroutine
+- [ ] **M** `api/request/builder.go:27` — `json.Marshal` result converted to `string` then passed to `strings.NewReader`, making two copies of the body; use `bytes.NewReader(jsonBytes)` directly
+- [ ] **M** `aws/cloudwatch/logs/client.go:105` — `PutLogEvents` sends multiple batches serially in a `for` loop; fan out independent batches in parallel with bounded goroutines (same pattern as `dynamodb.runParallel`)
+- [ ] **M** `events/client.go:100` — `time.After` in the `Subscribe` backoff loop allocates a new `time.Timer` per iteration and leaks it if `ctx.Done()` fires first; replace with `time.NewTimer` + `timer.Stop()` + drain
+- [ ] **L** `api/telemetry/middleware.go:56` — `finish_time` captured with a second `time.Now()` call, inconsistent with the `time.Since(start)` latency value; capture end time once and derive both fields from it
+
+### Performance
+
+- [ ] **H** `api/sanitization/middleware.go:78` — `sanitizeBody` allocates three times on every POST/PUT/PATCH body (`io.ReadAll` → `json.Unmarshal` → `json.Marshal`) without using `ContentLength` for buffer sizing; pre-allocate read buffer from `req.ContentLength` when positive
+- [ ] **M** `api/redaction/middleware.go:112` — `containsSensitiveKey` performs a linear scan over a `[]string` slice on every request key; convert `sensitiveKeys` to `map[string]struct{}` and compile substring patterns into a single `*regexp.Regexp` at init time
+- [ ] **M** `logging/runtime/redaction.go:11` — `RedactingLogger.Handle` clones every `slog.Record` and iterates all attributes unconditionally before checking whether the level is enabled; call `rl.Handler.Enabled(ctx, rec.Level)` first and skip work when filtered
+- [ ] **M** `api/headers/eval.go:67` — `isValidContentLength` reads `MAX_CONTENT_LENGTH` from `os.Getenv` inside a closure on every request; cache the parsed value once at middleware construction time
+
+### Optimization
+
+- [ ] **M** `api/ratelimit/ratelimiter.go:255` — `startBucketEvictor` reads `RATE_LIMIT_BUCKET_TTL_SEC` while `loadEnv()` reads `BUCKET_TTL_SECOND`; the two env var names are different so neither is authoritative — consolidate bucket TTL into `envCfg` and use a single canonical name
+- [ ] **M** `http/client/client.go:78` — circuit breaker counts 4xx responses as upstream failures, tripping the breaker on client errors (400 Bad Request, 404 Not Found) that reflect caller mistakes, not service health; only count 5xx responses as failures
+- [ ] **L** `api/ratelimit/middleware.go:19` — log messages built with string concatenation (`"rate limiter failing open for client: " + key`), allocating on every call; pass client key as a structured attribute
+- [ ] **L** `http/websocket/websocket.go:6` — uses stdlib `log.Printf` for all logging, bypassing `logging/runtime` structured logger; replace with `logger.Error`/`logger.Info` so messages appear in CloudWatch JSON format
+
+---
+
 ## Audit Findings — 2026-05-12
 
 > New gaps, correctness bugs, and performance issues found during full SDK audit. Moxtox and test coverage items are excluded (tracked separately).
@@ -406,7 +440,6 @@ Surfaced by `komodo-auth-api/internal/clients/user.go` and the inline `jwt.SignT
 
 ### Design / API issues
 
-- [ ] **H** `aws/aurora`, `aws/lambda`, `aws/ses`, `aws/cloudwatch`, `aws/contactlens`, `aws/connect`, `aws/elasticsearch`, `aws/bedrock` — `New()` returns a non-nil `*Client{}` whose methods immediately `panic`. A caller has no way to know the client is unusable. Return `(nil, ErrNotImplemented)` from `New()` until real implementations land.
 - [ ] **H** `api/request/builder.go:51` `FromRequest` passes the original `req.Body` reader to a new request — the body is consumed on first read; a second request reads nothing. Buffer the body and set `GetBody` on both.
 - [ ] **H** `events/client.go:84-117` `Subscribe` processes messages serially — one slow handler stalls the entire queue. Add a bounded worker pool (`Concurrency int` on `SubscriberConfig`). On `sqs.Receive` error, no backoff — tight error loop hammers SQS on transient failure; add exponential backoff.
 - [ ] **H** `events/client.go` on handler error, relies entirely on the queue's static visibility timeout with no `ChangeMessageVisibility` for explicit backoff or retry extension. Add configurable visibility extension during processing and on failure.
@@ -434,7 +467,6 @@ Surfaced by `komodo-auth-api/internal/clients/user.go` and the inline `jwt.SignT
 
 ### Cleanup / housekeeping
 
-- [ ] **L** `aws/aurora/errors.go` is 0 bytes (empty file) — remove or populate.
 - [ ] **L** `coverage.out` (62KB) is committed to version control — add to `.gitignore`.
 - [ ] **L** `pre-commit` hook script lives in the repo root alongside source files — move to `scripts/` or `.githooks/`.
 - [ ] **L** `go.mod` includes `aws-lambda-go` and `aws-lambda-go-api-proxy` as direct dependencies for all consumers including Fargate services. Move Lambda adapter support behind a `//go:build lambda` tag or a dedicated `server/lambda` sub-package to slim non-Lambda binaries.

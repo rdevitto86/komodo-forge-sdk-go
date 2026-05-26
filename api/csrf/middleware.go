@@ -2,14 +2,17 @@ package csrf
 
 import (
 	"context"
-	ctxKeys "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 	httpErr "github.com/rdevitto86/komodo-forge-sdk-go/api/errors"
 	"github.com/rdevitto86/komodo-forge-sdk-go/api/headers"
 	httpReq "github.com/rdevitto86/komodo-forge-sdk-go/api/request"
+	ctxKeys "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 	"net/http"
 )
 
+// Placeholder CSRF gate: the underlying header validator returns true
+// unconditionally, so token validation is not yet enforced. API clients are
+// already exempted. See TODO.md `api/csrf/middleware` for the wiring work.
 func CSRFMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 		switch req.Method {

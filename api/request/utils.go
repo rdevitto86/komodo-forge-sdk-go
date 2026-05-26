@@ -10,6 +10,7 @@ import (
 	httpcontext "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 )
 
+// Returns the request ID from context, falling back to "unknown" if absent.
 func GetRequestID(req *http.Request) string {
 	if rid, ok := req.Context().Value(httpcontext.REQUEST_ID_KEY).(string); ok && rid != "" {
 		return rid

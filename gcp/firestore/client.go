@@ -1,12 +1,5 @@
 package firestore
 
-// GCP Firestore client — equivalent to aws/dynamodb.
-//
-// Stub: methods panic until implementation lands. New returns ErrNotImplemented.
-// Firestore is document-oriented; the API surface intentionally mirrors the
-// DynamoDB client so callers can swap providers by import path. Some methods
-// (Scan, conditional expressions) map awkwardly and are documented in TODO.md.
-
 import "context"
 
 type Item map[string]any

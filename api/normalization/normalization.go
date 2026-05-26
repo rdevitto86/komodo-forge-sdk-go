@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Normalizes request data including headers, URLs, and query parameters
+// Normalizes request headers, URL path, query parameters, and method casing.
 func NormalizationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 		normalizeHeaders(req)

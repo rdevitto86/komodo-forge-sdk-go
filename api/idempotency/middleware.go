@@ -6,10 +6,10 @@ import (
 
 	"net/http"
 
-	ctxKeys "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 	httpErr "github.com/rdevitto86/komodo-forge-sdk-go/api/errors"
 	"github.com/rdevitto86/komodo-forge-sdk-go/api/headers"
 	httpReq "github.com/rdevitto86/komodo-forge-sdk-go/api/request"
+	ctxKeys "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 )
 
@@ -19,14 +19,12 @@ func init() {
 	defaultStore = NewStore("local", 0) // Initialize with local cache by default, can be configured via environment
 }
 
-// Sets a custom store for idempotency (useful for distributed cache)
+// Replaces the default in-memory store with a custom one, typically a distributed cache.
 func SetStore(store *Store) {
 	defaultStore = store
 }
 
-// Guards against duplicate requests using the Idempotency-Key header.
-// It only applies to unsafe, state-changing methods (POST, PUT, PATCH, DELETE).
-// Safe methods (GET, HEAD, OPTIONS) are skipped entirely.
+// Guards against duplicate state-changing requests using the Idempotency-Key header; safe methods are skipped.
 func IdempotencyMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 		// Only guard unsafe, state-changing methods

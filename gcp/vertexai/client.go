@@ -1,22 +1,18 @@
 package vertexai
 
-// GCP Vertex AI client — equivalent to aws/bedrock.
-//
-// Stub: methods panic until implementation lands. New returns ErrNotImplemented.
-
 import "context"
 
 type InvokeInput struct {
-	Model       string
-	Prompt      string
-	Parameters  map[string]any
-	System      string
+	Model      string
+	Prompt     string
+	Parameters map[string]any
+	System     string
 }
 
 type InvokeOutput struct {
-	Text     string
-	Raw      []byte
-	Usage    map[string]int
+	Text  string
+	Raw   []byte
+	Usage map[string]int
 }
 
 type API interface {

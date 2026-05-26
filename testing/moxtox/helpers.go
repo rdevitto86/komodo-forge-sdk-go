@@ -17,7 +17,7 @@ type MoxtoxConfig struct {
 	PerformanceMode     string                                    `yaml:"performanceMode"` // "default", "quick", "dynamic"
 	AllowedEnvironments []string                                  `yaml:"allowedEnvironments"`
 	IgnoredRoutes       []string                                  `yaml:"ignoredRoutes"`
-	Mappings            map[string]any                    `yaml:"mappings"` // Raw YAML for parsing
+	Mappings            map[string]any                            `yaml:"mappings"` // Raw YAML for parsing
 	LookupMap           map[string]map[string][]Scenario          `yaml:"-"`        // For default/dynamic: path -> method -> []Scenario
 	HashLookupMap       map[string]map[string]map[string]Scenario `yaml:"-"`        // For quick: path -> method -> hash -> Scenario
 }
@@ -31,13 +31,13 @@ type Method struct {
 }
 
 type Scenario struct {
-	Name       string                 `yaml:"name"`
-	File       string                 `yaml:"file"`
-	Dynamic    bool                   `yaml:"dynamic,omitempty"`
-	Template   string                 `yaml:"template,omitempty"`
-	Delay      int                    `yaml:"delay,omitempty"`
-	Log        bool                   `yaml:"log,omitempty"`
-	Priority   int                    `yaml:"priority,omitempty"`
+	Name       string         `yaml:"name"`
+	File       string         `yaml:"file"`
+	Dynamic    bool           `yaml:"dynamic,omitempty"`
+	Template   string         `yaml:"template,omitempty"`
+	Delay      int            `yaml:"delay,omitempty"`
+	Log        bool           `yaml:"log,omitempty"`
+	Priority   int            `yaml:"priority,omitempty"`
 	Conditions map[string]any `yaml:"conditions,omitempty"`
 }
 

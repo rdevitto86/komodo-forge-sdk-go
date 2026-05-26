@@ -31,13 +31,7 @@ var skippedBaseFields = map[string]bool{
 	"version": true,
 }
 
-// KomodoTextHandler is a custom slog.Handler that formats log records as:
-//
-//	2006-01-02T15:04:05Z [LEVEL] requestId | message | key=val key2="val with spaces"
-//
-// Standard base fields (service, env, version) are omitted from string output —
-// they belong in JSON (CloudWatch) and are noise in a terminal line.
-// ANSI color is enabled per the color flag set at construction.
+// Formats log records as "timestamp [LEVEL] requestId | message | key=val ..." for terminal output.
 type KomodoTextHandler struct {
 	mu       sync.Mutex
 	w        io.Writer
@@ -57,7 +51,6 @@ func (h *KomodoTextHandler) Enabled(_ context.Context, level slog.Level) bool {
 }
 
 // Returns a new handler with the provided attrs prepended to all future records.
-// A new handler struct is constructed rather than copied to avoid copying the mutex.
 func (h *KomodoTextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	h2 := &KomodoTextHandler{
 		w:     h.w,
@@ -169,9 +162,7 @@ func (h *KomodoTextHandler) coloredLevel(level slog.Level) string {
 	return color + "[" + label + "]" + ansiReset
 }
 
-// formatAttr renders a slog.Attr as a logfmt key=value pair.
-// Complex values are JSON-encoded inline and truncated at 200 chars.
-// Groups are flattened with dot notation (parent.child=value).
+// Renders a slog.Attr as a logfmt key=value pair; complex values are JSON-encoded and truncated at 200 chars.
 func formatAttr(attr slog.Attr) string {
 	k := attr.Key
 	v := attr.Value.Resolve()

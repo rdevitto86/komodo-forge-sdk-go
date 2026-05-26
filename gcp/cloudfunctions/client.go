@@ -1,9 +1,5 @@
 package cloudfunctions
 
-// GCP Cloud Functions / Cloud Run client — equivalent to aws/lambda.
-//
-// Stub: methods panic until implementation lands. New returns ErrNotImplemented.
-
 import "context"
 
 type InvokeInput struct {

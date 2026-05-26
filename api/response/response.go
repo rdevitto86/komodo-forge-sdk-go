@@ -15,7 +15,7 @@ type APIResponse struct {
 	Error     *httpErr.ErrorCode
 }
 
-// Unmarshals the response body into the target struct
+// Unmarshals the HTTP response body into target and returns a populated APIResponse.
 func Bind(res *http.Response, target any) (*APIResponse, error) {
 	if res == nil {
 		return nil, fmt.Errorf("failed to bind response - response is nil")

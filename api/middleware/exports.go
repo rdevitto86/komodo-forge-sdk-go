@@ -1,11 +1,10 @@
-// Package middleware re-exports the full public middleware stack as a single import point.
 package middleware
 
 import (
-	mwapiauth "github.com/rdevitto86/komodo-forge-sdk-go/auth"
 	mwcors "github.com/rdevitto86/komodo-forge-sdk-go/api/cors"
 	mwcsrf "github.com/rdevitto86/komodo-forge-sdk-go/api/csrf"
 	mwheaders "github.com/rdevitto86/komodo-forge-sdk-go/api/headers"
+	mwidempotency "github.com/rdevitto86/komodo-forge-sdk-go/api/idempotency"
 	mwipaccess "github.com/rdevitto86/komodo-forge-sdk-go/api/ipaccess"
 	mwchain "github.com/rdevitto86/komodo-forge-sdk-go/api/middleware/chain"
 	mwnorm "github.com/rdevitto86/komodo-forge-sdk-go/api/normalization"
@@ -14,7 +13,7 @@ import (
 	mwrequest "github.com/rdevitto86/komodo-forge-sdk-go/api/request"
 	mwsanitize "github.com/rdevitto86/komodo-forge-sdk-go/api/sanitization"
 	mwtelemetry "github.com/rdevitto86/komodo-forge-sdk-go/api/telemetry"
-	mwidempotency "github.com/rdevitto86/komodo-forge-sdk-go/api/idempotency"
+	mwapiauth "github.com/rdevitto86/komodo-forge-sdk-go/auth"
 	mwrules "github.com/rdevitto86/komodo-forge-sdk-go/rules"
 )
 

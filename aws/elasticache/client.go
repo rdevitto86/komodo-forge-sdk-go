@@ -3,210 +3,126 @@ package elasticache
 import (
 	"context"
 	"fmt"
-	"strconv"
-	"time"
 
-	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
-
-	"github.com/redis/go-redis/v9"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	awselasticache "github.com/aws/aws-sdk-go-v2/service/elasticache"
 )
 
+// Flattened view of an ElastiCache replication group.
+type ReplicationGroup struct {
+	ID            string
+	Status        string
+	NodeType      string
+	NumNodeGroups int32
+	Endpoint      string
+}
+
+// Flattened view of an ElastiCache cache cluster.
+type CacheCluster struct {
+	ID            string
+	Status        string
+	NodeType      string
+	Engine        string
+	EngineVersion string
+	NumCacheNodes int32
+}
+
+// Exposes the ElastiCache control-plane operations provided by this package.
 type API interface {
-	Get(ctx context.Context, key string) (string, error)
-	Set(ctx context.Context, key string, value string, ttl int64) error
-	Delete(ctx context.Context, key string) error
-	Close() error
-	AllowDistributed(ctx context.Context, key string, rate, burst float64, ttlSec int) (bool, time.Duration, error)
+	DescribeReplicationGroups(ctx context.Context) ([]ReplicationGroup, error)
+	DescribeCacheClusters(ctx context.Context) ([]CacheCluster, error)
 }
 
+// Holds credentials and endpoint configuration for the ElastiCache control-plane client.
 type Config struct {
-	Endpoint string
-	Password string
-	DB       int
+	Region    string
+	AccessKey string
+	SecretKey string
+	Endpoint  string // optional; set to LocalStack URL in non-prod environments
 }
 
+// Wraps the AWS ElastiCache control-plane SDK client.
 type Client struct {
-	rc *redis.Client
+	ec *awselasticache.Client
 }
 
-// Creates a Client and pings the endpoint to verify connectivity.
-func New(cfg Config) (*Client, error) {
-	if cfg.Endpoint == "" {
-		return nil, fmt.Errorf("endpoint is required")
+// Creates an ElastiCache control-plane Client; returns an error if Region is empty.
+func New(ctx context.Context, config Config) (*Client, error) {
+	if config.Region == "" {
+		return nil, fmt.Errorf("missing region")
 	}
 
-	rc := redis.NewClient(&redis.Options{
-		Addr:     cfg.Endpoint,
-		Password: cfg.Password,
-		DB:       cfg.DB,
-	})
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	if err := rc.Ping(ctx).Err(); err != nil {
-		logger.Error("failed to ping elasticache", err)
-		return nil, fmt.Errorf("failed to ping: %w", err)
+	cfgOpts := []func(*awsconfig.LoadOptions) error{
+		awsconfig.WithRegion(config.Region),
+	}
+	if config.AccessKey != "" && config.SecretKey != "" {
+		cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(config.AccessKey, config.SecretKey, ""),
+		))
+	} else if config.Endpoint != "" {
+		cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider("test", "test", ""),
+		))
 	}
 
-	logger.Info("elasticache client initialized")
-	return &Client{rc: rc}, nil
-}
-
-// Creates a Client from a Redis connection URL (redis://:password@host:port/db).
-func NewFromString(connStr string) (*Client, error) {
-	opts, err := redis.ParseURL(connStr)
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, cfgOpts...)
 	if err != nil {
-		return nil, fmt.Errorf("invalid connection string: %w", err)
+		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
-	rc := redis.NewClient(opts)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	if err := rc.Ping(ctx).Err(); err != nil {
-		logger.Error("failed to ping elasticache", err)
-		return nil, fmt.Errorf("failed to ping: %w", err)
+	var opts []func(*awselasticache.Options)
+	if config.Endpoint != "" {
+		ep := config.Endpoint
+		opts = append(opts, func(o *awselasticache.Options) { o.BaseEndpoint = aws.String(ep) })
 	}
 
-	logger.Info("elasticache client initialized from connection string")
-	return &Client{rc: rc}, nil
+	return &Client{ec: awselasticache.NewFromConfig(cfg, opts...)}, nil
 }
 
-// Creates a Client from discrete string fields for callers
-// still carrying a legacy string-typed DB value.
-func NewFromDBString(endpoint, password, dbStr string) (*Client, error) {
-	db, _ := strconv.Atoi(dbStr)
-	return New(Config{Endpoint: endpoint, Password: password, DB: db})
-}
-
-func withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
-	if _, ok := ctx.Deadline(); ok {
-		return ctx, func() {}
-	}
-	return context.WithTimeout(ctx, 2*time.Second)
-}
-
-// Retrieves the string value stored at key. Returns ("", nil) on cache miss.
-func (c *Client) Get(ctx context.Context, key string) (string, error) {
-	ctx, cancel := withTimeout(ctx)
-	defer cancel()
-
-	val, err := c.rc.Get(ctx, key).Result()
-	if err == redis.Nil {
-		return "", nil
-	}
+// Lists all ElastiCache replication groups in the configured region, returning a flattened slice with ID, status, node type, shard count, and primary endpoint.
+func (c *Client) DescribeReplicationGroups(ctx context.Context) ([]ReplicationGroup, error) {
+	result, err := c.ec.DescribeReplicationGroups(ctx, &awselasticache.DescribeReplicationGroupsInput{})
 	if err != nil {
-		logger.Error("failed to get cache item", err)
-		return "", err
-	}
-	return val, nil
-}
-
-// Stores a value with the given TTL in seconds. Use ttl=0 for no expiration.
-func (c *Client) Set(ctx context.Context, key string, value string, ttl int64) error {
-	ctx, cancel := withTimeout(ctx)
-	defer cancel()
-
-	var dur time.Duration
-	if ttl > 0 {
-		dur = time.Duration(ttl) * time.Second
+		return nil, fmt.Errorf("failed to describe replication groups: %w", err)
 	}
 
-	if err := c.rc.Set(ctx, key, value, dur).Err(); err != nil {
-		logger.Error("failed to set cache item", err)
-		return err
-	}
-	return nil
-}
-
-// Removes a key from the cache.
-func (c *Client) Delete(ctx context.Context, key string) error {
-	ctx, cancel := withTimeout(ctx)
-	defer cancel()
-
-	if err := c.rc.Del(ctx, key).Err(); err != nil {
-		logger.Error("failed to delete cache item", err)
-		return err
-	}
-	return nil
-}
-
-// Closes the underlying Redis connection.
-func (c *Client) Close() error {
-	return c.rc.Close()
-}
-
-// token bucket Lua script (atomic): returns {allowed, wait_ms}
-var tokenBucketScript = redis.NewScript(`
-local now = tonumber(ARGV[1])
-local rate = tonumber(ARGV[2])
-local burst = tonumber(ARGV[3])
-local requested = tonumber(ARGV[4])
-local ttl = tonumber(ARGV[5])
-
-local data = redis.call('HMGET', KEYS[1], 'tokens', 'ts')
-local tokens = tonumber(data[1])
-local ts = tonumber(data[2])
-if tokens == nil then
-  tokens = burst
-  ts = now
-end
-local elapsed = (now - ts) / 1000.0
-if elapsed < 0 then elapsed = 0 end
-local new_tokens = tokens + elapsed * rate
-if new_tokens > burst then new_tokens = burst end
-local allowed = 0
-local wait_ms = 0
-if new_tokens >= requested then
-  new_tokens = new_tokens - requested
-  allowed = 1
-else
-  local deficit = requested - new_tokens
-  if rate > 0 then
-	wait_ms = math.ceil((deficit / rate) * 1000)
-  else
-	wait_ms = 0
-  end
-end
-redis.call('HMSET', KEYS[1], 'tokens', tostring(new_tokens), 'ts', tostring(now))
-redis.call('EXPIRE', KEYS[1], ttl)
-return {allowed, tostring(wait_ms)}
-`)
-
-// Attempts to consume a token from a distributed token bucket.
-// Returns (allowed, retryAfter, error).
-func (c *Client) AllowDistributed(ctx context.Context, key string, rate, burst float64, ttlSec int) (bool, time.Duration, error) {
-	now := time.Now().UnixMilli()
-	res, err := tokenBucketScript.Run(ctx, c.rc, []string{key}, now, rate, burst, 1, ttlSec).Result()
-	if err != nil {
-		logger.Error("failed to execute token bucket script", err)
-		return false, 0, err
-	}
-
-	arr, ok := res.([]interface{})
-	if !ok || len(arr) < 2 {
-		return false, 0, fmt.Errorf("unexpected script result: %v", res)
-	}
-
-	var allowed bool
-	switch v := arr[0].(type) {
-	case int64:
-		allowed = v == 1
-	case string:
-		allowed = v == "1"
-	}
-
-	var waitMs int64
-	switch v := arr[1].(type) {
-	case int64:
-		waitMs = v
-	case string:
-		if parsed, err := strconv.ParseInt(v, 10, 64); err == nil {
-			waitMs = parsed
+	groups := make([]ReplicationGroup, 0, len(result.ReplicationGroups))
+	for _, rg := range result.ReplicationGroups {
+		g := ReplicationGroup{
+			ID:            aws.ToString(rg.ReplicationGroupId),
+			Status:        aws.ToString(rg.Status),
+			NodeType:      aws.ToString(rg.CacheNodeType),
+			NumNodeGroups: int32(len(rg.NodeGroups)),
 		}
+		if rg.ConfigurationEndpoint != nil {
+			g.Endpoint = aws.ToString(rg.ConfigurationEndpoint.Address)
+		} else if len(rg.NodeGroups) > 0 && rg.NodeGroups[0].PrimaryEndpoint != nil {
+			g.Endpoint = aws.ToString(rg.NodeGroups[0].PrimaryEndpoint.Address)
+		}
+		groups = append(groups, g)
+	}
+	return groups, nil
+}
+
+// Lists all ElastiCache cache clusters in the configured region, returning a flattened slice with ID, status, node type, engine, engine version, and node count.
+func (c *Client) DescribeCacheClusters(ctx context.Context) ([]CacheCluster, error) {
+	result, err := c.ec.DescribeCacheClusters(ctx, &awselasticache.DescribeCacheClustersInput{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to describe cache clusters: %w", err)
 	}
 
-	return allowed, time.Duration(waitMs) * time.Millisecond, nil
+	clusters := make([]CacheCluster, 0, len(result.CacheClusters))
+	for _, cc := range result.CacheClusters {
+		clusters = append(clusters, CacheCluster{
+			ID:            aws.ToString(cc.CacheClusterId),
+			Status:        aws.ToString(cc.CacheClusterStatus),
+			NodeType:      aws.ToString(cc.CacheNodeType),
+			Engine:        aws.ToString(cc.Engine),
+			EngineVersion: aws.ToString(cc.EngineVersion),
+			NumCacheNodes: aws.ToInt32(cc.NumCacheNodes),
+		})
+	}
+	return clusters, nil
 }

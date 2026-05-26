@@ -1,9 +1,5 @@
 package ccaiinsights
 
-// GCP Contact Center AI Insights — equivalent to aws/contactlens.
-//
-// Stub: methods panic until implementation lands. New returns ErrNotImplemented.
-
 import "context"
 
 type Conversation struct {

@@ -30,6 +30,16 @@ func (f *fakeContactLensAPI) ListRealtimeContactAnalysisSegments(_ context.Conte
 
 // ── Unit Tests ────────────────────────────────────────────────────────────────
 
+func TestNew_MissingRegion(t *testing.T) {
+	_, err := New(context.Background(), Config{})
+	if err == nil {
+		t.Fatal("expected error for missing region, got nil")
+	}
+	if err == nil || err.Error() != "missing region" {
+		t.Errorf("got %v, want \"missing region\"", err)
+	}
+}
+
 func TestListRealtimeContactAnalysisSegments_HappyPath(t *testing.T) {
 	begin := int32(0)
 	end := int32(2500)

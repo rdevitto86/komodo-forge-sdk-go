@@ -11,6 +11,7 @@ import (
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 )
 
+// Records per-request latency, status, and bytes-written; recovers from handler panics.
 func TelemetryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 		resWtr := &httpRes.ResponseWriter{ResponseWriter: wtr}

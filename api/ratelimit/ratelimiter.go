@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/rdevitto86/komodo-forge-sdk-go/aws/elasticache"
+	"github.com/rdevitto86/komodo-forge-sdk-go/db/redis"
 )
 
 type bucket struct {
@@ -35,8 +35,7 @@ type Config struct {
 	FailOpen        *bool
 }
 
-// rlCfg holds the rate-limit parameters stored in an atomic pointer so
-// LoadConfig and rateConfig are race-free without a mutex.
+// rlCfg holds rate-limit parameters stored in an atomic pointer so LoadConfig and rateConfig are race-free.
 type rlCfg struct {
 	rps   float64
 	burst float64
@@ -56,9 +55,9 @@ var (
 	envPtr  atomic.Pointer[envCfg]
 	envOnce sync.Once
 
-	buckets     sync.Map
-	evictOnce   sync.Once
-	ecClientVal atomic.Value // stores *ecHolder; use loadEC() to read
+	buckets        sync.Map
+	evictOnce      sync.Once
+	redisClientVal atomic.Value // stores *redisHolder; use loadRedis() to read
 
 	// failOpen is stored as an atomic int32 (0 = not loaded, 1 = open, 2 = closed).
 	// Separate from envCfg so ShouldFailOpen stays cheap.
@@ -66,21 +65,20 @@ var (
 	failOnce    sync.Once
 )
 
-// ecHolder wraps the elasticache.API interface so atomic.Value can store it.
-type ecHolder struct{ c elasticache.API }
+// redisHolder wraps the redis.API interface so atomic.Value can store it.
+type redisHolder struct{ c redis.API }
 
-// loadEC returns the current elasticache client, or nil if none is set.
-func loadEC() elasticache.API {
-	if h, ok := ecClientVal.Load().(*ecHolder); ok {
+// loadRedis returns the current Redis client, or nil if none is set.
+func loadRedis() redis.API {
+	if h, ok := redisClientVal.Load().(*redisHolder); ok {
 		return h.c
 	}
 	return nil
 }
 
-// Wires a distributed ElastiCache client for prod/staging
-// rate limiting. Must be called before the first Allow call in those environments.
-func SetElasticacheClient(c elasticache.API) {
-	ecClientVal.Store(&ecHolder{c: c})
+// Wires a distributed Redis client for prod/staging rate limiting; must be called before the first Allow call.
+func SetRedisClient(c redis.API) {
+	redisClientVal.Store(&redisHolder{c: c})
 }
 
 // Attempts to consume a token for the given client key.
@@ -88,13 +86,13 @@ func Allow(ctx context.Context, key string) (allowed bool, wait time.Duration, e
 	env := loadEnv().env
 
 	if env == "prod" || env == "staging" {
-		ec := loadEC()
-		if ec == nil {
+		rc := loadRedis()
+		if rc == nil {
 			return false, 0, fmt.Errorf("no distributed client configured for env %q", env)
 		}
 		cfg := loadCfg()
 		ttlSec := loadEnv().ttlSec
-		return ec.AllowDistributed(ctx, key, cfg.rps, cfg.burst, ttlSec)
+		return rc.AllowDistributed(ctx, key, cfg.rps, cfg.burst, ttlSec)
 	}
 
 	b := getBucket(key)
@@ -219,8 +217,7 @@ func rateConfig() (float64, float64) {
 	return c.rps, c.burst
 }
 
-// Resets all package-level state so tests can start clean.
-// Must only be called from test code.
+// Resets all package-level state so tests can start clean; must only be called from test code.
 func ResetForTesting() {
 	cfgOnce = sync.Once{}
 	envOnce = sync.Once{}

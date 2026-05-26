@@ -1,9 +1,5 @@
 package dialogflow
 
-// GCP Dialogflow CX / Contact Center AI — equivalent to aws/connect.
-//
-// Stub: methods panic until implementation lands. New returns ErrNotImplemented.
-
 import "context"
 
 type DetectIntentInput struct {

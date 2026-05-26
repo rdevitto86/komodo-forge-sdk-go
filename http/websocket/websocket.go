@@ -37,7 +37,7 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
-// Route handler that upgrades HTTP connections to WebSocket and handles messages.
+// Upgrades the HTTP connection to WebSocket and echoes received messages back to the client.
 func RouteHandler(wtr http.ResponseWriter, req *http.Request) {
 	conn, err := upgrader.Upgrade(wtr, req, nil)
 	if err != nil {

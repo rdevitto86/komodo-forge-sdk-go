@@ -33,10 +33,13 @@ type Client struct {
 	s3 *s3.Client
 }
 
-// Creates and returns a new S3 Client.
-func New(config Config) (*Client, error) {
+// Returns a new S3 Client configured for the given region and credentials. Returns an error if the region is empty or not a known AWS region code.
+func New(ctx context.Context, config Config) (*Client, error) {
 	if config.Region == "" {
-		return nil, fmt.Errorf("s3: region is required")
+		return nil, fmt.Errorf("missing region")
+	}
+	if config.Region == "" {
+		return nil, fmt.Errorf("missing region")
 	}
 
 	cfgOpts := []func(*awsconfig.LoadOptions) error{
@@ -52,7 +55,7 @@ func New(config Config) (*Client, error) {
 		))
 	}
 
-	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), cfgOpts...)
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, cfgOpts...)
 	if err != nil {
 		logger.Error("s3 failed to load config", err)
 		return nil, WrapError(err, "New")

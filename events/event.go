@@ -8,19 +8,13 @@ import (
 	httpcontext "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 )
 
-// EventType is the canonical event name in <entity>.<verb> format (e.g.
-// "order.created"). Each publisher service defines its own typed constants;
-// the SDK owns only the type, not the values.
+// Represents the canonical event name in <entity>.<verb> format (e.g., "order.created").
 type EventType string
 
-// Source identifies the service that emitted the event (e.g.
-// "komodo-order-api"). Each publisher service defines its own constant;
-// the SDK owns only the type, not the values.
+// Identifies the service that emitted the event (e.g., "komodo-order-api").
 type Source string
 
-// EntityType identifies the domain entity at the centre of the event.
-// This set is bounded by the number of first-class domains and is therefore
-// owned centrally.
+// Identifies the domain entity at the centre of the event; owned centrally to keep the set bounded.
 type EntityType string
 
 const (
@@ -34,10 +28,7 @@ const (
 	EntityReview    EntityType = "review"
 )
 
-// Event is the canonical business event envelope published to SNS FIFO topics
-// and consumed via SQS FIFO queues. MessageGroupId is set to EntityID so all
-// events for the same entity are ordered; events for different entities are
-// processed in parallel.
+// Represents the canonical business event envelope published to SNS FIFO topics and consumed via SQS FIFO queues.
 type Event struct {
 	ID            string         `json:"id"`
 	Type          EventType      `json:"type"`
@@ -50,9 +41,7 @@ type Event struct {
 	CorrelationID string         `json:"correlation_id,omitempty"`
 }
 
-// Constructs an Event with a generated ID, current UTC timestamp, and
-// version "1". Chain WithCorrelation or WithCorrelationFromContext to attach a
-// correlation ID before publishing.
+// Constructs an Event with a generated ID, current UTC timestamp, and version "1".
 func New(
 	eventType EventType,
 	source Source,
@@ -78,9 +67,7 @@ func (e Event) WithCorrelation(correlationID string) Event {
 	return e
 }
 
-// Returns a copy of the event with CorrelationID
-// read from the X-Correlation-ID value stored in ctx by the HTTP middleware.
-// If no correlation ID is present in ctx the event is returned unchanged.
+// Returns a copy of the event with CorrelationID read from ctx; returns the event unchanged if no ID is present.
 func (e Event) WithCorrelationFromContext(ctx context.Context) Event {
 	if id := httpcontext.GetCorrelationID(ctx); id != "" {
 		e.CorrelationID = id

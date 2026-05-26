@@ -5,13 +5,13 @@ import (
 	"net/http"
 	"strings"
 
-	ctxKeys "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 	httpErr "github.com/rdevitto86/komodo-forge-sdk-go/api/errors"
+	ctxKeys "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 	"github.com/rdevitto86/komodo-forge-sdk-go/security/jwt"
 )
 
-// Handles OAuth2 + JWT Bearer token authentication
+// Validates the Bearer JWT, injects auth claims into the request context, and rejects invalid tokens.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 		tokenString, err := jwt.ExtractTokenFromRequest(req)
@@ -55,9 +55,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// Rejects requests whose JWT does not carry a service-scoped token.
-// Service tokens must have at least one scope with a "svc:" prefix, issued by komodo-auth-api
-// on service bootstrap — distinct from user tokens, which carry user-scoped claims.
+// Rejects requests whose JWT does not carry at least one "svc:"-prefixed scope.
 func RequireServiceScope(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 		scopes, ok := req.Context().Value(ctxKeys.SCOPES_KEY).([]string)

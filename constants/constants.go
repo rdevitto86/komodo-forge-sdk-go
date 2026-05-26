@@ -22,6 +22,11 @@ const (
 	DYNAMODB_ACCESS_KEY = "DYNAMODB_ACCESS_KEY"
 	DYNAMODB_SECRET_KEY = "DYNAMODB_SECRET_KEY"
 
+	// --- aws region environment variables ---------------------------------------------
+
+	AWS_US_EAST_1 = "us-east-1"
+	AWS_US_WEST_2 = "us-west-2"
+
 	// --- http environment variables ---------------------------------------------
 
 	HOST                = "HOST"

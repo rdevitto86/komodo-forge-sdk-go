@@ -18,15 +18,17 @@ type Config struct {
 // Wraps a database/sql connection pool for a driver-agnostic SQL database.
 type Client struct{}
 
-// Creates a SQL Client from the provided Config.
+// Creates a SQL Client from the provided Config. Returns ErrNotImplemented until the driver is wired in.
 func New(config Config) (*Client, error) {
-	return &Client{}, nil
+	return nil, ErrNotImplemented
 }
 
+// Query is reserved for the eventual database/sql implementation.
 func (c *Client) Query(ctx context.Context, sql string, args ...any) ([]map[string]any, error) {
-	panic("sqldb: not yet implemented")
+	return nil, ErrNotImplemented
 }
 
+// Exec is reserved for the eventual database/sql implementation.
 func (c *Client) Exec(ctx context.Context, sql string, args ...any) (int64, error) {
-	panic("sqldb: not yet implemented")
+	return 0, ErrNotImplemented
 }

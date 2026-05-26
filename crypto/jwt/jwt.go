@@ -1,5 +1,3 @@
-// Package jwt re-exports the security/jwt package at the crypto/jwt import path.
-// Services import this package as: "github.com/rdevitto86/komodo-forge-sdk-go/crypto/jwt"
 package jwt
 
 import (
@@ -25,8 +23,7 @@ func ValidateToken(tokenString string) (bool, error) {
 	return securejwt.ValidateToken(tokenString)
 }
 
-// Validates the token and returns its claims in a single parse.
-// Prefer this over ValidateToken + ParseClaims.
+// Validates the token and returns its claims in a single parse; prefer over ValidateToken + ParseClaims.
 func ValidateAndParseClaims(tokenString string) (*CustomClaims, error) {
 	return securejwt.ValidateAndParseClaims(tokenString)
 }

@@ -8,9 +8,7 @@ const (
 	LevelStrict  = "strict"
 )
 
-// FieldSpec describes validation rules for a single header, path param, query
-// param, or body field. The compiled field is populated at config load time
-// from Pattern — it is unexported so yaml ignores it during unmarshal.
+// Describes validation rules for a single header, path param, query param, or body field.
 type FieldSpec struct {
 	Type     string   `yaml:"type,omitempty"`
 	Required bool     `yaml:"required,omitempty"`

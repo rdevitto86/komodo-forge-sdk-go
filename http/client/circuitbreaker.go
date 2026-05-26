@@ -66,8 +66,7 @@ type breakerState struct {
 	openedAt         time.Time
 }
 
-// breakerEntry pairs per-host state with its own mutex so hosts don't
-// contend with each other.
+// breakerEntry pairs per-host state with its own mutex so hosts don't contend with each other.
 type breakerEntry struct {
 	mu    sync.Mutex
 	state breakerState
@@ -190,9 +189,7 @@ func (b *breaker) execute(key string, fn func() error) error {
 	}
 }
 
-// Removes closed, zero-failure entries from the host map, reclaiming
-// memory for hosts that are no longer actively failing. Call periodically
-// from application code if the service contacts many distinct hosts.
+// Removes closed, zero-failure entries from the host map to reclaim memory for hosts that are no longer failing.
 func (b *breaker) Prune() {
 	b.hosts.Range(func(k, v any) bool {
 		e := v.(*breakerEntry)

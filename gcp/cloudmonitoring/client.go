@@ -1,9 +1,5 @@
 package cloudmonitoring
 
-// GCP Cloud Monitoring client — pairs with cloudlogging as the equivalent of aws/cloudwatch (metrics side).
-//
-// Stub: methods panic until implementation lands. New returns ErrNotImplemented.
-
 import (
 	"context"
 	"time"

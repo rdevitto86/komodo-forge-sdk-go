@@ -6,6 +6,53 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.14.0]
+
+### Changed
+
+- **`aws/` vs `db/` split — data-plane clients moved out of `aws/`.** The `aws/` tree was mixing AWS-SDK service wrappers with protocol-native clients (Redis, SQL, OpenSearch) that happen to point at AWS-managed endpoints but speak portable wire protocols. New rule: `aws/X` wraps `aws-sdk-go-v2/service/X` (SigV4, SDK-managed transport); `db/X` wraps a protocol-native client (`pgx`, `go-redis`, `opensearch-go`) with a caller-managed connection pool, portable across AWS/GCP/self-hosted/local. The same logical service can appear in both trees — e.g., `aws/elasticache` (cluster management via SDK) + `db/redis` (RESP data plane). Concrete moves:
+  - `aws/aurora` → `db/sql` (package renamed to `sqldb` to avoid shadowing `database/sql`). Aurora-specific wording dropped; client is driver-agnostic.
+  - `aws/elasticache` → `db/redis` (package `redis`, go-redis imported as `goredis`). `Config.Endpoint` renamed to `Config.Addr` to match go-redis conventions.
+  - `aws/elasticsearch` → `db/opensearch` (package `opensearch`). TODO updated to wire `opensearch-go`.
+  - `aws/contactlens` → `aws/connect/contactlens` (Contact Lens is a Connect feature; nested for structure).
+
+- **All AWS client constructors take `ctx context.Context` as the first argument** — breaking change. `New(config Config)` → `New(ctx context.Context, config Config)` across `aws/bedrock`, `aws/cloudwatch/{logs,metrics}`, `aws/connect`, `aws/connect/contactlens`, `aws/dynamodb`, `aws/elasticache`, `aws/lambda`, `aws/opensearch`, `aws/rds`, `aws/s3`, `aws/secretsmanager`, `aws/ses`, `aws/sns`, `aws/sqs`. `ctx` is threaded into `awsconfig.LoadDefaultConfig`, replacing the previous hardcoded `context.Background()`. Callers can now bound startup against IMDS/STS hangs by passing a deadline; passing `context.Background()` preserves the old behaviour. Resolves the 2026-05-12 audit finding for the older clients and applies the same pattern to the new 0.14.0 clients.
+
+- **`api/ratelimit/ratelimiter.go`** — import updated to `db/redis`; `SetElasticacheClient` renamed `SetRedisClient` (leaked-abstraction fix; zero external callers). Internal identifiers also renamed for consistency (`ecHolder` → `redisHolder`, `ecClientVal` → `redisClientVal`, `loadEC` → `loadRedis`).
+
+- **Codebase-wide style pass.** Doc comments on exported symbols collapsed to a single verb-led sentence per `standards/principles.md` across `api/csrf`, `api/headers`, `api/idempotency`, `api/redaction`, `api/request`, `api/sanitization`, `api/server`, `auth/middleware`, `events/{client,event}`, `crypto/jwt`, `http/client/{client,circuitbreaker}`, `security/jwt`. `interface{}` → `any` across `api/redaction`, `api/sanitization`, `security/jwt`. `strings.Split` → `strings.SplitSeq` (Go 1.24 iterator) in `api/sanitization`.
+
+### Added
+
+- **`aws/bedrock` — generative AI inference.** Wraps `aws-sdk-go-v2/service/bedrockruntime`. New `Model` typed string with constants for the supported foundation models (Claude Opus 4.7 / Sonnet 4.6 / Haiku 4.5, Titan Text Express/Lite, Llama 3 70B/8B, Mistral Large). `ParseModel(string) (Model, error)` rejects unknown values with `ErrUnknownModel` — HTTP handlers parse caller-supplied model strings through this gate so the SDK boundary always sees validated values. API: `Invoke` (convenience wrapper that builds Anthropic-format request bodies; non-Anthropic families return a clear error; an empty text response now returns an explicit error instead of `("", nil)`), `InvokeJSON` (raw passthrough), `Converse` (model-agnostic chat). `ConverseStream` deferred — TODO at top of `client.go`. Tests are component-only (interface seam over `bedrockRuntimeAPI`); LocalStack does not support Bedrock.
+- **`aws/rds` — RDS Data API.** Full implementation of `aws-sdk-go-v2/service/rdsdata`. API: `ExecuteStatement`, `BatchExecuteStatement`, `BeginTransaction`, `CommitTransaction`, `RollbackTransaction`. `aws/rds/fields.go` provides `toField`/`fromField` converters between Go scalars and the `types.Field` tagged union (`StringValue`, `LongValue`, `DoubleValue`, `BooleanValue`, `BlobValue`, `IsNull`; arrays return an explicit error). Distinct from `db/sql`, which handles wire-protocol Postgres/MySQL via connection pool — `aws/rds` is stateless HTTPS for Lambda and out-of-VPC callers. Tests component-only.
+- **`aws/lambda` — function invocation.** Wraps `aws-sdk-go-v2/service/lambda`. API: `Invoke` (sync, returns response payload), `InvokeAsync` (`InvocationType: Event`, fire-and-forget). LocalStack-integration tests.
+- **`aws/ses` — transactional email.** Wraps `aws-sdk-go-v2/service/sesv2`. API: `SendEmail` with attachment support via a hand-built `multipart/mixed` MIME message (To/Cc/Bcc/ReplyTo, text + HTML bodies, `Attachment{Filename, ContentType, Data}`). When no attachments, uses the simpler SESv2 `Simple` content type. Component tests via `sesAPI` interface seam plus LocalStack-integration tests.
+- **`aws/cloudwatch/metrics` and `aws/cloudwatch/logs` — subpackage split.** Old empty `aws/cloudwatch/client.go` removed. `metrics` wraps `aws-sdk-go-v2/service/cloudwatch` (`PutMetricData` with auto-chunking at 1000 datums/call, `GetMetricStatistics`). `logs` wraps `aws-sdk-go-v2/service/cloudwatchlogs` (`PutLogEvents` with chunking at 10k events or ~1MB, `FilterLogEvents`). LocalStack-integration tests.
+- **`aws/connect` — voice contact orchestration.** Wraps `aws-sdk-go-v2/service/connect`. API: `StartOutboundVoiceContact`, `GetContactAttributes`, `UpdateContactAttributes`, `ListContactFlows` (auto-paginated). Tests component-only via interface seam.
+- **`aws/connect/contactlens` — call analytics.** Wraps `aws-sdk-go-v2/service/connectcontactlens`. API: `ListRealtimeContactAnalysisSegments` returning flattened `Segment{Type, Content, BeginOffsetMillis, EndOffsetMillis, ParticipantID, Sentiment}`. Tests component-only.
+- **`aws/opensearch` — control plane.** Wraps `aws-sdk-go-v2/service/opensearch`. API: `DescribeDomain` (returns flattened `Domain{Name, ARN, Endpoint, EngineVersion, Created, Processing}`), `ListDomainNames`. Separate from `db/opensearch`, which is the REST data plane. LocalStack-integration tests.
+- **`aws/elasticache` — control plane.** Wraps `aws-sdk-go-v2/service/elasticache`. API: `DescribeReplicationGroups` (flattened to `{ID, Status, NodeType, NumNodeGroups, Endpoint}`), `DescribeCacheClusters` (`{ID, Status, NodeType, Engine, EngineVersion, NumCacheNodes}`). Separate from `db/redis`, which is the RESP data plane. LocalStack-integration tests.
+- **`aws/constants` — US region string constants.** New package exposing `AWS_US_EAST_1`, `AWS_US_EAST_2`, `AWS_US_WEST_1`, `AWS_US_WEST_2`. Callers reference these instead of bare region strings so typos surface as compile errors. No validation gate inside `New` — keeps the constructor surface thin; expand the constant set as additional regions are needed.
+- **README — `aws/` vs `db/` rule documented** at the top of the service-packages section.
+
+### Testing
+
+- **LocalStack-only test policy.** AWS SDK packages that LocalStack community supports (Lambda, SES, CloudWatch metrics/logs, OpenSearch control, ElastiCache control, RDS, DynamoDB, S3, SecretsManager, SNS, SQS) ship with integration tests gated by a `net.Dial("tcp","localhost:4566",5s)` probe and `testing.Short()`. Packages LocalStack does not support (Bedrock, Connect, Contact Lens) use component tests via SDK interface mocking. The component-test pattern uses a private interface seam (e.g., `bedrockRuntimeAPI`, `sesAPI`) and a `newWithAPI` test-only constructor.
+
+### Fixed
+
+- **`aws/ses/client.go` — BCC silently dropped on attachment sends.** The raw-MIME branch set only `Content.Raw` and omitted `Destination` on the `SendEmailInput`; because BCC headers are correctly excluded from the MIME envelope, SES had no recipient list and BCC delivery was lost. The branch now also sets `Destination.{To,Cc,Bcc}Addresses`, `FromEmailAddress`, and `ReplyToAddresses` for parity with the Simple-content path. Regression test added.
+- **`aws/bedrock/client.go` — `Invoke` silently returning empty string.** When a model response contained no `text`-type content block (e.g., tool-use only), `Invoke` returned `("", nil)`. Now returns `fmt.Errorf("invoke response contained no text content")` so callers can distinguish empty output from a malformed response.
+- **`aws/connect/client.go` — placement and formatting.** `API` interface moved to the top of the file (was at the bottom, after the compile-time assertion). `gofmt` drift on struct-literal alignment corrected.
+- **`db/redis/client.go` — `NewFromDBString` swallowed parse errors.** `strconv.Atoi` errors silently selected DB 0. Now wrapped and returned. `Config` gains `DialTimeout` and `OpTimeout` (defaults 3s and 2s, preserving prior behaviour); `withTimeout` is a method so per-client overrides apply.
+- **`db/redis/client.go` — `interface{}` replaced with `any`** in `AllowDistributed` token-bucket result decoding.
+- **`db/sql/client.go` — panic-on-call stubs replaced.** `New` now returns `(nil, ErrNotImplemented)` and `Query`/`Exec` return the same sentinel; callers fail fast at wire time instead of at first query. `ErrNotImplemented` added to `db/sql/errors.go`.
+- **`api/csrf/middleware.go` — doc comment weakened to placeholder status.** The previous comment claimed token validation; the underlying `headers.ValidateHeaderValue("X-Csrf-Token", …)` returns `true` unconditionally. Comment now points at the open TODO until real validation lands.
+- **Error string convention.** Required-field errors normalised to `"missing X"` form across `aws/bedrock`, `aws/connect`, `aws/connect/contactlens`, `aws/cloudwatch/{logs,metrics}`, `aws/dynamodb`, `aws/elasticache`, `aws/lambda`, `aws/opensearch`, `aws/rds`, `aws/s3`, `aws/secretsmanager`, `aws/ses`, `aws/sns`, `aws/sqs`, `db/redis`. The banned `"invalid input:"` colon prefix removed from `aws/connect`.
+
+---
+
 ## [0.13.0]
 
 ### Added

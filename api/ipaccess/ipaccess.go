@@ -45,8 +45,7 @@ func ipInList(ip net.IP, ips []net.IP, nets []*net.IPNet) bool {
 	return false
 }
 
-// Parses a comma-separated list of IPs or CIDR ranges and returns
-// the parsed IPs and networks. Invalid entries are ignored.
+// Parses a comma-separated list of IPs or CIDR ranges into separate slices; invalid entries are silently ignored.
 func ParseList(raw string) (ips []net.IP, nets []*net.IPNet) {
 	if strings.TrimSpace(raw) == "" {
 		return nil, nil

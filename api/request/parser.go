@@ -9,9 +9,7 @@ import (
 	"strings"
 )
 
-// Extracts API version from Accept or Content-Type headers (primary) or URL path (fallback).
-// Header format: "application/json;v=1" or "application/json; version=2"
-// URL format: "/v1/resource" (fallback for backwards compatibility)
+// Extracts the API version from Accept or Content-Type headers (primary) or the URL path prefix as a fallback.
 func GetAPIVersion(req *http.Request) string {
 	if req == nil {
 		return ""
@@ -95,8 +93,7 @@ func GetAPIRoute(req *http.Request) string {
 	return route
 }
 
-// Extracts path parameters from the request URL based on a predefined pattern.
-// Note: This is a placeholder implementation and should be replaced with actual path parameter extraction logic.
+// Extracts path parameters from the request URL; placeholder — replace with actual routing-aware logic.
 func GetPathParams(req *http.Request) map[string]string {
 	// Placeholder: return empty map as path parameter extraction requires route pattern knowledge
 	return map[string]string{}
@@ -122,8 +119,7 @@ func GetQueryParams(req *http.Request) map[string]string {
 	return out
 }
 
-// Determines if the request is from an API client or a browser client.
-// Validates JWT token claims to prevent header spoofing.
+// Determines whether the request is from an API client or browser by inspecting API-Key and JWT bearer claims.
 func GetClientType(req *http.Request) string {
 	if apiKey := req.Header.Get("X-API-Key"); apiKey != "" && IsValidAPIKey(apiKey) {
 		return "api"
@@ -166,8 +162,7 @@ func GetClientType(req *http.Request) string {
 	return "browser"
 }
 
-// Validates if an API key exists and is active in the database.
-// TODO: Implement actual validation against DynamoDB/RDS when database is ready.
+// Validates that an API key exists and is active; placeholder — replace with DynamoDB/RDS lookup when the database is ready.
 func IsValidAPIKey(apiKey string) bool {
 	// Placeholder: Replace with actual database lookup
 	// Expected implementation:

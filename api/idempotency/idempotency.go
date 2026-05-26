@@ -78,9 +78,7 @@ type Store struct {
 	ttl   int64
 }
 
-// Creates a new idempotency store.
-// mode: "local" for in-memory sync.Map, "distributed" for Redis/ElastiCache
-// ttl: time-to-live in seconds (defaults to 300s if 0)
+// Creates an idempotency Store backed by "local" (in-memory) or "distributed" cache; ttl defaults to 300s when 0.
 func NewStore(mode string, ttl int64) *Store {
 	if ttl == 0 {
 		ttl = getIdemTTL()
@@ -100,8 +98,7 @@ func NewStore(mode string, ttl int64) *Store {
 	}
 }
 
-// Returns true if the key is new (allowed), false if it already exists (duplicate).
-// If the existing key is expired, it is deleted and the key is considered new.
+// Reports whether the key is new (allowed); returns false for duplicates and deletes expired keys before deciding.
 func (s *Store) Check(key string) (bool, error) {
 	if exp, ok := s.cache.Load(key); ok {
 		if until, ok := exp.(int64); ok && until > time.Now().Unix() {

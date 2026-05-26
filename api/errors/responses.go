@@ -23,7 +23,7 @@ type ErrorOverride struct {
 	Status  *int
 }
 
-// Sends a formatted error response
+// Sends a formatted JSON error response, applying any optional field overrides.
 func SendError(wtr http.ResponseWriter, req *http.Request, errCode ErrorCode, overrides ...ErrorOverride) {
 	wtr.Header().Set("Content-Type", "application/json")
 
@@ -55,21 +55,21 @@ func SendError(wtr http.ResponseWriter, req *http.Request, errCode ErrorCode, ov
 	})
 }
 
-// Sends a formatted error response with custom code
+// Sends a formatted JSON error response with a fully custom status, message, detail, and code.
 func SendCustomError(wtr http.ResponseWriter, req *http.Request, status int, message string, detail string, code string) {
 	SendError(wtr, req, ErrorCode{ID: code, Status: status, Message: message}, WithDetail(detail))
 }
 
-// Returns override for error message
+// Returns an ErrorOverride that replaces the default message.
 func WithMessage(message string) ErrorOverride { return ErrorOverride{Message: &message} }
 
-// Returns override for error detail
+// Returns an ErrorOverride that sets the detail field.
 func WithDetail(detail string) ErrorOverride { return ErrorOverride{Detail: &detail} }
 
-// Returns override for error status
+// Returns an ErrorOverride that replaces the HTTP status code.
 func WithStatus(status int) ErrorOverride { return ErrorOverride{Status: &status} }
 
-// Returns overrides for error codes
+// Returns an ErrorOverride with message, detail, and status all set at once.
 func WithOverrides(message string, detail string, status int) ErrorOverride {
 	return ErrorOverride{Message: &message, Detail: &detail, Status: &status}
 }

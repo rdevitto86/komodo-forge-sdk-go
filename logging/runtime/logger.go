@@ -14,18 +14,8 @@ var (
 	initOnce sync.Once
 )
 
-// Configures the global logger. Must be called once at service startup.
-//
-// Local/dev environments (env == "local"|"dev"|"development") use the
-// KomodoTextHandler which formats as:
-//
-//	2006-01-02T15:04:05Z [LEVEL] requestId | message | key=val ...
-//
-// All other environments use the JSON handler (stdout → CloudWatch).
-//
-// The version parameter is optional — pass os.Getenv("VERSION") or
-// omit it; defaults to "unknown". Using a variadic keeps callers that already
-// use the 3-argument form working without changes.
+// Configures the global logger; local/dev environments use the text handler, all others use JSON for CloudWatch.
+// Must be called once at service startup; version is optional and defaults to "unknown".
 func Init(name string, lvl string, env string, version ...string) {
 	initOnce.Do(func() {
 		ver := "unknown"

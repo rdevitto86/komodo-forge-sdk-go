@@ -23,9 +23,7 @@ func NewPublisher(snsClient sns.API, topicARN string) *Publisher {
 	return &Publisher{sns: snsClient, topicARN: topicARN}
 }
 
-// JSON-encodes the event and publishes it to the SNS FIFO topic.
-// MessageGroupId is set to event.EntityID; MessageDeduplicationId to event.ID,
-// which guarantees ordering per entity and idempotent delivery.
+// JSON-encodes the event and publishes it to the SNS FIFO topic with EntityID as MessageGroupId and ID as DeduplicationId.
 func (p *Publisher) Publish(ctx context.Context, event Event) error {
 	body, err := json.Marshal(event)
 	if err != nil {
@@ -74,12 +72,7 @@ func NewSubscriber(sqsClient sqs.API, cfg SubscriberConfig) *Subscriber {
 	}
 }
 
-// Runs a long-poll loop until ctx is cancelled. For each received message:
-//   - Unmarshal the Event envelope; malformed messages are deleted immediately
-//     (poison-pill prevention — they would never succeed on retry).
-//   - Call handler; on success the message is deleted from the queue.
-//   - On handler error the message is left in-flight so SQS visibility timeout
-//     and the queue's redrive policy handle retries and DLQ routing.
+// Runs a long-poll loop until ctx is cancelled, calling handler for each event; malformed messages are deleted immediately as poison pills.
 func (s *Subscriber) Subscribe(ctx context.Context, handler func(ctx context.Context, event Event) error) error {
 	var backoff time.Duration
 	const maxBackoff = 30 * time.Second

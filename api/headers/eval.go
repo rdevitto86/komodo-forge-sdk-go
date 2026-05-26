@@ -11,9 +11,9 @@ import (
 )
 
 var (
-	userAgentRE     = regexp.MustCompile(`^[A-Za-z0-9\-\._ /(),:;]+$`)
-	urlOriginRE     = regexp.MustCompile(`^https?://[A-Za-z0-9\-.%]+(?::\d{1,5})?(?:/.*)?$`)
-	requestedByRE   = regexp.MustCompile(`^[A-Za-z0-9_\-/]+$`)
+	userAgentRE      = regexp.MustCompile(`^[A-Za-z0-9\-\._ /(),:;]+$`)
+	urlOriginRE      = regexp.MustCompile(`^https?://[A-Za-z0-9\-.%]+(?::\d{1,5})?(?:/.*)?$`)
+	requestedByRE    = regexp.MustCompile(`^[A-Za-z0-9_\-/]+$`)
 	idempotencyKeyRE = regexp.MustCompile(`^[A-Za-z0-9_\-]{8,64}$`)
 )
 
@@ -47,8 +47,6 @@ func ValidateHeaderValue(hdr string, req *http.Request) (bool, error) {
 		return val != "", nil
 	}
 }
-
-// ================ Helper validation functions ================
 
 func isValidContentAcceptType(s string) bool {
 	return strings.HasPrefix(s, "application/json") ||

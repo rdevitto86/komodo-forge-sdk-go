@@ -2,6 +2,7 @@ package headers
 
 import "net/http"
 
+// Sets security headers (HSTS, X-Content-Type-Options, X-Frame-Options, etc.) on every response.
 func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 		wtr.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")

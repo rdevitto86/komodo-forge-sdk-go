@@ -1,9 +1,5 @@
 package pubsubsub
 
-// GCP Pub/Sub subscriber — equivalent to aws/sqs (pull-mode subscription).
-//
-// Stub: methods panic until implementation lands. New returns ErrNotImplemented.
-
 import "context"
 
 type Message struct {

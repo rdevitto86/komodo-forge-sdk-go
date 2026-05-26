@@ -29,7 +29,7 @@ type CustomClaims struct {
 	jwt.RegisteredClaims
 }
 
-// Loads RSA keys and assigns a KID for rotation support
+// Loads RSA signing and verification keys from environment variables and assigns a KID for rotation support.
 func InitializeKeys() error {
 	if keysInitialized {
 		return nil
@@ -63,7 +63,7 @@ func InitializeKeys() error {
 	return nil
 }
 
-// Creates a signed JWS with a KID in the header
+// Mints a signed JWT with the given claims and a KID header for key rotation.
 func SignToken(issuer string, subject string, audience string, ttl int64, scopes []string) (string, error) {
 	if !keysInitialized {
 		return "", fmt.Errorf("failed to sign token: jwt keys not initialized")
@@ -90,8 +90,7 @@ func SignToken(issuer string, subject string, audience string, ttl int64, scopes
 	return token.SignedString(cachedPrivateKey)
 }
 
-// Validates token signature, expiration, issuer, and audience.
-// If expectedIssuer or expectedAudience are empty, they will be retrieved from local env.
+// Validates a token's signature, expiration, issuer, and audience against env-configured values.
 func ValidateToken(tokenString string) (bool, error) {
 	if !keysInitialized {
 		return false, fmt.Errorf("failed to validate token: jwt keys not initialized")
@@ -111,7 +110,7 @@ func ValidateToken(tokenString string) (bool, error) {
 	token, err := jwt.ParseWithClaims(
 		tokenString,
 		&CustomClaims{},
-		func(t *jwt.Token) (interface{}, error) {
+		func(t *jwt.Token) (any, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 			}
@@ -137,8 +136,7 @@ func ValidateToken(tokenString string) (bool, error) {
 	return true, nil
 }
 
-// Validates signature, expiration, issuer, and audience in one parse,
-// and returns the embedded claims. Prefer this over ValidateToken + ParseClaims.
+// Validates the token and returns its embedded claims in a single parse; prefer over ValidateToken + ParseClaims.
 func ValidateAndParseClaims(tokenString string) (*CustomClaims, error) {
 	if !keysInitialized {
 		return nil, fmt.Errorf("failed to validate token: jwt keys not initialized")
@@ -158,7 +156,7 @@ func ValidateAndParseClaims(tokenString string) (*CustomClaims, error) {
 	token, err := jwt.ParseWithClaims(
 		tokenString,
 		&CustomClaims{},
-		func(t *jwt.Token) (interface{}, error) {
+		func(t *jwt.Token) (any, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 			}
@@ -182,7 +180,7 @@ func ValidateAndParseClaims(tokenString string) (*CustomClaims, error) {
 	return claims, nil
 }
 
-// Parses and returns claims from a token string
+// Parses and returns the embedded claims from a token string without re-validating issuer or audience.
 func ParseClaims(tokenString string) (*CustomClaims, error) {
 	if !keysInitialized {
 		return nil, fmt.Errorf("failed to parse claims: jwt keys not initialized")
@@ -195,7 +193,7 @@ func ParseClaims(tokenString string) (*CustomClaims, error) {
 	token, err := jwt.ParseWithClaims(
 		tokenString,
 		&CustomClaims{},
-		func(t *jwt.Token) (interface{}, error) {
+		func(t *jwt.Token) (any, error) {
 			if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 			}
@@ -213,7 +211,7 @@ func ParseClaims(tokenString string) (*CustomClaims, error) {
 	return claims, nil
 }
 
-// Extracts JWT token from Authorization header or request body
+// Extracts the Bearer token string from the Authorization header.
 func ExtractTokenFromRequest(req *http.Request) (string, error) {
 	auth := req.Header.Get("Authorization")
 	if auth == "" || !strings.HasPrefix(auth, "Bearer ") {

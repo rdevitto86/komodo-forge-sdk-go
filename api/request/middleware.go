@@ -7,12 +7,7 @@ import (
 	httpCtx "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 )
 
-// RequestIDMiddleware ensures each request has a unique X-Request-ID in both
-// header and context. Priority: header (client-supplied) > context > generated.
-//
-// Also propagates X-Correlation-ID from the client — this is the browser's
-// session fingerprint (correlationId) used to tie frontend and backend logs
-// to the same browsing session.
+// Ensures each request carries a unique X-Request-ID and propagates X-Correlation-ID into context and response headers.
 func RequestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		var reqID string
@@ -43,8 +38,7 @@ const (
 	ClientTypeBrowser string = "browser"
 )
 
-// Detects whether request is from API client or browser
-// and stores the result in context for downstream middleware to use
+// Detects whether the request originates from an API client or browser and stores the result in context.
 func ClientSourceMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 		authHeader := req.Header.Get("Authorization")

@@ -34,8 +34,7 @@ type Client struct {
 	breaker    *breaker
 }
 
-// Returns a Client configured from cfg. Zero-value cfg is valid and produces a
-// client with a 30s timeout, DefaultTransport, and no circuit breaker.
+// Returns a Client configured from cfg; zero-value cfg defaults to a 30s timeout, DefaultTransport, and no circuit breaker.
 func NewClient(cfg ClientConfig) *Client {
 	timeout := cfg.Timeout
 	if timeout == 0 {
@@ -60,10 +59,7 @@ func NewClient(cfg ClientConfig) *Client {
 	return c
 }
 
-// Executes the request using the underlying http.Client.
-// When a circuit breaker is configured, failures (transport errors and 4xx/5xx
-// responses) are counted per req.URL.Host. If the breaker is open, Do returns
-// nil, ErrOpen without making a network call.
+// Executes the request; when a circuit breaker is configured, failures are counted per host and ErrOpen is returned when the breaker is open.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	if c.breaker == nil {
 		return c.httpClient.Do(req)
@@ -103,8 +99,7 @@ func (e *HTTPError) Error() string {
 	return fmt.Sprintf("upstream returned %d: %s", e.StatusCode, e.Body)
 }
 
-// Issues a GET to url with context, and JSON-decodes the response body into T.
-// Returns *HTTPError for any non-2xx response.
+// Issues a GET and JSON-decodes a 2xx response body into T; returns *HTTPError for non-2xx responses.
 func GetJSON[T any](c *Client, ctx context.Context, url string) (*T, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -130,8 +125,7 @@ func GetJSON[T any](c *Client, ctx context.Context, url string) (*T, error) {
 	return &result, nil
 }
 
-// Marshals body as JSON, issues a POST to url with context, and decodes a 2xx response into T.
-// Returns *HTTPError for any non-2xx response.
+// Marshals body as JSON, POSTs to url, and decodes a 2xx response into T; returns *HTTPError for non-2xx responses.
 func PostJSON[T any](c *Client, ctx context.Context, url string, body any) (*T, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {

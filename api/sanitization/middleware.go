@@ -12,7 +12,7 @@ import (
 	httpErr "github.com/rdevitto86/komodo-forge-sdk-go/api/errors"
 )
 
-// Sanitizes HTTP requests from malicious content
+// Sanitizes headers, path params, query params, and JSON body to strip malicious content.
 func SanitizationMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 		sanitizeHeaders(req)
@@ -47,7 +47,7 @@ func sanitizePathParams(req *http.Request) {
 	}
 
 	// Extract wildcard names from the pattern (e.g. "GET /item/{sku}" -> ["sku"])
-	for _, seg := range strings.Split(pattern, "/") {
+	for seg := range strings.SplitSeq(pattern, "/") {
 		if len(seg) > 2 && seg[0] == '{' && seg[len(seg)-1] == '}' {
 			name := seg[1 : len(seg)-1]
 			// Strip trailing ... for catch-all wildcards
@@ -85,7 +85,7 @@ func sanitizeBody(wtr http.ResponseWriter, req *http.Request) {
 	req.Body.Close()
 
 	// Parse JSON
-	var data interface{}
+	var data any
 	if err := json.Unmarshal(body, &data); err != nil {
 		req.Body = nil
 		httpErr.SendError(wtr, req, httpErr.Global.BadRequest, httpErr.WithDetail("failed to parse JSON body"))
@@ -95,7 +95,7 @@ func sanitizeBody(wtr http.ResponseWriter, req *http.Request) {
 	// Sanitize the data recursively
 	sanitized := sanitizeJSON(data)
 
-	// Re-encode to JSON — json.Marshal of a sanitized interface{} tree (containing
+	// Re-encode to JSON — json.Marshal of a sanitized any tree (containing
 	// only strings, maps, arrays, and primitives) is always successful.
 	sanitizedBody, _ := json.Marshal(sanitized)
 
@@ -104,20 +104,20 @@ func sanitizeBody(wtr http.ResponseWriter, req *http.Request) {
 	req.ContentLength = int64(len(sanitizedBody))
 }
 
-// Recursively sanitizes JSON data structures
-func sanitizeJSON(data interface{}) interface{} {
+// Recursively sanitizes strings within a JSON data structure.
+func sanitizeJSON(data any) any {
 	switch val := data.(type) {
 	case string:
 		return sanitizeString(val)
-	case map[string]interface{}:
-		sanitized := make(map[string]interface{})
+	case map[string]any:
+		sanitized := make(map[string]any)
 		for key, value := range val {
 			sanitizedKey := sanitizeString(key)
 			sanitized[sanitizedKey] = sanitizeJSON(value)
 		}
 		return sanitized
-	case []interface{}:
-		sanitized := make([]interface{}, len(val))
+	case []any:
+		sanitized := make([]any, len(val))
 		for i, value := range val {
 			sanitized[i] = sanitizeJSON(value)
 		}

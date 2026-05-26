@@ -51,6 +51,12 @@ rules.RuleValidationMiddleware(next http.Handler) http.Handler
 
 ## AWS Packages
 
+> **`aws/X`** wraps `aws-sdk-go-v2/service/X`. SigV4 auth, AWS-specific endpoints, SDK-managed transport. May cover control plane (provisioning) and/or AWS-proprietary data planes (DynamoDB, S3, RDS Data API).
+>
+> **`db/X`** wraps a protocol-native client (`pgx`, `go-redis`, `opensearch-go`). Caller-managed connection pool, explicit `Ping`/`Close`, portable across deployments (AWS, GCP, self-hosted, local).
+>
+> The same logical service can appear in both trees: e.g., `aws/elasticache` (cluster management via SDK) + `db/redis` (RESP data plane). The import path tells you which surface you're using.
+
 ### `aws/dynamodb`
 DynamoDB client with typed CRUD, query/scan helpers, and parallel batch operations.
 
@@ -72,19 +78,6 @@ c.Scan(ctx, input)
 c.ScanAs(ctx, input, &out)
 c.ScanAll(ctx, input)
 c.ScanAllAs(ctx, input, &out)
-```
-
-### `aws/elasticache`
-Redis client via `go-redis`. Includes a distributed token-bucket rate limiter.
-
-```go
-c, err := elasticache.New(cfg)
-c, err := elasticache.NewFromString(connStr)
-c.Get(ctx, key)                                       // returns (string, error); "" on miss
-c.Set(ctx, key, value, ttlSec)
-c.Delete(ctx, key)
-c.AllowDistributed(ctx, key, rate, burst, ttlSec)     // returns (allowed bool, retryAfter time.Duration, err)
-c.Close()
 ```
 
 ### `aws/s3`
@@ -125,29 +118,126 @@ c.Receive(ctx, queueURL, maxMessages)                                 // returns
 c.Delete(ctx, queueURL, receiptHandle)
 ```
 
-### `aws/aurora`
-Aurora-compatible SQL client (planned).
-
 ### `aws/bedrock`
-Amazon Bedrock client (planned).
+Amazon Bedrock generative-AI inference. Typed `Model` enum (Claude Opus 4.7 / Sonnet 4.6 / Haiku 4.5, Titan Text, Llama 3, Mistral Large) with `ParseModel(string)` validation for HTTP handlers — invalid model names return `ErrUnknownModel` before any SDK call.
 
-### `aws/cloudwatch`
-CloudWatch client (planned).
+```go
+c, err := bedrock.New(cfg)
+m, err := bedrock.ParseModel(req.Model) // reject unknown models here
+text, err := c.Invoke(ctx, m, "Hello")  // Anthropic-format wrapper
+raw, err  := c.InvokeJSON(ctx, m, body) // raw passthrough
+out, err  := c.Converse(ctx, input)     // model-agnostic chat
+```
+
+### `aws/cloudwatch/metrics`
+CloudWatch metrics. Auto-chunks `PutMetricData` at 1000 datums per call.
+
+```go
+c, err := metrics.New(cfg)
+c.PutMetricData(ctx, "Komodo/Test", []metrics.MetricDatum{...})
+stats, err := c.GetMetricStatistics(ctx, in)
+```
+
+### `aws/cloudwatch/logs`
+CloudWatch Logs. Auto-chunks `PutLogEvents` at 10000 events or ~1MB.
+
+```go
+c, err := logs.New(cfg)
+c.PutLogEvents(ctx, group, stream, events)
+out, err := c.FilterLogEvents(ctx, in)
+```
 
 ### `aws/connect`
-Amazon Connect client (planned).
+Amazon Connect voice-contact orchestration.
 
-### `aws/contactlens`
-Contact Lens client (planned).
+```go
+c, err := connect.New(cfg)
+id, err := c.StartOutboundVoiceContact(ctx, in)
+attrs, err := c.GetContactAttributes(ctx, instanceID, contactID)
+c.UpdateContactAttributes(ctx, instanceID, contactID, attrs)
+flows, err := c.ListContactFlows(ctx, instanceID)
+```
 
-### `aws/elasticsearch`
-Elasticsearch client (planned).
+### `aws/connect/contactlens`
+Contact Lens real-time call analytics. Sub-feature of Connect; nested structurally.
+
+```go
+c, err := contactlens.New(cfg)
+segs, err := c.ListRealtimeContactAnalysisSegments(ctx, instanceID, contactID)
+```
+
+### `aws/elasticache`
+ElastiCache cluster management via the AWS SDK (control plane). Data plane lives in `db/redis`.
+
+```go
+c, err := elasticache.New(cfg)
+groups, err := c.DescribeReplicationGroups(ctx)
+clusters, err := c.DescribeCacheClusters(ctx)
+```
 
 ### `aws/lambda`
-Lambda invocation client (planned).
+Lambda invocation.
+
+```go
+c, err := lambda.New(cfg)
+payload, err := c.Invoke(ctx, fnName, body)  // sync
+c.InvokeAsync(ctx, fnName, body)             // fire-and-forget
+```
 
 ### `aws/ses`
-SES email client (planned).
+SESv2 transactional email. Attachments encoded as `multipart/mixed` MIME.
+
+```go
+c, err := ses.New(cfg)
+id, err := c.SendEmail(ctx, ses.SendEmailInput{
+    From: "no-reply@x.com", To: []string{"u@y.com"},
+    Subject: "Hi", TextBody: "...", HTMLBody: "<p>...</p>",
+    Attachments: []ses.Attachment{{Filename: "r.pdf", ContentType: "application/pdf", Data: b}},
+})
+```
+
+### `aws/rds`
+RDS Data API for Aurora Serverless SQL-over-HTTPS. Distinct from `db/sql` (wire-protocol pgx). Use this for Lambda or out-of-VPC callers.
+
+```go
+c, err := rds.New(cfg) // ResourceArn + SecretArn required
+out, err := c.ExecuteStatement(ctx, rds.ExecuteStatementInput{SQL: "SELECT $1", Parameters: map[string]any{"1": 42}})
+tx, err  := c.BeginTransaction(ctx)
+c.CommitTransaction(ctx, tx)
+c.RollbackTransaction(ctx, tx)
+```
+
+### `aws/opensearch`
+OpenSearch Service domain management via the AWS SDK (control plane). Data plane lives in `db/opensearch`.
+
+```go
+c, err := opensearch.New(cfg)
+d, err := c.DescribeDomain(ctx, name)
+names, err := c.ListDomainNames(ctx)
+```
+
+---
+
+## DB Packages
+
+### `db/sql`
+Driver-agnostic SQL client (planned). Wraps `database/sql` with a `pgx` or MySQL driver.
+
+### `db/redis`
+Redis data-plane client via `go-redis`. Includes a distributed token-bucket rate limiter.
+
+```go
+c, err := redis.New(cfg)
+c, err := redis.NewFromString(connStr)
+c.Get(ctx, key)                                       // returns (string, error); "" on miss
+c.Set(ctx, key, value, ttlSec)
+c.Delete(ctx, key)
+c.AllowDistributed(ctx, key, rate, burst, ttlSec)     // returns (allowed bool, retryAfter time.Duration, err)
+c.Close()
+```
+
+### `db/opensearch`
+OpenSearch data-plane client (planned). Wraps `opensearch-go`.
 
 ---
 

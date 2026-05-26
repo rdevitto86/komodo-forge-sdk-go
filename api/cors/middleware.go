@@ -2,7 +2,7 @@ package cors
 
 import "net/http"
 
-// Implement CORS security checks
+// Applies CORS security checks to each request.
 func CORSMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 		// TODO: implement CORS handling

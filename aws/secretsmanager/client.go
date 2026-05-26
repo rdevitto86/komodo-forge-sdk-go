@@ -81,11 +81,13 @@ type Client struct {
 	cache  *secretCache
 }
 
-// Creates a Secrets Manager Client. If cfg.Keys is non-empty it eagerly
-// loads those secrets via GetSecrets and returns any retrieval error.
-func New(cfg Config) (*Client, error) {
+// Returns a new Secrets Manager Client. Eagerly loads cfg.Keys via GetSecrets if non-empty and returns any retrieval error. Returns an error if the region is empty or not a known AWS region code.
+func New(ctx context.Context, cfg Config) (*Client, error) {
 	if cfg.Region == "" {
-		return nil, fmt.Errorf("region is required")
+		return nil, fmt.Errorf("missing region")
+	}
+	if cfg.Region == "" {
+		return nil, fmt.Errorf("missing region")
 	}
 
 	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(cfg.Region)}
@@ -95,7 +97,7 @@ func New(cfg Config) (*Client, error) {
 		))
 	}
 
-	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(), opts...)
+	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
 		logger.Error("failed to load AWS config", err)
 		return nil, err
@@ -122,8 +124,7 @@ func New(cfg Config) (*Client, error) {
 	return c, nil
 }
 
-// Retrieves a single secret by key under the given prefix path.
-// Results are cached for the configured CacheTTL.
+// Retrieves a single secret by key under the given prefix path; results are cached for the configured CacheTTL.
 func (c *Client) GetSecret(key, prefix string) (string, error) {
 	if prefix == "" {
 		return "", fmt.Errorf("prefix is required")
@@ -151,9 +152,7 @@ func (c *Client) GetSecret(key, prefix string) (string, error) {
 	return value, nil
 }
 
-// Retrieves a batch secret JSON blob at prefix+batchID and returns
-// the subset of keys requested. The full blob is cached for CacheTTL; individual
-// key lookups served from that cached blob do not incur additional API calls.
+// Retrieves a batch secret JSON blob at prefix+batchID and returns the requested subset of keys. The full blob is cached for CacheTTL.
 func (c *Client) GetSecrets(keys []string, prefix, batchID string) (map[string]string, error) {
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("no keys provided")

@@ -13,10 +13,7 @@ import (
 	"net/http"
 )
 
-// Universal entry point for all Komodo services.
-// On AWS Lambda (detected via AWS_LAMBDA_FUNCTION_NAME) it wraps the handler
-// with the API Gateway v2 HTTP adapter and starts the Lambda runtime.
-// Otherwise it falls through to InitAndServe for local docker-compose and Fargate.
+// Runs the server as a Lambda function when AWS_LAMBDA_FUNCTION_NAME is set, otherwise falls through to InitAndServe.
 func Run(srv *http.Server, port string, gracefulTimeout time.Duration) {
 	if os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != "" {
 		lambda.Start(httpadapter.NewV2(srv.Handler).ProxyWithContext)
@@ -25,11 +22,7 @@ func Run(srv *http.Server, port string, gracefulTimeout time.Duration) {
 	InitAndServe(srv, port, gracefulTimeout)
 }
 
-// Initialize and start the server with graceful shutdown
-// parameters:
-//   - srv: the server to start
-//   - p: the port to listen on
-//   - t: the timeout for graceful shutdown
+// Starts the server on port p and blocks until a shutdown signal is received, then drains within timeout t.
 func InitAndServe(srv *http.Server, p string, t time.Duration) {
 	// Create context for graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

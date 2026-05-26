@@ -38,7 +38,11 @@ func loadTemplate(t *testing.T, name string) string {
 // oapi-codegen; stub bodies are sufficient to validate the template's syntax.
 func noopFuncs() template.FuncMap {
 	return template.FuncMap{
-		"opts":                       func() any { return struct{ OutputOptions struct{ ClientTypeName string } }{} },
+		"opts": func() any {
+			return struct {
+				OutputOptions struct{ ClientTypeName string }
+			}{}
+		},
 		"genParamArgs":               func(any) string { return "" },
 		"genParamNames":              func(any) string { return "" },
 		"genResponseTypeName":        func(string) string { return "" },

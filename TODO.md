@@ -4,6 +4,14 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 
 ---
 
+## `auth` package — consumer token verification
+
+> Implements the local-verify side of the introspect-vs-denylist ADR. Consumers inject `auth.Verifier` rather than calling `POST /v1/oauth/introspect` directly. Phase 1 (JWKS-backed local verify) shipped in v0.14.2. Phase 2 adds a bloom-filter denylist when Redis is in the infra budget.
+
+- [ ] **L** Phase 2: `auth/denylist.go` — `DenylistVerifier` wraps `JWKSVerifier`; after local verify, checks a bloom filter backed by Redis; background goroutine refreshes bloom from the revocation set on configurable cadence; `ErrTokenRevoked` sentinel; `DenylistConfig` adds `RedisClient db.API`, `RefreshInterval time.Duration`, `FalsePositiveRate float64`
+
+---
+
 ## In-Progress / Stubs to Complete
 
 ### `db/sql` (was `aws/aurora`)
@@ -15,6 +23,7 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 ### `aws/dynamodb`
 - [ ] **H** Retry logic for unprocessed items in batch write/delete
 - [ ] **H** Transaction support (`TransactWriteItems`, `TransactGetItems`)
+- [ ] **M** Export `ErrNotFound` sentinel — `getItem` currently wraps `fmt.Errorf("item not found")` with no exported type; callers (e.g. `komodo-auth-api/internal/clients.BannedCustomersClient`) resort to `strings.Contains` on the error message. Add `var ErrNotFound = errors.New("item not found")` and return it from `GetItem`/`GetItemAs` when the DynamoDB `ItemCollectionMetrics` response is empty. Update `BannedCustomersClient` string-match workaround once this ships.
 - [ ] **M** Conditional expression helpers beyond raw strings
 - [ ] **L** Consistent read flag on Scan
 - [ ] **L** Projection expression support
@@ -87,6 +96,9 @@ All previously-empty AWS service packages were implemented in 0.14.0 — see `CH
 - [ ] **M** Multi-environment support (dev / staging / prod profiles)
 - [ ] **M** Thread-safe `SetLevel` for log level changes
 - [ ] **L** Change notification / listener hooks
+
+### `security/bannedcustomers` (new)
+- [ ] **M** Implement `security/bannedcustomers` package — `Client`, `Checker` interface (`IsBanned(ctx, email) (bool, error)`), `Config` (TableName, DynamoDB `dynamodb.API`), proactive `expires_at` TTL check, fail-open semantics documented. Used cross-service by auth-api, order-api, and payments-api. `komodo-auth-api/internal/clients.BannedCustomersClient` is a local copy that should be deleted and replaced with an import of this package once it ships.
 
 ### `security/jwt`
 - [ ] **H** Token revocation / JTI blacklist (revocation check is currently commented out)

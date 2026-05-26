@@ -6,6 +6,28 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.14.2]
+
+### Added
+
+- **`auth` — consumer JWT verification via injected `Verifier` (Phase 1).** Implements the local-verify side of the introspect-vs-denylist ADR. Consumers inject `auth.Verifier` rather than calling `POST /v1/oauth/introspect`; Phase 2 (Redis bloom-filter denylist) tracked in TODO.
+
+  - **`auth/verifier.go`** — `Verifier` interface (`Verify(ctx context.Context, token string) (*Claims, error)`); `Claims` struct (Subject, Audience, Scopes, JTI, IsAdmin, IssuedAt, ExpiresAt, Issuer); three sentinel errors (`ErrExpired`, `ErrInvalidSignature`, `ErrInvalidToken`) so callers can branch on failure mode without string matching.
+
+  - **`auth/jwks.go`** — `JWKSVerifier` implementing `Verifier`. Fetches RS256 public keys from a JWKS endpoint (auth-api's `/.well-known/jwks.json`), parses `n`/`e` fields via `encoding/base64` + `math/big.Int`, and caches keys by `kid` (default TTL 5 min). On cache miss the key set is re-fetched once; a second consecutive miss returns `ErrInvalidToken` — no retry loop. Concurrent reads hold only a read lock; the write lock is taken only during cache refresh. `Config` fields: `JWKSURL string`, `CacheTTL time.Duration`, `HTTPClient *http.Client` (defaults: 5 min TTL, 10 s HTTP timeout).
+
+  - **`auth/middleware.go` — `Middleware(v Verifier)`** — new middleware constructor alongside the existing `AuthMiddleware`. Accepts an injected `Verifier` for testability. Maps `ErrExpired` → `Auth.ExpiredToken` (401), all other errors → `Auth.InvalidToken` (401). Populates the same context keys as `AuthMiddleware`: `USER_ID_KEY`, `SESSION_ID_KEY`, `SCOPES_KEY`, `IS_ADMIN_KEY`, `AUTH_VALID_KEY`, `REQUEST_TYPE_KEY`. `AuthMiddleware` deprecated with a doc-comment pointer to the new form.
+
+  - **`auth/verifier_test.go`** — 7 unit tests via `httptest.NewServer` as a mock JWKS endpoint. In-test RS256 keypair generated with `crypto/rsa.GenerateKey`; tokens signed with `golang-jwt/jwt/v5`. Cases: valid token (claims populated), expired token (`ErrExpired`), tampered signature (`ErrInvalidSignature`), stale-cache key rotation (re-fetch succeeds), unknown kid after re-fetch (`ErrInvalidToken`), empty `JWKSURL`, unreachable server.
+
+### Changed
+
+- **`auth/middleware.go` — package declaration corrected.** `package middleware` → `package auth`. Package name now matches the directory; all consumers already imported it as `auth` via the module path — no caller changes required.
+
+- **`api/middleware/exports.go` — alias dropped, `Middleware` exported.** Redundant `mwapiauth` alias removed (package is now self-named `auth`). `Middleware = auth.Middleware` added alongside the existing `AuthMiddleware` and `RequireServiceScope` re-exports.
+
+---
+
 ## [0.14.1]
 
 ### Added

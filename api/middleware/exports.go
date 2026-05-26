@@ -13,7 +13,7 @@ import (
 	mwrequest "github.com/rdevitto86/komodo-forge-sdk-go/api/request"
 	mwsanitize "github.com/rdevitto86/komodo-forge-sdk-go/api/sanitization"
 	mwtelemetry "github.com/rdevitto86/komodo-forge-sdk-go/api/telemetry"
-	mwapiauth "github.com/rdevitto86/komodo-forge-sdk-go/auth"
+	"github.com/rdevitto86/komodo-forge-sdk-go/auth"
 	mwrules "github.com/rdevitto86/komodo-forge-sdk-go/rules"
 )
 
@@ -24,7 +24,8 @@ var (
 
 	// --- handlers ---
 
-	AuthMiddleware            = mwapiauth.AuthMiddleware
+	AuthMiddleware            = auth.AuthMiddleware
+	Middleware                = auth.Middleware
 	ClientSourceMiddleware    = mwrequest.ClientSourceMiddleware
 	ClientTypeMiddleware      = mwrequest.ClientSourceMiddleware
 	CORSMiddleware            = mwcors.CORSMiddleware
@@ -35,10 +36,10 @@ var (
 	RateLimiterMiddleware     = mwratelimit.RateLimiterMiddleware
 	RedactionMiddleware       = mwredaction.RedactionMiddleware
 	RequestIDMiddleware       = mwrequest.RequestIDMiddleware
-	RequireServiceScope       = mwapiauth.RequireServiceScope
+	RequireServiceScope       = auth.RequireServiceScope
 	RuleValidationMiddleware  = mwrules.RuleValidationMiddleware
 	SanitizationMiddleware    = mwsanitize.SanitizationMiddleware
-	ScopeMiddleware           = mwapiauth.RequireServiceScope
+	ScopeMiddleware           = auth.RequireServiceScope
 	SecurityHeadersMiddleware = mwheaders.SecurityHeadersMiddleware
 	TelemetryMiddleware       = mwtelemetry.TelemetryMiddleware
 )

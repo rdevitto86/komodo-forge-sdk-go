@@ -1,7 +1,8 @@
-package middleware
+package auth
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 )
 
 // Validates the Bearer JWT, injects auth claims into the request context, and rejects invalid tokens.
+// Deprecated: use Middleware with an injected Verifier for testability.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 		tokenString, err := jwt.ExtractTokenFromRequest(req)
@@ -53,6 +55,57 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(wtr, req.WithContext(ctx))
 	})
+}
+
+// Validates the Bearer JWT using v and injects verified claims into the request context.
+// Prefer this over AuthMiddleware — it accepts an injected Verifier for testability.
+func Middleware(v Verifier) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
+			tokenString, err := jwt.ExtractTokenFromRequest(req)
+			if err != nil {
+				logger.Error("failed to extract token from request", err)
+				httpErr.SendError(wtr, req, httpErr.Auth.InvalidToken, httpErr.WithDetail(err.Error()))
+				return
+			}
+
+			claims, err := v.Verify(req.Context(), tokenString)
+			if err != nil {
+				logger.Error("token verification failed", err)
+				errCode := httpErr.Auth.InvalidToken
+				if errors.Is(err, ErrExpired) {
+					errCode = httpErr.Auth.ExpiredToken
+				}
+				httpErr.SendError(wtr, req, errCode, httpErr.WithDetail(err.Error()))
+				return
+			}
+
+			ctx := context.WithValue(req.Context(), ctxKeys.AUTH_VALID_KEY, true)
+
+			if claims.Subject != "" {
+				ctx = context.WithValue(ctx, ctxKeys.USER_ID_KEY, claims.Subject)
+			}
+			if claims.JTI != "" {
+				ctx = context.WithValue(ctx, ctxKeys.SESSION_ID_KEY, claims.JTI)
+			}
+
+			isUIRequest := len(claims.Scopes) == 0 || claims.IsAdmin
+			isAPIRequest := len(claims.Scopes) > 0
+
+			if isUIRequest {
+				ctx = context.WithValue(ctx, ctxKeys.REQUEST_TYPE_KEY, "ui")
+			}
+			if isAPIRequest {
+				ctx = context.WithValue(ctx, ctxKeys.REQUEST_TYPE_KEY, "api")
+				ctx = context.WithValue(ctx, ctxKeys.SCOPES_KEY, claims.Scopes)
+			}
+			if claims.IsAdmin {
+				ctx = context.WithValue(ctx, ctxKeys.IS_ADMIN_KEY, true)
+			}
+
+			next.ServeHTTP(wtr, req.WithContext(ctx))
+		})
+	}
 }
 
 // Rejects requests whose JWT does not carry at least one "svc:"-prefixed scope.

@@ -14,9 +14,27 @@ replace komodo-forge-sdk-go => ../komodo-forge-sdk-go
 ## Packages
 
 ### `auth`
-OAuth2 + JWT Bearer token authentication middleware.
+JWT Bearer token verification and HTTP middleware. Provides a `Verifier` interface for dependency-injected token validation and a `JWKSVerifier` that fetches RS256 public keys from a JWKS endpoint.
 
 ```go
+// Construct a verifier backed by the auth-api JWKS endpoint.
+v, err := auth.NewJWKSVerifier(auth.Config{
+    JWKSURL:  "https://auth.internal/.well-known/jwks.json",
+    CacheTTL: 5 * time.Minute,          // default; keys cached by kid
+})
+
+// Use the injected-Verifier middleware (preferred — testable).
+router.Use(auth.Middleware(v))
+
+// Sentinel errors for branching on failure mode.
+claims, err := v.Verify(ctx, tokenString)
+switch {
+case errors.Is(err, auth.ErrExpired):          // token past exp
+case errors.Is(err, auth.ErrInvalidSignature): // key mismatch / tamper
+case errors.Is(err, auth.ErrInvalidToken):     // malformed / unknown kid
+}
+
+// Deprecated: use Middleware(v) instead.
 auth.AuthMiddleware(next http.Handler) http.Handler
 ```
 

@@ -18,8 +18,6 @@ import (
 )
 
 var (
-	// --- core ---
-
 	Chain = mwchain.Chain
 
 	// --- handlers ---

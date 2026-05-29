@@ -286,6 +286,151 @@ Surfaced by `komodo-auth-api/internal/clients/user.go` and the inline `jwt.SignT
 - [ ] **L** Tests for delay — verify `time.Sleep` is applied within tolerance
 - [ ] **L** Tests for dynamic template rendering — verify `{{.body.key}}` substitution
 
+#### Architecture — Multi-Frontend Split
+
+> Today moxtox is a single package with HTTP middleware as its only surface. The goal is to split it into a pure matching engine plus multiple thin frontends. The engine becomes a library; frontends are thin wrappers that expose it as middleware, an `http.Client` drop-in, a standalone sidecar binary, and eventually a `database/sql` driver. This unblocks in-process, out-of-process, and DB-level mocking from a single scenario format.
+
+- [ ] **H** `moxtox/engine` — extract all matching, storage, and scenario resolution logic into a standalone sub-package with no HTTP dependency; expose `Engine` struct with `Match(req MatchInput) (Scenario, bool)`, `Load(scenarios []Scenario)`, and `Reset()`; `MatchInput` carries method, path, headers, query, body — no `*http.Request` coupling; this is the prerequisite for every other frontend
+- [ ] **H** `moxtox/middleware` — refactor current package to import `engine` rather than embed matching logic; `New(env, opts...)` returns an `http.Handler` wrapper; existing behavioral contract preserved; this replaces the current `InitMoxtoxMiddleware` once the engine extraction is done
+- [ ] **H** `moxtox/client` — drop-in `http.Client` replacement backed by the engine locally (no network round-trip); implement as a custom `http.RoundTripper` that calls `engine.Match` instead of dialing; add recorder mode (`WithRecorder(dest string)`) that intercepts real responses and serializes them to YAML scenario files; primary use case: unit-testing connector code (Stripe, PayPal, AWS SDK) without a running server
+- [ ] **M** `moxtox/server` — standalone binary wrapping the engine with an HTTP listener; accepts a scenario YAML directory on startup, exposes the mock responses on a configurable port, and serves an admin API (`POST /admin/scenarios`, `DELETE /admin/scenarios/:id`, `GET /admin/hits`); ships as a container image (see Pipeline section below); this is the sidecar target
+- [ ] **L** `moxtox/db` — `database/sql` driver that resolves queries against scenario-matched rows stored in SQLite; implement `sql.Driver` and `sql.Conn` interfaces; scenario YAML declares table name, column names, and row sets keyed by a SQL condition pattern; returns matched rows without a real DB or sqlmock-style verbose expectations; long-tail killer feature — design the interface now, implement after sidecar mode has users
+
+#### `moxtox/server` — Pipeline Operational Requirements
+
+> These items apply specifically to the standalone server binary. Sub-second startup and a small container image are the gate on CI adoption. Everything else is table stakes for teams running it as a k8s sidecar or docker-compose service.
+
+- [ ] **H** Health and readiness endpoints — `GET /healthz` returns `200 OK` immediately after bind; `GET /readyz` returns `200 OK` only after at least one scenario file has been successfully loaded; both return plain `{"status":"ok"}` JSON; required by k8s liveness/readiness probes and docker-compose `healthcheck` directives to gate test execution
+- [ ] **H** Structured JSON logs to stdout — every request log line must include `request_id`, `method`, `path`, `matched_scenario` (scenario name or `"unmatched"`), `latency_ms`, and `status`; use `log/slog` JSON handler; pipeline runners scrape stdout and these fields make CI failures debuggable without shell access to the container
+- [ ] **H** Graceful shutdown with hit report — on `SIGTERM`, finish in-flight requests (5s drain), then write a summary to stdout: scenarios loaded, per-scenario hit counts, unmatched request count and paths, passthrough count; format as a JSON object on a single line so CI log scrapers can parse it; this summary is the primary debugging artifact when a test run ends unexpectedly
+- [ ] **H** Config from env vars and mounted files — twelve-factor: `MOXTOX_SCENARIO_DIR` (default `./scenarios`), `MOXTOX_PORT` (default `8080`), `MOXTOX_ENV` (default `test`), `MOXTOX_LOG_LEVEL` (default `info`), `MOXTOX_DETERMINISTIC` (default `false`); YAML scenario files mounted at `MOXTOX_SCENARIO_DIR`; no config file required for the binary itself — env vars only
+- [ ] **H** Container image — `Dockerfile` using distroless `gcr.io/distroless/static` base; multi-stage build (Go builder → distroless); multi-arch manifest (`linux/amd64`, `linux/arm64`); target image size ≤10MB; publish to `ghcr.io/moxtox/moxtox:latest` and version tags; include `HEALTHCHECK` directive pointing at `/healthz`; heavy images kill pipeline adoption
+- [ ] **M** Prometheus `/metrics` endpoint — expose `moxtox_scenario_hits_total{scenario="..."}` counter, `moxtox_unmatched_requests_total` counter, `moxtox_passthrough_requests_total` counter, `moxtox_request_duration_seconds` histogram; lets teams alert on "tests started hitting the real backend unexpectedly" — that alert catches misconfigured scenario files before they silently produce wrong test results
+- [ ] **M** Deterministic mode — when `MOXTOX_DETERMINISTIC=true`: disable any random jitter in delay simulation, fix `time.Now()` to a configurable epoch (default `2024-01-01T00:00:00Z`), evaluate scenarios in declaration order (not map iteration order); required to eliminate flaky CI caused by ordering non-determinism; expose as a functional option on `engine.Engine` so middleware and client frontends can also use it
+- [ ] **M** Record-from-real mode — when started with `--record --upstream=https://staging.api.example.com`, proxy all requests to the upstream and serialize each response as a YAML scenario file in `MOXTOX_SCENARIO_DIR`; on subsequent runs without `--record`, replay recorded responses; this is the Hoverfly/VCR pattern — it is how teams bootstrap scenario files without writing them by hand; document the workflow: `moxtox --record` in staging → commit YAML → CI replays
+
+#### Go-to-Market
+
+- [ ] **H** Docker-compose example for a typical Go service stack — `docker-compose.yml` showing: the Go service under test, a moxtox sidecar mocking a downstream API, a Postgres container, a `healthcheck` on moxtox gating service startup, and a one-shot test runner container that exits with the test suite's exit code; this is the demo that sells the sidecar mode; publish it as `examples/docker-compose-go-service/` in the moxtox repo; a team should be able to clone and `docker compose up --exit-code-from tests` and see it work
+- [ ] **M** README with competitive positioning — document explicitly: native Go (no JVM, sub-second startup, ≤10MB image), same engine in-process or out-of-process (WireMock cannot do in-process for non-JVM services), eventual DB mocking; include a side-by-side feature table against WireMock focused on the 20% that covers component/integration tests for Go API teams; do not market feature parity with WireMock — market simplicity for the Go-shop use case
+
+---
+
+## Testing Strategy — SDK-Wide
+
+> Chosen stack: **unit** `testing + testify` · **component/mocking** `go.uber.org/mock` (mockgen) + moxtox RoundTripper · **integration** `testcontainers-go` (LocalStack, Redis, Postgres, OpenSearch, GCP emulators) · **performance** native `testing.B` for hot paths + `k6` for moxtox/server · **contract/E2E** `Pact-go` · **chaos/resilience** `Toxiproxy` via testcontainers-go.
+>
+> Test tier build tags: `//go:build unit` · `//go:build component` · `//go:build integration` · `//go:build e2e` · `//go:build chaos`. CI runs `unit + component` on every PR; `integration` on merge to main; `e2e` and `chaos` on release tags only.
+
+---
+
+### Infrastructure & Tooling
+
+- [ ] **H** Adopt build-tag tier convention — add `//go:build <tier>` constraint as the first line of every non-unit test file; define the five tiers (`unit`, `component`, `integration`, `e2e`, `chaos`) in `CONTRIBUTING.md` with a clear decision rule for which tier each test belongs to; update CI matrix to run the appropriate subset per trigger
+- [ ] **H** Makefile test targets — add `make test-unit`, `make test-component`, `make test-integration`, `make test-e2e`, `make test-chaos`, and `make test-all`; each target sets the correct `-tags` flag, `-race` detector, and `-count=1` (disable test result caching for integration+); PR CI calls `test-unit` and `test-component` only
+- [ ] **H** Coverage gate in CI — run `go test -coverprofile=coverage.out -tags unit,component ./...` and fail the PR if any implemented package (not a stub returning `ErrNotImplemented`) falls below 80% statement coverage; use `go tool cover -func` to report per-package; add `coverage.out` to `.gitignore` (currently committed — see audit finding)
+- [ ] **H** Pin and document test dependencies — add `go.uber.org/mock`, `github.com/stretchr/testify`, `github.com/testcontainers/testcontainers-go`, `github.com/pact-foundation/pact-go`, and `github.com/shopify/toxiproxy/v2` to `go.mod` under a `tools.go` with `//go:build tools` guard so they do not pollute the SDK's runtime dependency graph; `mockgen` binary pinned in the same file
+- [ ] **M** Shared test helpers package — `testing/helpers` (or `internal/testutil`) with reusable fixtures: `MustMarshalJSON(t, v)`, `MustReadFixture(t, path)`, `AssertErrorIs(t, err, target)`, and a `FakeResponseWriter` that captures status+body; today each `_test.go` file re-implements these inline; centralizing reduces noise and makes test intent clearer
+- [ ] **M** `mockgen` generation script — add `scripts/generate-mocks.sh` that runs `mockgen` against every `API` interface in `aws/*/client.go`, `gcp/*/client.go`, `db/*/client.go`, and `http/client/client.go`; output to `<package>/mock/mock_<package>.go` with `//go:build component` tag; wire into `scripts/generate.sh` so `go generate ./...` keeps mocks in sync with interface changes
+
+---
+
+### Unit Tests
+
+> Pure logic, no I/O, no goroutines. Run on every commit. Should complete in under 5 seconds for the whole SDK.
+
+- [ ] **H** `crypto/jwt` — no tests exist; this package handles token signing and is security-critical; add table-driven tests for `SignToken` (valid, expired TTL, missing key), `ValidateToken` (valid, tampered signature, expired, wrong audience), and `ParseClaims` (valid claims, malformed token, wrong key); these are separate from `security/jwt` tests and must cover the `crypto/` path independently
+- [ ] **H** `crypto/oauth` — no tests exist; add tests for all exported functions; cover grant type validation, scope parsing, and error cases
+- [ ] **H** `connectors/stripe/*` — no tests in any of the six sub-packages (`checkout`, `customer`, `payapple`, `paygoogle`, `paymentintent`, `refund`); add unit tests for request construction, field mapping, and error parsing for each package; these packages are stubs today but tests should be written against the defined interfaces so they fail loudly when implementation is added
+- [ ] **H** `connectors/paypal/*` — no tests in any of the three sub-packages (`orders`, `payment-sources`, `refund`); same approach as Stripe above
+- [ ] **H** `connectors/apple/*` and `connectors/google/*` — no tests in any connector sub-package; add unit tests for `auth` (token validation logic, redirect construction) and `maps` (request encoding, response parsing) for both providers
+- [ ] **M** `api/errors` — existing tests cover happy path; add table-driven cases for all `Range*` constants confirming error code uniqueness across the full range map; a duplicated range registration should fail at test time, not silently at runtime
+- [ ] **M** `api/sanitization` — add unit tests for the `sanitizeBody` allocation path with a `ContentLength`-sized pre-allocation (verify the audit finding fix); add fuzz target (`FuzzSanitize`) for the body sanitizer to catch unexpected panics on malformed JSON
+- [ ] **M** `api/redaction` — add unit tests for `containsSensitiveKey` specifically covering the `map[string]struct{}` fast path after the audit-finding fix; add a test that asserts the redaction regex does not corrupt base64 content, UUIDs, or long numeric strings (documents the regression risk)
+- [ ] **M** `rules/eval` — add table-driven tests for all condition operators; cover the `Strict` mode boundary (allow-with-warning vs deny-on-missing); verify `ErrRuleNotFound` vs validation errors are distinct
+- [ ] **M** `security/jwt` — existing tests present; add tests for the `sync.Once` key-loading fix (concurrent first-callers must not race); use `go test -race` explicitly in the test comment
+- [ ] **L** `events/event` — add tests for all event type constructors and the `Version` field default; cover JSON round-trip fidelity (marshal → unmarshal → marshal produces identical bytes)
+- [ ] **L** `logging/runtime` — add a test that asserts `RedactingLogger.Handle` calls `Enabled` before cloning the record (verifies the audit finding fix and prevents the optimization from being reverted)
+
+---
+
+### Component Tests
+
+> Package under test with all external I/O replaced by injected fakes or gomock mocks. No Docker, no network. Run on every commit alongside unit tests.
+
+- [ ] **H** `aws/*` — generate gomock mocks for all `API` interfaces via `mockgen`; write component tests for every client method covering: success path, AWS SDK error wrapping (`ErrNotFound`, `ErrConflict`), context cancellation, and credential selection logic (static vs LocalStack vs default chain); target packages: `bedrock`, `cloudwatch/logs`, `cloudwatch/metrics`, `connect`, `connect/contactlens`, `dynamodb`, `elasticache`, `lambda`, `opensearch`, `rds`, `s3`, `secretsmanager`, `ses`, `sns`, `sqs`
+- [ ] **H** `db/*` — same mock + component test pattern for `db/redis`, `db/opensearch`, `db/sql`; `db/redis` component tests must cover all `API` methods including the recently added `Incr`, `SetNX`, `Exists`; `db/sql` component tests must cover transaction begin/commit/rollback once the stub is implemented
+- [ ] **H** `http/client` — component tests for circuit breaker state transitions (closed → open → half-open → closed) using a fake `http.RoundTripper` that returns configurable errors; verify that 4xx responses do not trip the breaker (audit finding fix); verify that `traceparent` header is propagated on outbound requests (audit finding fix)
+- [ ] **H** `auth/middleware` — component tests using a fake `Verifier`; cover: valid token passes through, expired token returns 401, revoked token returns 401 (when `DenylistVerifier` is implemented), missing `Authorization` header returns 401, malformed `Bearer` prefix returns 401; verify that full error detail is NOT sent to the client (audit finding fix — only generic message)
+- [ ] **H** `connectors/stripe/*` and `connectors/paypal/*` — once stubs are implemented, use moxtox `RoundTripper` frontend to mock Stripe and PayPal sandbox HTTP responses; component tests should cover the same cases as the unit tests above but through the real HTTP client path rather than request construction alone; this is the primary moxtox dogfood use case for this SDK
+- [ ] **M** `gcp/*` — same mock + component test pattern once stubs are implemented; generate gomock mocks for GCP API interfaces; cover: success, `ErrNotFound`, `ErrNotImplemented` (current stub behavior), context cancellation
+- [ ] **M** `api/idempotency` — component test covering the TOCTOU race condition fix; run two concurrent requests with identical idempotency keys against the in-memory store; verify only one succeeds and the second receives the cached response; use `-race` flag
+- [ ] **M** `api/ratelimit` — component test for the bucket evictor goroutine shutdown; verify `Stop()` (once added) drains the goroutine within a timeout; run with `-race`; also test the consolidated env var name fix so `RATE_LIMIT_BUCKET_TTL_SEC` and `BUCKET_TTL_SECOND` do not diverge again
+- [ ] **M** `events/client` — component tests using a fake SQS API; cover: `Subscribe` worker pool processes messages concurrently (not serially), handler error triggers visibility extension not silent drop, `MaxBatch > 10` construction returns an error, `ctx.Done()` stops the subscriber cleanly without goroutine leak; run with `-race`
+- [ ] **M** `api/cors` and `api/csrf` — component tests for the middleware once real implementations land (both are currently stubs); CORS: verify preflight OPTIONS returns correct headers for allowed/disallowed origins; CSRF: verify `ValidateHeaderValue` rejects requests with missing or tampered tokens
+- [ ] **L** `api/middleware/chain` — component test composing 5+ middleware in order; verify execution order, short-circuit on rejection, and that each middleware sees the correct request state (headers set by prior middleware are visible)
+
+---
+
+### Integration Tests
+
+> Real infrastructure via `testcontainers-go`. Require Docker. Tagged `//go:build integration`. Run on merge to main only.
+
+- [ ] **H** `aws/dynamodb` integration — LocalStack container (`localstack/localstack`); test `GetItem`, `PutItem`, `UpdateItem`, `DeleteItem`, `Query`, `Scan`, `BatchWrite`, `BatchDelete` against a real DynamoDB-compatible endpoint; cover `ErrNotFound` sentinel once implemented; verify `runParallel` context cancellation propagation (audit finding)
+- [ ] **H** `aws/s3` integration — LocalStack; test `GetObject`, `PutObject`, `DeleteObject`, `HeadObject`, `ListObjects`; verify streaming get does not load full object into memory (audit finding fix); test pre-signed URL generation
+- [ ] **H** `aws/sqs` + `aws/sns` integration — LocalStack; test full publish → receive → ack round-trip via `events/client`; verify dead-letter queue routing on repeated handler failure; verify worker pool concurrency (not serial)
+- [ ] **H** `aws/secretsmanager` integration — LocalStack; test `GetSecret`, `GetSecrets` with real secret values; verify "not found" error path; verify proper `ctx` timeout (not `context.TODO()`)
+- [ ] **H** `db/redis` integration — `redis:7-alpine` container; test all `API` methods including `Incr`, `SetNX`, `Exists`; verify TTL expiry behavior (set a key with 1s TTL, sleep, assert `Get` returns not-found); verify `SetNX` atomicity (two concurrent callers, assert exactly one wins)
+- [ ] **H** `db/sql` integration — `postgres:16-alpine` container; test connection pool, `Ping`, `Query`, `Exec`, `Transaction` (commit + rollback) once stub is implemented; verify `context.Context` timeout cancels the query mid-flight
+- [ ] **H** `db/opensearch` integration — `opensearchproject/opensearch:2` container; test `Index`, `Search`, `Delete`, `BulkIndex`
+- [ ] **M** `aws/rds` integration — LocalStack Aurora-compatible endpoint; test `ExecuteStatement`, `BatchExecuteStatement`, field type helpers; verify `TypeHint` coercion for DATE/UUID/JSON fields
+- [ ] **M** `aws/ses` integration — LocalStack; test `SendEmail` and `SendBulkEmail`; verify recipient list limits and error wrapping
+- [ ] **M** `aws/cloudwatch/logs` + `aws/cloudwatch/metrics` integration — LocalStack; test `PutLogEvents` batch fan-out (verify parallel dispatch audit fix) and `PutMetric` / `PutMetrics`
+- [ ] **M** `gcp/*` integration — GCP emulators once stubs are implemented: Pub/Sub emulator (`gcr.io/google.com/cloudsdktool/cloud-sdk`) for `pubsubpub`/`pubsubsub`; Firestore emulator for `firestore`; Bigtable emulator for future packages; document emulator startup in `CONTRIBUTING.md`
+- [ ] **L** `events/client` integration — full SQS round-trip via LocalStack; verify exponential backoff on `sqs.Receive` error; verify `ChangeMessageVisibility` extension is called on slow handler
+
+---
+
+### Performance Benchmarks
+
+> Native `testing.B` for SDK hot paths. Tagged `//go:build unit` (benchmarks run with `-bench=.`). `k6` scripts for moxtox/server HTTP throughput. No Docker required for benchmarks.
+
+- [ ] **H** `api/sanitization` benchmark — `BenchmarkSanitizeBody` with 1KB, 10KB, and 100KB JSON payloads; establish baseline before and after the audit finding fix (pre-allocate from `ContentLength`); target: no more than one allocation per 1KB of body; add as a CI-tracked benchmark so regressions surface on PR
+- [ ] **H** `api/redaction` benchmark — `BenchmarkContainsSensitiveKey` with 10, 50, and 200 keys; verify `map[string]struct{}` lookup is O(1) and outperforms the pre-fix `[]string` linear scan by at least 5× at 50+ keys
+- [ ] **H** `security/jwt` benchmark — `BenchmarkValidateToken` for the on-request hot path; verify median latency stays under 500µs on a warm key cache; this is the primary `auth/middleware` cost
+- [ ] **M** `api/ratelimit` benchmark — `BenchmarkBucketLookup` at 1K, 10K, and 100K unique client keys; verify per-request overhead stays under 5µs; catches bucket map lock contention regressions
+- [ ] **M** `http/client` circuit breaker benchmark — `BenchmarkCircuitBreakerDo` in closed state (happy path overhead) and open state (fail-fast overhead); closed-state overhead should be under 2µs relative to a bare `http.RoundTripper`
+- [ ] **M** `db/redis` benchmark — `BenchmarkGet` and `BenchmarkSet` against a local Redis container (integration tag); establish latency baseline for cache-hit and cache-miss paths used by `auth/denylist` (once implemented)
+- [ ] **L** `moxtox/server` k6 load test — `testing/moxtox/k6/smoke.js` sending 100 RPS for 30s against a locally running `moxtox/server` container; assert p99 match latency < 5ms, zero unmatched requests, zero errors; run as part of moxtox release validation (not PR CI); `testing/moxtox/k6/soak.js` at 500 RPS for 5 minutes to catch goroutine leaks and memory growth
+
+---
+
+### Contract / E2E Tests (Pact-go)
+
+> Consumer-driven contracts between this SDK's generated adapter clients and the Komodo service providers. Tagged `//go:build e2e`. Run on release tags. Require the provider services to be running or have published pacts.
+
+- [ ] **H** Pact setup — add `github.com/pact-foundation/pact-go` to `tools.go`; add `make test-e2e` target; document the Pact workflow (consumer generates pact file, provider verifies it) in `CONTRIBUTING.md`; decide on a Pact Broker vs file-based exchange strategy (file-based is simpler for a monorepo arrangement where all services are local)
+- [ ] **H** `api/adapters/v1/auth` consumer pact — once the adapter is generated, write a Pact consumer test that exercises `POST /v1/oauth/token`, `POST /v1/oauth/introspect`, and `POST /v1/oauth/revoke`; the pact file is committed alongside the generated client; `komodo-auth-api` verifies it in its own CI
+- [ ] **H** `api/adapters/v1/communications` consumer pact — `SendOTP` call (`POST /v1/send/email`); critical path for `komodo-auth-api` OTP delivery; pact ensures the endpoint shape does not change without a coordinated SDK update
+- [ ] **M** `api/adapters/v1/user` consumer pact — covers `GET /v1/users/:id`, `POST /v1/users`, `PATCH /v1/users/:id`; used by auth-api and order-api
+- [ ] **M** `api/adapters/v1/payments` consumer pact — covers `POST /v1/payment-intents`, `POST /v1/refunds`, webhook shape verification
+- [ ] **L** Remaining adapter pacts (`cart`, `shop-items`, `order`, `search`, `support`, `reviews`) — lower priority since fewer cross-service callers; add as adapters are generated and consumers are identified
+
+---
+
+### Chaos & Resilience Tests (Toxiproxy)
+
+> Network fault injection via Toxiproxy spun up by `testcontainers-go`. Tagged `//go:build chaos`. Run on release tags only. Require Docker. Implement the `testing/chaos` package as a thin wrapper around the Toxiproxy Go client so tests inject faults with a one-liner.
+
+- [ ] **H** `testing/chaos` package implementation — implement the currently-empty stub; wrap `github.com/shopify/toxiproxy/v2/client` with helpers: `NewProxy(t, upstream) *Proxy`, `proxy.AddLatency(ms, jitter)`, `proxy.LimitBandwidth(bytesPerSec)`, `proxy.CutConnection()`, `proxy.Reset()`; spin up a Toxiproxy server container via `testcontainers-go` at test suite startup; `t.Cleanup` removes the proxy; this is the foundation for all chaos tests
+- [ ] **H** `http/client` circuit breaker chaos — use `testing/chaos` to inject 100ms latency then cut the connection entirely; verify the breaker opens after the configured threshold, returns `ErrCircuitOpen` without dialing, and recovers (half-open → closed) after the reset timeout; verify 4xx responses do not trip the breaker (audit finding regression guard)
+- [ ] **H** `db/redis` chaos — inject connection drops mid-request via Toxiproxy; verify `Get`/`Set` return a wrapped error (not panic); verify the connection pool re-establishes after the fault clears; verify `auth/denylist` (once implemented) fails open (allows the request) under Redis unavailability, consistent with documented fail-open semantics
+- [ ] **H** `events/client` subscriber chaos — inject latency exceeding the SQS visibility timeout; verify `ChangeMessageVisibility` extension is called before timeout; inject `sqs.Receive` errors; verify exponential backoff (audit finding) and no tight error loop hammering the endpoint
+- [ ] **M** `auth/middleware` chaos — make the JWKS endpoint unavailable via Toxiproxy; verify `JWKSVerifier` returns an error and the middleware rejects the request with 401 (not 500); verify that a cached JWKS key set is used for N seconds after the endpoint goes down (document the grace window in `JWKSVerifier.Config`)
+- [ ] **M** `aws/dynamodb` chaos — inject latency and packet loss between the client and LocalStack; verify `runParallel` context cancellation stops in-flight goroutines (audit finding fix); verify retry logic does not loop indefinitely on persistent failure; verify `BatchWrite` unprocessed items are retried
+- [ ] **M** `aws/s3` chaos — inject bandwidth throttle to simulate slow upload; verify streaming `GetObject` does not buffer the full body into memory under a slow connection; verify pre-signed URL generation is unaffected (no network call)
+- [ ] **L** `db/sql` connection pool chaos — exhaust the connection pool by holding `MaxOpenConns` connections open via Toxiproxy pause; verify new requests receive a context deadline error, not a panic or hang; verify pool recovers when connections are released
+
 ---
 
 ## API Adapters — Komodo Services

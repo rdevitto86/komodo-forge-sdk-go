@@ -6,6 +6,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.0]
+
+### Added
+
+- **`testing/testutil` — universal test-tier gating helpers (`package testutil`).** New `testing/testutil/tiers.go` implementing the org-wide test-tier ladder from `testing-go.md` §1: an ordered, cumulative ladder `unit < component < integration < e2e < chaos` selected by a single `TEST_TIER` env var. The active tier is the highest enabled tier; a test of tier `T` runs iff `active >= T`. Selection rules: `go test -short` overrides everything and forces unit-only; an unset/unrecognized `TEST_TIER` (without `-short`) defaults to `component`. Exposes exactly three skip-helpers — `Integration`, `E2E`, `Chaos` — each takes `*testing.T`, calls `t.Helper()`, and skips via `t.Skipf` when the active tier is below the helper's tier, naming the tier and how to enable it (`"skipping integration test: set TEST_TIER=integration or higher to run"`). No `Unit`/`Component` helpers: those tiers are always-on. Resolution is centralized in an unexported `resolve(short bool, env string) tier` behind `active()`, table-driven tests colocated. Every Komodo Go service imports these rather than redefining tier gating; supersedes the prior ad-hoc `testing/chaos` and `testing/performance` probes.
+
+---
+
 ## [0.14.2]
 
 ### Added

@@ -320,18 +320,19 @@ Surfaced by `komodo-auth-api/internal/clients/user.go` and the inline `jwt.SignT
 
 > Chosen stack: **unit** `testing + testify` · **component/mocking** `go.uber.org/mock` (mockgen) + moxtox RoundTripper · **integration** `testcontainers-go` (LocalStack, Redis, Postgres, OpenSearch, GCP emulators) · **performance** native `testing.B` for hot paths + `k6` for moxtox/server · **contract/E2E** `Pact-go` · **chaos/resilience** `Toxiproxy` via testcontainers-go.
 >
-> Test tier build tags: `//go:build unit` · `//go:build component` · `//go:build integration` · `//go:build e2e` · `//go:build chaos`. CI runs `unit + component` on every PR; `integration` on merge to main; `e2e` and `chaos` on release tags only.
+> Test tiers form an ordered, cumulative ladder `unit < component < integration < e2e < chaos`, selected by the `TEST_TIER` env var and gated by the SDK `testing/testutil` skip-helpers (`Component`, `Integration`, `E2E`, `Chaos`). `-short` overrides `TEST_TIER` and forces unit-only; an unset/unrecognized `TEST_TIER` defaults to `unit`. CI runs `TEST_TIER=component` on every PR; `integration` on merge to main; `e2e` and `chaos` on release tags only.
 
 ---
 
 ### Infrastructure & Tooling
 
-- [ ] **H** Adopt build-tag tier convention — add `//go:build <tier>` constraint as the first line of every non-unit test file; define the five tiers (`unit`, `component`, `integration`, `e2e`, `chaos`) in `CONTRIBUTING.md` with a clear decision rule for which tier each test belongs to; update CI matrix to run the appropriate subset per trigger
-- [ ] **H** Makefile test targets — add `make test-unit`, `make test-component`, `make test-integration`, `make test-e2e`, `make test-chaos`, and `make test-all`; each target sets the correct `-tags` flag, `-race` detector, and `-count=1` (disable test result caching for integration+); PR CI calls `test-unit` and `test-component` only
-- [ ] **H** Coverage gate in CI — run `go test -coverprofile=coverage.out -tags unit,component ./...` and fail the PR if any implemented package (not a stub returning `ErrNotImplemented`) falls below 80% statement coverage; use `go tool cover -func` to report per-package; add `coverage.out` to `.gitignore` (currently committed — see audit finding)
+- [x] **H** Adopt tier convention — ~~build-tag~~ env-var ladder shipped in `testing/testutil/tiers.go` (`TEST_TIER` + `Component`/`Integration`/`E2E`/`Chaos` skip-helpers, `-short` → unit-only, default unit); supersedes the rejected `//go:build <tier>` approach
+- [ ] **H** Document the tier convention — define the five tiers (`unit`, `component`, `integration`, `e2e`, `chaos`) in `CONTRIBUTING.md` with a clear decision rule for which tier each test belongs to and the `TEST_TIER`/`testutil` usage; update CI matrix to run the appropriate subset per trigger (`TEST_TIER=component` on PR, `integration` on merge, `e2e`/`chaos` on release tags)
+- [ ] **H** Makefile test targets — add `make test-unit`, `make test-component`, `make test-integration`, `make test-e2e`, `make test-chaos`, and `make test-all`; each target sets the correct `TEST_TIER` env var (or `-short` for unit), `-race` detector, and `-count=1` (disable test result caching for integration+); PR CI calls `test-unit` and `test-component` only
+- [ ] **H** Coverage gate in CI — run `TEST_TIER=component go test -coverprofile=coverage.out ./...` and fail the PR if any implemented package (not a stub returning `ErrNotImplemented`) falls below 80% statement coverage; use `go tool cover -func` to report per-package; add `coverage.out` to `.gitignore` (currently committed — see audit finding)
 - [ ] **H** Pin and document test dependencies — add `go.uber.org/mock`, `github.com/stretchr/testify`, `github.com/testcontainers/testcontainers-go`, `github.com/pact-foundation/pact-go`, and `github.com/shopify/toxiproxy/v2` to `go.mod` under a `tools.go` with `//go:build tools` guard so they do not pollute the SDK's runtime dependency graph; `mockgen` binary pinned in the same file
-- [ ] **M** Shared test helpers package — `testing/helpers` (or `internal/testutil`) with reusable fixtures: `MustMarshalJSON(t, v)`, `MustReadFixture(t, path)`, `AssertErrorIs(t, err, target)`, and a `FakeResponseWriter` that captures status+body; today each `_test.go` file re-implements these inline; centralizing reduces noise and makes test intent clearer
-- [ ] **M** `mockgen` generation script — add `scripts/generate-mocks.sh` that runs `mockgen` against every `API` interface in `aws/*/client.go`, `gcp/*/client.go`, `db/*/client.go`, and `http/client/client.go`; output to `<package>/mock/mock_<package>.go` with `//go:build component` tag; wire into `scripts/generate.sh` so `go generate ./...` keeps mocks in sync with interface changes
+- [ ] **M** Shared test helpers — extend the existing `testing/testutil` package (which already holds the tier skip-helpers) with reusable fixtures: `MustMarshalJSON(t, v)`, `MustReadFixture(t, path)`, `AssertErrorIs(t, err, target)`, and a `FakeResponseWriter` that captures status+body; today each `_test.go` file re-implements these inline; centralizing reduces noise and makes test intent clearer
+- [ ] **M** `mockgen` generation script — add `scripts/generate-mocks.sh` that runs `mockgen` against every `API` interface in `aws/*/client.go`, `gcp/*/client.go`, `db/*/client.go`, and `http/client/client.go`; output to `<package>/mock/mock_<package>.go`; wire into `scripts/generate.sh` so `go generate ./...` keeps mocks in sync with interface changes
 
 ---
 
@@ -356,7 +357,7 @@ Surfaced by `komodo-auth-api/internal/clients/user.go` and the inline `jwt.SignT
 
 ### Component Tests
 
-> Package under test with all external I/O replaced by injected fakes or gomock mocks. No Docker, no network. Run on every commit alongside unit tests.
+> Package under test with all external I/O replaced by injected fakes or gomock mocks. No Docker, no network. Gated with `testutil.Component(t)` (`TEST_TIER=component`); run in PR CI, not on a plain `go test ./...` (which is unit-only by default).
 
 - [ ] **H** `aws/*` — generate gomock mocks for all `API` interfaces via `mockgen`; write component tests for every client method covering: success path, AWS SDK error wrapping (`ErrNotFound`, `ErrConflict`), context cancellation, and credential selection logic (static vs LocalStack vs default chain); target packages: `bedrock`, `cloudwatch/logs`, `cloudwatch/metrics`, `connect`, `connect/contactlens`, `dynamodb`, `elasticache`, `lambda`, `opensearch`, `rds`, `s3`, `secretsmanager`, `ses`, `sns`, `sqs`
 - [ ] **H** `db/*` — same mock + component test pattern for `db/redis`, `db/opensearch`, `db/sql`; `db/redis` component tests must cover all `API` methods including the recently added `Incr`, `SetNX`, `Exists`; `db/sql` component tests must cover transaction begin/commit/rollback once the stub is implemented
@@ -374,7 +375,7 @@ Surfaced by `komodo-auth-api/internal/clients/user.go` and the inline `jwt.SignT
 
 ### Integration Tests
 
-> Real infrastructure via `testcontainers-go`. Require Docker. Tagged `//go:build integration`. Run on merge to main only.
+> Real infrastructure via `testcontainers-go`. Require Docker. Gated with `testutil.Integration(t)` (`TEST_TIER=integration`). Run on merge to main only.
 
 - [ ] **H** `aws/dynamodb` integration — LocalStack container (`localstack/localstack`); test `GetItem`, `PutItem`, `UpdateItem`, `DeleteItem`, `Query`, `Scan`, `BatchWrite`, `BatchDelete` against a real DynamoDB-compatible endpoint; cover `ErrNotFound` sentinel once implemented; verify `runParallel` context cancellation propagation (audit finding)
 - [ ] **H** `aws/s3` integration — LocalStack; test `GetObject`, `PutObject`, `DeleteObject`, `HeadObject`, `ListObjects`; verify streaming get does not load full object into memory (audit finding fix); test pre-signed URL generation
@@ -393,7 +394,7 @@ Surfaced by `komodo-auth-api/internal/clients/user.go` and the inline `jwt.SignT
 
 ### Performance Benchmarks
 
-> Native `testing.B` for SDK hot paths. Tagged `//go:build unit` (benchmarks run with `-bench=.`). `k6` scripts for moxtox/server HTTP throughput. No Docker required for benchmarks.
+> Native `testing.B` for SDK hot paths (benchmarks run with `-bench=.` and are unaffected by `TEST_TIER`). `k6` scripts for moxtox/server HTTP throughput. No Docker required for benchmarks.
 
 - [ ] **H** `api/sanitization` benchmark — `BenchmarkSanitizeBody` with 1KB, 10KB, and 100KB JSON payloads; establish baseline before and after the audit finding fix (pre-allocate from `ContentLength`); target: no more than one allocation per 1KB of body; add as a CI-tracked benchmark so regressions surface on PR
 - [ ] **H** `api/redaction` benchmark — `BenchmarkContainsSensitiveKey` with 10, 50, and 200 keys; verify `map[string]struct{}` lookup is O(1) and outperforms the pre-fix `[]string` linear scan by at least 5× at 50+ keys
@@ -407,7 +408,7 @@ Surfaced by `komodo-auth-api/internal/clients/user.go` and the inline `jwt.SignT
 
 ### Contract / E2E Tests (Pact-go)
 
-> Consumer-driven contracts between this SDK's generated adapter clients and the Komodo service providers. Tagged `//go:build e2e`. Run on release tags. Require the provider services to be running or have published pacts.
+> Consumer-driven contracts between this SDK's generated adapter clients and the Komodo service providers. Gated with `testutil.E2E(t)` (`TEST_TIER=e2e`). Run on release tags. Require the provider services to be running or have published pacts.
 
 - [ ] **H** Pact setup — add `github.com/pact-foundation/pact-go` to `tools.go`; add `make test-e2e` target; document the Pact workflow (consumer generates pact file, provider verifies it) in `CONTRIBUTING.md`; decide on a Pact Broker vs file-based exchange strategy (file-based is simpler for a monorepo arrangement where all services are local)
 - [ ] **H** `api/adapters/v1/auth` consumer pact — once the adapter is generated, write a Pact consumer test that exercises `POST /v1/oauth/token`, `POST /v1/oauth/introspect`, and `POST /v1/oauth/revoke`; the pact file is committed alongside the generated client; `komodo-auth-api` verifies it in its own CI
@@ -420,7 +421,7 @@ Surfaced by `komodo-auth-api/internal/clients/user.go` and the inline `jwt.SignT
 
 ### Chaos & Resilience Tests (Toxiproxy)
 
-> Network fault injection via Toxiproxy spun up by `testcontainers-go`. Tagged `//go:build chaos`. Run on release tags only. Require Docker. Implement the `testing/chaos` package as a thin wrapper around the Toxiproxy Go client so tests inject faults with a one-liner.
+> Network fault injection via Toxiproxy spun up by `testcontainers-go`. Gated with `testutil.Chaos(t)` (`TEST_TIER=chaos`). Run on release tags only. Require Docker. Implement the `testing/chaos` package as a thin wrapper around the Toxiproxy Go client so tests inject faults with a one-liner.
 
 - [ ] **H** `testing/chaos` package implementation — implement the currently-empty stub; wrap `github.com/shopify/toxiproxy/v2/client` with helpers: `NewProxy(t, upstream) *Proxy`, `proxy.AddLatency(ms, jitter)`, `proxy.LimitBandwidth(bytesPerSec)`, `proxy.CutConnection()`, `proxy.Reset()`; spin up a Toxiproxy server container via `testcontainers-go` at test suite startup; `t.Cleanup` removes the proxy; this is the foundation for all chaos tests
 - [ ] **H** `http/client` circuit breaker chaos — use `testing/chaos` to inject 100ms latency then cut the connection entirely; verify the breaker opens after the configured threshold, returns `ErrCircuitOpen` without dialing, and recovers (half-open → closed) after the reset timeout; verify 4xx responses do not trip the breaker (audit finding regression guard)

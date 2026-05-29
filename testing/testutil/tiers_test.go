@@ -10,8 +10,8 @@ func TestResolve(t *testing.T) {
 		want  tier
 	}{
 		{"short overrides tier", true, "chaos", unit},
-		{"default is component", false, "", component},
-		{"unrecognized falls back to component", false, "bogus", component},
+		{"default is unit", false, "", unit},
+		{"unrecognized falls back to unit", false, "bogus", unit},
 		{"explicit unit", false, "unit", unit},
 		{"explicit component", false, "component", component},
 		{"explicit integration", false, "integration", integration},
@@ -32,19 +32,24 @@ func TestActiveTierGating(t *testing.T) {
 		name        string
 		short       bool
 		env         string
+		component   bool
 		integration bool
 		e2e         bool
 		chaos       bool
 	}{
-		{"short forces unit-only", true, "chaos", false, false, false},
-		{"default skips above component", false, "", false, false, false},
-		{"integration runs integration only", false, "integration", true, false, false},
-		{"e2e runs through e2e", false, "e2e", true, true, false},
-		{"chaos runs all", false, "chaos", true, true, true},
+		{"short forces unit-only", true, "chaos", false, false, false, false},
+		{"default skips above unit", false, "", false, false, false, false},
+		{"component runs component only", false, "component", true, false, false, false},
+		{"integration runs through integration", false, "integration", true, true, false, false},
+		{"e2e runs through e2e", false, "e2e", true, true, true, false},
+		{"chaos runs all", false, "chaos", true, true, true, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := resolve(tt.short, tt.env)
+			if (got >= component) != tt.component {
+				t.Errorf("component enabled = %t, want %t", got >= component, tt.component)
+			}
 			if (got >= integration) != tt.integration {
 				t.Errorf("integration enabled = %t, want %t", got >= integration, tt.integration)
 			}

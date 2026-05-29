@@ -6,6 +6,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.1]
+
+### Changed
+
+- **`testing/testutil` — unit is now the default tier; added a `Component` marker.** Corrects the 0.15.0 ladder: an unset/unrecognized `TEST_TIER` (without `-short`) now resolves to `unit` rather than `component`, so a plain `go test ./...` runs unit tests only. Every non-unit tier is now opt-in via an explicit marker — `Component`, `Integration`, `E2E`, `Chaos` — each calling `t.Helper()` and skipping via `t.Skipf` when the active tier is below it (`"skipping component test: set TEST_TIER=component or higher to run"`). The `unit < component < integration < e2e < chaos` ordering, cumulative gating, and `-short` override are unchanged.
+
+---
+
 ## [0.15.0]
 
 ### Added

@@ -35,7 +35,7 @@ func resolve(short bool, env string) tier {
 	case "chaos":
 		return chaos
 	default:
-		return component
+		return unit
 	}
 }
 
@@ -44,6 +44,11 @@ func require(t *testing.T, want tier, label string) {
 	if active() < want {
 		t.Skipf("skipping %s test: set TEST_TIER=%s or higher to run", label, label)
 	}
+}
+
+func Component(t *testing.T) {
+	t.Helper()
+	require(t, component, "component")
 }
 
 func Integration(t *testing.T) {

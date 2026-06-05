@@ -7,16 +7,16 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-// Sentinel errors for DynamoDB operations
-var ErrClientNotInitialized = fmt.Errorf("client not initialized")
+var (
+	ErrClientNotInitialized = fmt.Errorf("client not initialized")
+	ErrNotFound = fmt.Errorf("item not found")
+)
 
-// Wraps an AWS DynamoDB error, mapping known SDK error types to descriptive messages.
 func WrapError(err error, operation string) error {
 	if err == nil {
 		return nil
 	}
 
-	// Check for specific AWS DynamoDB error types and format accordingly
 	var (
 		conditionalCheckErr      *types.ConditionalCheckFailedException
 		resourceNotFoundErr      *types.ResourceNotFoundException

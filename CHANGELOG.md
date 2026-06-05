@@ -6,6 +6,16 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.5]
+
+### Added
+
+- **`db/redis` — `Expire` on `API` interface and `Client`.** `Expire(ctx context.Context, key string, ttl int64) error` sets the TTL on an existing key without touching its value. A `ttl ≤ 0` is a no-op. Needed to fix a TOCTOU race in `komodo-auth-api`'s `IncrOTPAttempts`: the prior pattern called `Incr` then `Set("1", ttl)` to attach a TTL, but `Set` overwrites the value — a concurrent second `Incr` between the two calls reset the counter to 1. `Expire` only touches the TTL, leaving the counter intact. Callers that fake `CacheClientOperations` in tests must add `Expire` to their stubs.
+
+- **`aws/dynamodb` — `ErrNotFound` sentinel and `WrapError` helper.** `ErrNotFound` is a package-level sentinel (`var ErrNotFound = fmt.Errorf("item not found")`) returned by `GetItemAs` when the response item map is empty (item does not exist). `WrapError(err error, operation string) error` maps the full set of typed DynamoDB SDK errors (`ConditionalCheckFailedException`, `ResourceNotFoundException`, `ProvisionedThroughputExceededException`, etc.) to verb-phrase error strings with the operation name embedded; the original error is wrapped so `errors.As` and `errors.Is` still work on the chain. Callers can now use `errors.Is(err, dynamodb.ErrNotFound)` instead of string-matching `err.Error()` for not-found detection.
+
+---
+
 ## [0.15.4]
 
 ### Changed

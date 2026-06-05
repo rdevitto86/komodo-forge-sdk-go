@@ -14,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-// Use in callers to swap the concrete *Client for a test double.
 type API interface {
 	BuildKey(pk string, pv any, sk string, sv any) (map[string]types.AttributeValue, error)
 	GetItem(ctx context.Context, table string, key map[string]types.AttributeValue, batch bool, keys []map[string]types.AttributeValue) (any, error)
@@ -39,9 +38,6 @@ type Config struct {
 	AccessKey string
 	SecretKey string
 	Endpoint  string
-	// MaxConcurrentBatches caps the number of parallel DynamoDB batch requests
-	// sent when an input is split into multiple 25-item chunks. Defaults to 5
-	// when 0. Set to 1 to restore serial behaviour.
 	MaxConcurrentBatches int
 }
 
@@ -50,7 +46,6 @@ type Client struct {
 	maxParallel int // semaphore cap for batch operations
 }
 
-// Creates a DynamoDB client; returns an error if the region is missing or invalid, or if the AWS config cannot be loaded.
 func New(ctx context.Context, config Config) (*Client, error) {
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")

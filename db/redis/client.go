@@ -11,19 +11,18 @@ import (
 	goredis "github.com/redis/go-redis/v9"
 )
 
-// Defines the Redis operations provided by this package.
 type API interface {
 	Get(ctx context.Context, key string) (string, error)
 	Set(ctx context.Context, key string, value string, ttl int64) error
 	Delete(ctx context.Context, key string) error
 	Incr(ctx context.Context, key string) (int64, error)
+	Expire(ctx context.Context, key string, ttl int64) error
 	SetNX(ctx context.Context, key string, value string, ttl int64) (bool, error)
 	Exists(ctx context.Context, key string) (bool, error)
 	Close() error
 	AllowDistributed(ctx context.Context, key string, rate, burst float64, ttlSec int) (bool, time.Duration, error)
 }
 
-// Holds connection parameters for a Redis client.
 type Config struct {
 	Addr        string
 	Password    string
@@ -32,13 +31,11 @@ type Config struct {
 	OpTimeout   time.Duration // defaults to 2s when zero
 }
 
-// Wraps a go-redis client with timeout-aware operations and distributed rate limiting.
 type Client struct {
 	rc        *goredis.Client
 	opTimeout time.Duration
 }
 
-// Creates a Client and pings the Redis server to verify connectivity.
 func New(cfg Config) (*Client, error) {
 	if cfg.Addr == "" {
 		return nil, fmt.Errorf("missing addr")
@@ -67,7 +64,6 @@ func New(cfg Config) (*Client, error) {
 	return &Client{rc: rc, opTimeout: cfg.OpTimeout}, nil
 }
 
-// Creates a Client from a Redis connection URL (redis://:password@host:port/db).
 func NewFromString(connStr string) (*Client, error) {
 	opts, err := goredis.ParseURL(connStr)
 	if err != nil {
@@ -88,7 +84,6 @@ func NewFromString(connStr string) (*Client, error) {
 	return &Client{rc: rc, opTimeout: 0}, nil
 }
 
-// Creates a Client from discrete string fields for callers still carrying a legacy string-typed DB value.
 func NewFromDBString(addr, password, dbStr string) (*Client, error) {
 	db, err := strconv.Atoi(dbStr)
 	if err != nil {
@@ -192,6 +187,22 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 
 	if err := c.rc.Del(ctx, key).Err(); err != nil {
 		logger.Error("failed to delete redis key", err)
+		return err
+	}
+	return nil
+}
+
+// Sets the expiry on an existing key to ttl seconds. A ttl of zero or
+// negative is a no-op.
+func (c *Client) Expire(ctx context.Context, key string, ttl int64) error {
+	if ttl <= 0 {
+		return nil
+	}
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
+	if err := c.rc.Expire(ctx, key, time.Duration(ttl)*time.Second).Err(); err != nil {
+		logger.Error("failed to set redis key expiry", err)
 		return err
 	}
 	return nil

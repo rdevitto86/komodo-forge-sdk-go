@@ -13,11 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-func (c *Client) getItem(
-	ctx context.Context,
-	tableName string,
-	key map[string]types.AttributeValue,
-) (map[string]types.AttributeValue, error) {
+func (c *Client) getItem(ctx context.Context, tableName string, key map[string]types.AttributeValue) (map[string]types.AttributeValue, error) {
 	result, err := c.db.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(tableName),
 		Key:       key,
@@ -27,7 +23,7 @@ func (c *Client) getItem(
 		return nil, WrapError(err, "getItem")
 	}
 	if result.Item == nil {
-		return nil, WrapError(fmt.Errorf("item not found"), "getItem")
+		return nil, fmt.Errorf("getItem: %w", ErrNotFound)
 	}
 	return result.Item, nil
 }

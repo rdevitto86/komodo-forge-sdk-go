@@ -9,9 +9,11 @@ import (
 )
 
 var (
-	slogger  *slog.Logger = slog.New(slog.NewJSONHandler(io.Discard, nil))
-	logLevel              = &slog.LevelVar{}
-	initOnce sync.Once
+	slogger   *slog.Logger   = slog.New(slog.NewJSONHandler(io.Discard, nil))
+	logLevel  *slog.LevelVar = &slog.LevelVar{}
+	osExit    func(int)      = os.Exit
+	initOnce  sync.Once
+	loggerEnv string
 )
 
 // Configures the global logger; local/dev environments use the text handler, all others use JSON for CloudWatch.
@@ -23,7 +25,8 @@ func Init(name string, lvl string, env string, version ...string) {
 			ver = version[0]
 		}
 
-		logLevel.Set(parseLevel(lvl))
+		loggerEnv = env
+		logLevel.Set(effectiveLevel(lvl, env))
 
 		var handler slog.Handler
 		if isLocalEnv(env) {
@@ -52,19 +55,29 @@ func Error(msg string, err error, args ...any) {
 	slogger.Error(msg, args...)
 }
 
+// Logs at error level and then terminates the process with status 1; deferred functions do not run.
 func Fatal(msg string, err error, args ...any) {
-	if err != nil {
-		args = append(args, AttrError(err))
-	}
-	// slog has no Fatal level — use Error. Caller is responsible for os.Exit.
-	slogger.Error(msg, args...)
+	Error(msg, err, args...)
+	osExit(1)
 }
 
-func SetLevel(level string) { logLevel.Set(parseLevel(level)) }
+func SetLevel(level string) { logLevel.Set(effectiveLevel(level, loggerEnv)) }
+
+func Enabled(level string) bool { return parseLevel(level) >= logLevel.Level() }
+
+func DebugEnabled() bool { return slog.LevelDebug >= logLevel.Level() }
 
 func isLocalEnv(env string) bool {
 	e := strings.ToLower(env)
 	return e == "local" || e == "dev" || e == "development"
+}
+
+func effectiveLevel(lvl, env string) slog.Level {
+	level := parseLevel(lvl)
+	if level < slog.LevelInfo && !isLocalEnv(env) {
+		return slog.LevelInfo
+	}
+	return level
 }
 
 func parseLevel(lvl string) slog.Level {

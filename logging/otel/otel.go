@@ -1,6 +1,4 @@
 package otel
 
-// Initializes the OpenTelemetry tracing provider.
-func Init() {
-	// TODO: Implement
-}
+// Initializes the OpenTelemetry tracing provider. Currently a no-op stub.
+func Init() {}

@@ -6,6 +6,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.2]
+
+### Changed
+
+- **`logging/runtime` — `debug` log level is now floored to `info` outside local environments.** `Init` and `SetLevel` route through a new `effectiveLevel(lvl, env)`: a requested level below `info` is raised to `info` whenever the env is not local (`local`/`dev`/`development`), so `staging`, `production`, and an unset env can never emit `Debug` regardless of the configured `LOG_LEVEL`. This makes "secrets logged at debug for local diagnosis (OTP codes, tokens) never reach non-local logs" a structural guarantee rather than a config-discipline convention. `SetLevel` honors the env captured at `Init`, so a runtime level change cannot bypass the floor. `parseLevel` is unchanged (still pure); local-env behavior and all other levels (`info`/`warn`/`error`) are unaffected.
+
+---
+
 ## [0.15.1]
 
 ### Changed

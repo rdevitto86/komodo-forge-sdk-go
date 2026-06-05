@@ -16,7 +16,6 @@ import (
 	ctxKeys "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 )
 
-// captureLogger replaces the global slogger with a buffer-based logger for the test.
 func captureLogger(t *testing.T, level slog.Level) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
@@ -26,10 +25,7 @@ func captureLogger(t *testing.T, level slog.Level) *bytes.Buffer {
 	return &buf
 }
 
-// resetInitOnce allows Init to be called again in subsequent tests.
-func resetInitOnce() {
-	initOnce = sync.Once{}
-}
+func resetInitOnce() { initOnce = sync.Once{} }
 
 func TestRuntimeLogger_Init_LocalEnv_Success(t *testing.T) {
 	old := slogger
@@ -128,31 +124,89 @@ func TestRuntimeLogger_Error_NilError_Success(t *testing.T) {
 	}
 }
 
+func captureExit(t *testing.T) *int {
+	t.Helper()
+	code := -1
+	old := osExit
+	osExit = func(c int) { code = c }
+	t.Cleanup(func() { osExit = old })
+	return &code
+}
+
 func TestRuntimeLogger_Fatal_WithError_Success(t *testing.T) {
 	buf := captureLogger(t, slog.LevelError)
+	code := captureExit(t)
 	Fatal("fatal event", errors.New("fatal error"))
 	out := buf.String()
 	if !strings.Contains(out, "fatal event") {
 		t.Errorf("expected 'fatal event' in output, got: %q", out)
 	}
+	if *code != 1 {
+		t.Errorf("expected exit code 1, got %d", *code)
+	}
 }
 
 func TestRuntimeLogger_Fatal_NilError_Success(t *testing.T) {
 	buf := captureLogger(t, slog.LevelError)
+	code := captureExit(t)
 	Fatal("fatal no-error", nil)
 	if !strings.Contains(buf.String(), "fatal no-error") {
 		t.Errorf("expected message in output, got: %q", buf.String())
 	}
+	if *code != 1 {
+		t.Errorf("expected exit code 1, got %d", *code)
+	}
 }
 
 func TestRuntimeLogger_SetLevel_Success(t *testing.T) {
-	// SetLevel changes the shared logLevel; just verify no panic.
 	SetLevel("debug")
 	SetLevel("info")
 	SetLevel("warn")
 	SetLevel("error")
 	SetLevel("unknown") // falls to LevelError
 	SetLevel("")        // falls to LevelInfo
+}
+
+func TestRuntimeLogger_Enabled_Success(t *testing.T) {
+	old := logLevel.Level()
+	t.Cleanup(func() { logLevel.Set(old) })
+
+	logLevel.Set(slog.LevelInfo)
+	tests := []struct {
+		level string
+		want  bool
+	}{
+		{"debug", false},
+		{"info", true},
+		{"warn", true},
+		{"error", true},
+	}
+
+	for _, tc := range tests {
+		if got := Enabled(tc.level); got != tc.want {
+			t.Errorf("Enabled(%q) = %v, want %v (logLevel=info)", tc.level, got, tc.want)
+		}
+	}
+
+	logLevel.Set(slog.LevelDebug)
+	if !Enabled("debug") {
+		t.Error("Enabled(\"debug\") = false, want true when logLevel=debug")
+	}
+}
+
+func TestRuntimeLogger_DebugEnabled_Success(t *testing.T) {
+	old := logLevel.Level()
+	t.Cleanup(func() { logLevel.Set(old) })
+
+	logLevel.Set(slog.LevelInfo)
+	if DebugEnabled() {
+		t.Error("DebugEnabled() = true, want false when logLevel=info")
+	}
+
+	logLevel.Set(slog.LevelDebug)
+	if !DebugEnabled() {
+		t.Error("DebugEnabled() = false, want true when logLevel=debug")
+	}
 }
 
 func TestRuntimeLogger_IsLocalEnv_Success(t *testing.T) {
@@ -191,6 +245,34 @@ func TestRuntimeLogger_ParseLevel_Success(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("parseLevel(%q) = %v, want %v", tc.input, got, tc.want)
 		}
+	}
+}
+
+func TestRuntimeLogger_EffectiveLevel_Success(t *testing.T) {
+	tests := []struct {
+		name string
+		lvl  string
+		env  string
+		want slog.Level
+	}{
+		{"debug allowed in local", "debug", "local", slog.LevelDebug},
+		{"debug allowed in dev", "debug", "dev", slog.LevelDebug},
+		{"debug allowed in development", "debug", "development", slog.LevelDebug},
+		{"debug floored in prod", "debug", "prod", slog.LevelInfo},
+		{"debug floored in staging", "debug", "staging", slog.LevelInfo},
+		{"debug floored in production", "debug", "production", slog.LevelInfo},
+		{"debug floored when env empty", "debug", "", slog.LevelInfo},
+		{"info unchanged in prod", "info", "prod", slog.LevelInfo},
+		{"warn unchanged in prod", "warn", "prod", slog.LevelWarn},
+		{"error unchanged in prod", "error", "prod", slog.LevelError},
+		{"warn unchanged in local", "warn", "local", slog.LevelWarn},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := effectiveLevel(tc.lvl, tc.env); got != tc.want {
+				t.Errorf("effectiveLevel(%q, %q) = %v, want %v", tc.lvl, tc.env, got, tc.want)
+			}
+		})
 	}
 }
 

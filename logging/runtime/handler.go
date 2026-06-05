@@ -23,15 +23,12 @@ const (
 	ansiBoldRed = "\033[1;31m"
 )
 
-// skippedBaseFields are emitted in JSON but skipped in string format — they are
-// implicit from the log group / process context and clutter every line.
 var skippedBaseFields = map[string]bool{
 	"service": true,
 	"env":     true,
 	"version": true,
 }
 
-// Formats log records as "timestamp [LEVEL] requestId | message | key=val ..." for terminal output.
 type KomodoTextHandler struct {
 	mu       sync.Mutex
 	w        io.Writer
@@ -40,8 +37,6 @@ type KomodoTextHandler struct {
 	preAttrs []slog.Attr // attrs set via .With() (e.g., service, env, version)
 }
 
-// Constructs a handler writing to w.
-// Set color=true for terminal output, false for CI/pipe environments.
 func NewKomodoTextHandler(w io.Writer, color bool, level slog.Leveler) *KomodoTextHandler {
 	return &KomodoTextHandler{w: w, color: color, level: level}
 }
@@ -50,7 +45,6 @@ func (h *KomodoTextHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= h.level.Level()
 }
 
-// Returns a new handler with the provided attrs prepended to all future records.
 func (h *KomodoTextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	h2 := &KomodoTextHandler{
 		w:     h.w,
@@ -63,10 +57,7 @@ func (h *KomodoTextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	return h2
 }
 
-// No-op for the text handler — groups are flattened with dot notation.
-func (h *KomodoTextHandler) WithGroup(name string) slog.Handler {
-	return h
-}
+func (h *KomodoTextHandler) WithGroup(name string) slog.Handler { return h }
 
 func (h *KomodoTextHandler) Handle(_ context.Context, rec slog.Record) error {
 	var buf bytes.Buffer
@@ -220,6 +211,4 @@ func formatAttr(attr slog.Attr) string {
 	}
 }
 
-func needsQuoting(s string) bool {
-	return strings.ContainsAny(s, " \t\n\r\"=")
-}
+func needsQuoting(s string) bool { return strings.ContainsAny(s, " \t\n\r\"=") }

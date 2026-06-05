@@ -6,6 +6,15 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.4]
+
+### Changed
+
+- **`aws/secretsmanager` — `Prefix` + `Batch` replaced by a single `SecretPath` field.** `Config.Prefix` and `Config.Batch` are removed; `Config.SecretPath` is the full secret name (e.g. `"komodo-auth-api/local/all-secrets"`). `GetSecrets` no longer takes `prefix`/`batchID` params — it uses `SecretPath` directly. `GetSecret` takes a full `name string` instead of `key + prefix`. Eliminates string concatenation, the trailing-slash ambiguity, and the misnamed `AWS_SECRET_BATCH` env var.
+- **`constants` — `AWS_SECRET_PREFIX` and `AWS_SECRET_BATCH` replaced by `AWS_SECRET_PATH`.** Single env var maps to `Config.SecretPath`. Callers set the full path per service per environment; no partial path splitting required.
+
+---
+
 ## [0.15.3]
 
 ### Changed

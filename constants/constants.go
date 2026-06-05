@@ -12,10 +12,9 @@ const (
 
 	// --- aws environment variables ---------------------------------------------
 
-	AWS_REGION        = "AWS_REGION"
-	AWS_ENDPOINT      = "AWS_ENDPOINT"
-	AWS_SECRET_PREFIX = "AWS_SECRET_PREFIX"
-	AWS_SECRET_BATCH  = "AWS_SECRET_BATCH"
+	AWS_REGION      = "AWS_REGION"
+	AWS_ENDPOINT    = "AWS_ENDPOINT"
+	AWS_SECRET_PATH = "AWS_SECRET_PATH"
 
 	DYNAMODB_ENDPOINT   = "DYNAMODB_ENDPOINT"
 	DYNAMODB_TABLE      = "DYNAMODB_TABLE"

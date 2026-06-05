@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -15,21 +17,21 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 )
 
-// Use in callers to swap the concrete *Client for a test double.
+type secretsManagerAPI interface {
+	GetSecretValue(ctx context.Context, input *secretsmanager.GetSecretValueInput, opts ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
+}
+
 type API interface {
-	GetSecret(key, prefix string) (string, error)
-	GetSecrets(keys []string, prefix, batchID string) (map[string]string, error)
+	GetSecret(ctx context.Context, name string) (string, error)
+	GetSecrets(ctx context.Context, keys []string) (map[string]string, error)
 }
 
 type Config struct {
-	Region   string
-	Endpoint string
-	Prefix   string
-	Batch    string
-	Keys     []string
-	// CacheTTL is how long secrets are cached in memory before re-fetching.
-	// Defaults to 5 minutes when 0. Set to a negative value to disable caching.
-	CacheTTL time.Duration
+	Region     string
+	Endpoint   string
+	SecretPath string
+	Keys       []string
+	CacheTTL   time.Duration
 }
 
 type cacheEntry struct {
@@ -37,20 +39,59 @@ type cacheEntry struct {
 	expiresAt time.Time
 }
 
-type secretCache struct {
-	mu      sync.RWMutex
-	entries map[string]cacheEntry
-	ttl     time.Duration
+type parsedEntry struct {
+	value     map[string]string
+	expiresAt time.Time
 }
 
-func newCache(ttl time.Duration) *secretCache {
+type secretCache struct {
+	mu            sync.RWMutex
+	entries       map[string]cacheEntry
+	parsedEntries map[string]parsedEntry
+	ttl           time.Duration
+}
+
+func newCache(ctx context.Context, ttl time.Duration) *secretCache {
 	if ttl == 0 {
 		ttl = 5 * time.Minute
 	}
-	return &secretCache{
-		entries: make(map[string]cacheEntry),
-		ttl:     ttl,
+	c := &secretCache{
+		entries:       make(map[string]cacheEntry),
+		parsedEntries: make(map[string]parsedEntry),
+		ttl:           ttl,
 	}
+	go c.evictLoop(ctx)
+	return c
+}
+
+func (c *secretCache) evictLoop(ctx context.Context) {
+	interval := max(c.ttl/2, 30*time.Second)
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			c.evict()
+		}
+	}
+}
+
+func (c *secretCache) evict() {
+	now := time.Now()
+	c.mu.Lock()
+	for k, e := range c.entries {
+		if now.After(e.expiresAt) {
+			delete(c.entries, k)
+		}
+	}
+	for k, e := range c.parsedEntries {
+		if now.After(e.expiresAt) {
+			delete(c.parsedEntries, k)
+		}
+	}
+	c.mu.Unlock()
 }
 
 func (c *secretCache) get(key string) (string, bool) {
@@ -75,19 +116,41 @@ func (c *secretCache) set(key, value string) {
 	c.mu.Unlock()
 }
 
-type Client struct {
-	sm     *secretsmanager.Client
-	prefix string
-	cache  *secretCache
+func (c *secretCache) getParsed(key string) (map[string]string, bool) {
+	if c.ttl < 0 {
+		return nil, false
+	}
+	c.mu.RLock()
+	e, ok := c.parsedEntries[key]
+	c.mu.RUnlock()
+	if !ok || time.Now().After(e.expiresAt) {
+		return nil, false
+	}
+	return e.value, true
 }
 
-// Returns a new Secrets Manager Client. Eagerly loads cfg.Keys via GetSecrets if non-empty and returns any retrieval error. Returns an error if the region is empty or not a known AWS region code.
+func (c *secretCache) setParsed(key string, value map[string]string) {
+	if c.ttl < 0 {
+		return
+	}
+	c.mu.Lock()
+	c.parsedEntries[key] = parsedEntry{value: value, expiresAt: time.Now().Add(c.ttl)}
+	c.mu.Unlock()
+}
+
+type Client struct {
+	sm         secretsManagerAPI
+	secretPath string
+	cache      *secretCache
+	sf         singleflight.Group
+	cancel     context.CancelFunc
+}
+
+func (c *Client) Close() { c.cancel() }
+
 func New(ctx context.Context, cfg Config) (*Client, error) {
 	if cfg.Region == "" {
-		return nil, fmt.Errorf("missing region")
-	}
-	if cfg.Region == "" {
-		return nil, fmt.Errorf("missing region")
+		return nil, fmt.Errorf("invalid region")
 	}
 
 	opts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(cfg.Region)}
@@ -99,8 +162,7 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 
 	awsCfg, err := awsconfig.LoadDefaultConfig(ctx, opts...)
 	if err != nil {
-		logger.Error("failed to load AWS config", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to load AWS config: %w", err)
 	}
 
 	var smOpts []func(*secretsmanager.Options)
@@ -109,100 +171,111 @@ func New(ctx context.Context, cfg Config) (*Client, error) {
 		smOpts = append(smOpts, func(o *secretsmanager.Options) { o.BaseEndpoint = aws.String(ep) })
 	}
 
+	cacheCtx, cancel := context.WithCancel(context.Background())
 	c := &Client{
-		sm:     secretsmanager.NewFromConfig(awsCfg, smOpts...),
-		prefix: cfg.Prefix,
-		cache:  newCache(cfg.CacheTTL),
+		sm:         secretsmanager.NewFromConfig(awsCfg, smOpts...),
+		secretPath: cfg.SecretPath,
+		cache:      newCache(cacheCtx, cfg.CacheTTL),
+		cancel:     cancel,
 	}
 
 	if len(cfg.Keys) > 0 {
-		if _, err := c.GetSecrets(cfg.Keys, cfg.Prefix, cfg.Batch); err != nil {
-			logger.Error("failed to load secrets", err)
-			return nil, err
+		if _, err := c.GetSecrets(ctx, cfg.Keys); err != nil {
+			cancel()
+			return nil, fmt.Errorf("failed to load initial secrets: %w", err)
 		}
 	}
 	return c, nil
 }
 
-// Retrieves a single secret by key under the given prefix path; results are cached for the configured CacheTTL.
-func (c *Client) GetSecret(key, prefix string) (string, error) {
-	if prefix == "" {
-		return "", fmt.Errorf("prefix is required")
+func newWithAPI(api secretsManagerAPI, secretPath string) *Client {
+	cacheCtx, cancel := context.WithCancel(context.Background())
+	return &Client{
+		sm:         api,
+		secretPath: secretPath,
+		cache:      newCache(cacheCtx, 0),
+		cancel:     cancel,
+	}
+}
+
+// Fetches a single secret by its full name; results are cached for CacheTTL.
+func (c *Client) GetSecret(ctx context.Context, name string) (string, error) {
+	if name == "" {
+		return "", fmt.Errorf("invalid secret name")
 	}
 
-	path := prefix + key
-	if v, ok := c.cache.get(path); ok {
+	if v, ok := c.cache.get(name); ok {
 		return v, nil
 	}
 
-	result, err := c.sm.GetSecretValue(context.TODO(), &secretsmanager.GetSecretValueInput{
-		SecretId: aws.String(path),
-	})
-	if err != nil {
-		logger.Error(fmt.Sprintf("failed to retrieve secret %s", path), err)
-		return "", err
-	}
-	if result.SecretString == nil {
-		return "", fmt.Errorf("secret %s has no string value", path)
-	}
-
-	value := *result.SecretString
-	c.cache.set(path, value)
-	logger.Info(fmt.Sprintf("retrieved secret %s", key))
-	return value, nil
-}
-
-// Retrieves a batch secret JSON blob at prefix+batchID and returns the requested subset of keys. The full blob is cached for CacheTTL.
-func (c *Client) GetSecrets(keys []string, prefix, batchID string) (map[string]string, error) {
-	if len(keys) == 0 {
-		return nil, fmt.Errorf("no keys provided")
-	}
-	if prefix == "" {
-		return nil, fmt.Errorf("prefix is required")
-	}
-	if batchID == "" {
-		return nil, fmt.Errorf("batchID is required")
-	}
-
-	path := prefix + batchID
-
-	var raw string
-	if v, ok := c.cache.get(path); ok {
-		raw = v
-	} else {
-		result, err := c.sm.GetSecretValue(context.TODO(), &secretsmanager.GetSecretValueInput{
-			SecretId: aws.String(path),
+	v, err, _ := c.sf.Do("secret:"+name, func() (any, error) {
+		result, err := c.sm.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+			SecretId: aws.String(name),
 		})
 		if err != nil {
-			logger.Error(fmt.Sprintf("failed to retrieve batch secret %s", path), err)
+			return "", err
+		}
+		if result.SecretString == nil {
+			return "", fmt.Errorf("secret has no string value")
+		}
+		value := *result.SecretString
+		c.cache.set(name, value)
+		return value, nil
+	})
+	if err != nil {
+		return "", err
+	}
+	return v.(string), nil
+}
+
+// Fetches the JSON blob at SecretPath and returns the requested subset of keys; the parsed blob is cached for CacheTTL.
+func (c *Client) GetSecrets(ctx context.Context, keys []string) (map[string]string, error) {
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("keys must not be empty")
+	}
+	if c.secretPath == "" {
+		return nil, fmt.Errorf("invalid secret path")
+	}
+
+	if all, ok := c.cache.getParsed(c.secretPath); ok {
+		return extractKeys(all, keys), nil
+	}
+
+	raw, err, _ := c.sf.Do("secrets:"+c.secretPath, func() (any, error) {
+		result, err := c.sm.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+			SecretId: aws.String(c.secretPath),
+		})
+		if err != nil {
 			return nil, err
 		}
 		if result.SecretString == nil {
-			return nil, fmt.Errorf("batch secret %s has no string value", path)
+			return nil, fmt.Errorf("secret has no string value")
 		}
-		raw = *result.SecretString
-		c.cache.set(path, raw)
-	}
-
-	var all map[string]string
-	if err := json.Unmarshal([]byte(raw), &all); err != nil {
-		logger.Error("failed to parse batch secret "+path, err)
+		var all map[string]string
+		if err := json.Unmarshal([]byte(*result.SecretString), &all); err != nil {
+			return nil, fmt.Errorf("failed to parse secret JSON: %w", err)
+		}
+		c.cache.setParsed(c.secretPath, all)
+		return all, nil
+	})
+	if err != nil {
 		return nil, err
 	}
+	return extractKeys(raw.(map[string]string), keys), nil
+}
 
-	secrets := make(map[string]string, len(keys))
+func extractKeys(all map[string]string, keys []string) map[string]string {
+	result := make(map[string]string, len(keys))
 	var missing []string
 	for _, k := range keys {
 		if v, ok := all[k]; ok {
-			secrets[k] = v
+			result[k] = v
 		} else {
 			missing = append(missing, k)
 		}
 	}
 	if len(missing) > 0 {
-		logger.Warn(fmt.Sprintf("keys not found in batch secret: %v", missing))
+		logger.Warn("keys not found in secret", "keys", missing)
 	}
-
-	logger.Info(fmt.Sprintf("retrieved %d secrets from batch", len(secrets)))
-	return secrets, nil
+	return result
 }

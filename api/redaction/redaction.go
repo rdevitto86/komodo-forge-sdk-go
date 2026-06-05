@@ -1,11 +1,16 @@
 package redaction
 
-import "regexp"
-
-// TODO - move common code over from middleware to here
+import (
+	"regexp"
+	"strings"
+)
 
 var (
-	keyRegex = regexp.MustCompile(`(?i)^(authorization|set-cookie|password|token|bearer|ssn|pwd|secret|api_key|cvv|card_number)$`)
+	sensitiveKeys = map[string]struct{}{
+		"authorization": {}, "set-cookie": {}, "password": {}, "token": {},
+		"bearer": {}, "ssn": {}, "pwd": {}, "secret": {},
+		"api_key": {}, "cvv": {}, "card_number": {},
+	}
 	piiRegex = regexp.MustCompile(`(?i)` +
 		`([a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})|` + // Email
 		`(\b\d{3}-\d{2}-\d{4}\b)|` + // SSN
@@ -27,7 +32,7 @@ func RedactString(val string) string {
 
 // Redacts val when key matches a sensitive field name, or when val is a string containing PII patterns.
 func RedactPair(key string, val any) any {
-	if keyRegex.MatchString(key) {
+	if _, ok := sensitiveKeys[strings.ToLower(key)]; ok {
 		return "[REDACTED]"
 	}
 	if s, ok := val.(string); ok && len(s) >= 4 && !isNumeric(s) {

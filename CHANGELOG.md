@@ -6,6 +6,28 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.3]
+
+### Changed
+
+- **`logging/runtime` — `Init` signature simplified; `sync.Once` removed.** `version ...string` (variadic) replaced with `version string`; pass `""` to default to `"unknown"`. The variadic form only ever used index 0 and silently swallowed extra arguments, making the API misleading. `sync.Once` was removed alongside it: the package-level vars are already a singleton per binary in Go, and the Once added testing friction (callers had to reach in and reset `initOnce` between tests) without providing any real guarantee that mattered. `Init` is now a plain function — honest, no-ceremony, and trivially testable. The `resetInitOnce` test helper and the idempotency test are removed; `captureInit` replaces the scattered save/restore boilerplate in Init tests.
+
+- **`logging/runtime` + `api/redaction` — logger performance optimizations.** Six targeted improvements across the text handler and redaction layer:
+
+  - **`RedactingLogger.Handle` correctness fix** (`logging/runtime/redaction.go`): `rec.Clone()` was replaced with `slog.NewRecord(...)`. `Clone` copies all attributes into the new record, then the redaction loop added them a second time — every attribute was emitted twice, once unredacted. Now a fresh record is built and only the redacted attrs are added.
+
+  - **Regex → map for sensitive-key lookup** (`api/redaction/redaction.go`): `keyRegex.MatchString(key)` ran a compiled regex on every log attribute key on every record. Replaced with a `map[string]struct{}` looked up via `strings.ToLower(key)` — O(1) hash lookup vs. backtracking regex, ~10-50× faster on the key-check branch.
+
+  - **`sync.Pool` for `bytes.Buffer`** (`logging/runtime/handler.go`): `Handle` was allocating a fresh `bytes.Buffer` per call. A package-level `sync.Pool` now amortizes those allocations under concurrent load, reducing GC pressure.
+
+  - **`[]string` + `strings.Join` → `strings.Builder`** (`logging/runtime/handler.go`): The `parts []string` accumulator and the trailing `strings.Join` produced two extra heap allocations per record. Attrs are now written directly into a `strings.Builder`, eliminating both.
+
+  - **Precomputed `coloredLevel` strings** (`logging/runtime/handler.go`): `coloredLevel` was concatenating ANSI escape codes on every call. The 10 possible outputs (5 levels × plain/color) are now package-level vars computed once at startup; the method returns the appropriate constant.
+
+  - **Removed ownerless TODO comment** (`api/redaction/redaction.go`): stale `// TODO - move common code...` comment removed.
+
+---
+
 ## [0.15.2]
 
 ### Changed

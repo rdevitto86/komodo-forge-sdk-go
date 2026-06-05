@@ -5,43 +5,37 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"sync"
 )
 
 var (
 	slogger   *slog.Logger   = slog.New(slog.NewJSONHandler(io.Discard, nil))
 	logLevel  *slog.LevelVar = &slog.LevelVar{}
 	osExit    func(int)      = os.Exit
-	initOnce  sync.Once
 	loggerEnv string
 )
 
-// Configures the global logger; local/dev environments use the text handler, all others use JSON for CloudWatch.
-// Must be called once at service startup; version is optional and defaults to "unknown".
-func Init(name string, lvl string, env string, version ...string) {
-	initOnce.Do(func() {
-		ver := "unknown"
-		if len(version) > 0 && version[0] != "" {
-			ver = version[0]
-		}
+func Init(name string, lvl string, env string, version string) {
+	ver := version
+	if ver == "" {
+		ver = "unknown"
+	}
 
-		loggerEnv = env
-		logLevel.Set(effectiveLevel(lvl, env))
+	loggerEnv = env
+	logLevel.Set(effectiveLevel(lvl, env))
 
-		var handler slog.Handler
-		if isLocalEnv(env) {
-			handler = NewKomodoTextHandler(os.Stdout, true, logLevel)
-		} else {
-			handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
-		}
+	var handler slog.Handler
+	if isLocalEnv(env) {
+		handler = NewKomodoTextHandler(os.Stdout, true, logLevel)
+	} else {
+		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
+	}
 
-		slogger = slog.New(&RedactingLogger{Handler: handler}).With(
-			slog.String("service", name),
-			slog.String("env", env),
-			slog.String("version", ver),
-		)
-		slog.SetDefault(slogger)
-	})
+	slogger = slog.New(&RedactingLogger{Handler: handler}).With(
+		slog.String("service", name),
+		slog.String("env", env),
+		slog.String("version", ver),
+	)
+	slog.SetDefault(slogger)
 }
 
 func Debug(msg string, args ...any) { slogger.Debug(msg, args...) }
@@ -55,7 +49,6 @@ func Error(msg string, err error, args ...any) {
 	slogger.Error(msg, args...)
 }
 
-// Logs at error level and then terminates the process with status 1; deferred functions do not run.
 func Fatal(msg string, err error, args ...any) {
 	Error(msg, err, args...)
 	osExit(1)

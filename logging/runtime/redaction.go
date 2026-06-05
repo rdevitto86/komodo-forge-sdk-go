@@ -2,14 +2,15 @@ package logger
 
 import (
 	"context"
-	"github.com/rdevitto86/komodo-forge-sdk-go/api/redaction"
 	"log/slog"
+
+	"github.com/rdevitto86/komodo-forge-sdk-go/api/redaction"
 )
 
 type RedactingLogger struct{ slog.Handler }
 
 func (rl *RedactingLogger) Handle(ctx context.Context, rec slog.Record) error {
-	clean := rec.Clone()
+	clean := slog.NewRecord(rec.Time, rec.Level, rec.Message, rec.PC)
 	rec.Attrs(func(attr slog.Attr) bool {
 		clean.AddAttrs(slog.Any(attr.Key, redaction.RedactPair(attr.Key, attr.Value.Any())))
 		return true

@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -25,16 +24,18 @@ func captureLogger(t *testing.T, level slog.Level) *bytes.Buffer {
 	return &buf
 }
 
-func resetInitOnce() { initOnce = sync.Once{} }
+func captureInit(t *testing.T) {
+	t.Helper()
+	oldLogger := slogger
+	oldEnv := loggerEnv
+	t.Cleanup(func() {
+		slogger = oldLogger
+		loggerEnv = oldEnv
+	})
+}
 
 func TestRuntimeLogger_Init_LocalEnv_Success(t *testing.T) {
-	old := slogger
-	resetInitOnce()
-	t.Cleanup(func() {
-		slogger = old
-		resetInitOnce()
-	})
-
+	captureInit(t)
 	Init("my-service", "debug", "local", "v1.0")
 	if slogger == nil {
 		t.Error("expected slogger to be non-nil after Init")
@@ -42,45 +43,16 @@ func TestRuntimeLogger_Init_LocalEnv_Success(t *testing.T) {
 }
 
 func TestRuntimeLogger_Init_ProdEnv_Success(t *testing.T) {
-	old := slogger
-	resetInitOnce()
-	t.Cleanup(func() {
-		slogger = old
-		resetInitOnce()
-	})
-
-	Init("my-service", "info", "prod")
+	captureInit(t)
+	Init("my-service", "info", "prod", "")
 	if slogger == nil {
 		t.Error("expected slogger to be non-nil after Init")
 	}
 }
 
-func TestRuntimeLogger_Init_NoVersion_Success(t *testing.T) {
-	old := slogger
-	resetInitOnce()
-	t.Cleanup(func() {
-		slogger = old
-		resetInitOnce()
-	})
-
-	// No version arg → defaults to "unknown"; must not panic.
-	Init("svc", "warn", "dev")
-}
-
-func TestRuntimeLogger_Init_Idempotent_Success(t *testing.T) {
-	old := slogger
-	resetInitOnce()
-	t.Cleanup(func() {
-		slogger = old
-		resetInitOnce()
-	})
-
-	Init("svc", "info", "staging")
-	first := slogger
-	Init("svc", "debug", "local") // second call must be a no-op
-	if slogger != first {
-		t.Error("expected Init to be idempotent (slogger should not change on second call)")
-	}
+func TestRuntimeLogger_Init_EmptyVersion_Success(t *testing.T) {
+	captureInit(t)
+	Init("svc", "warn", "dev", "")
 }
 
 func TestRuntimeLogger_Debug_Success(t *testing.T) {

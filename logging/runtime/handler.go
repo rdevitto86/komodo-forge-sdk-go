@@ -13,7 +13,6 @@ import (
 	"time"
 )
 
-// ANSI terminal color codes
 const (
 	ansiReset   = "\033[0m"
 	ansiGray    = "\033[90m"
@@ -28,6 +27,21 @@ var skippedBaseFields = map[string]bool{
 	"env":     true,
 	"version": true,
 }
+
+var (
+	plainFatal = "[FATAL]"
+	plainError = "[ERROR]"
+	plainWarn  = "[WARN]"
+	plainInfo  = "[INFO]"
+	plainDebug = "[DEBUG]"
+	colorFatal = ansiBoldRed + "[FATAL]" + ansiReset
+	colorError = ansiRed + "[ERROR]" + ansiReset
+	colorWarn  = ansiYellow + "[WARN]" + ansiReset
+	colorInfo  = ansiCyan + "[INFO]" + ansiReset
+	colorDebug = ansiGray + "[DEBUG]" + ansiReset
+)
+
+var bufPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
 type KomodoTextHandler struct {
 	mu       sync.Mutex
@@ -60,10 +74,13 @@ func (h *KomodoTextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 func (h *KomodoTextHandler) WithGroup(name string) slog.Handler { return h }
 
 func (h *KomodoTextHandler) Handle(_ context.Context, rec slog.Record) error {
-	var buf bytes.Buffer
+	buf := bufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufPool.Put(buf)
 
 	requestID := "-"
-	var parts []string
+	var attrs strings.Builder
+	first := true
 
 	collectAttr := func(attr slog.Attr) {
 		if skippedBaseFields[attr.Key] {
@@ -74,7 +91,11 @@ func (h *KomodoTextHandler) Handle(_ context.Context, rec slog.Record) error {
 			return
 		}
 		if s := formatAttr(attr); s != "" {
-			parts = append(parts, s)
+			if !first {
+				attrs.WriteByte(' ')
+			}
+			attrs.WriteString(s)
+			first = false
 		}
 	}
 
@@ -114,12 +135,12 @@ func (h *KomodoTextHandler) Handle(_ context.Context, rec slog.Record) error {
 	buf.WriteString(rec.Message)
 
 	// details as logfmt
-	if len(parts) > 0 {
+	if attrs.Len() > 0 {
 		buf.WriteString(" | ")
 		if h.color {
 			buf.WriteString(ansiGray)
 		}
-		buf.WriteString(strings.Join(parts, " "))
+		buf.WriteString(attrs.String())
 		if h.color {
 			buf.WriteString(ansiReset)
 		}
@@ -134,23 +155,33 @@ func (h *KomodoTextHandler) Handle(_ context.Context, rec slog.Record) error {
 }
 
 func (h *KomodoTextHandler) coloredLevel(level slog.Level) string {
-	var color, label string
 	switch {
 	case level > slog.LevelError:
-		color, label = ansiBoldRed, "FATAL"
+		if h.color {
+			return colorFatal
+		}
+		return plainFatal
 	case level >= slog.LevelError:
-		color, label = ansiRed, "ERROR"
+		if h.color {
+			return colorError
+		}
+		return plainError
 	case level >= slog.LevelWarn:
-		color, label = ansiYellow, "WARN"
+		if h.color {
+			return colorWarn
+		}
+		return plainWarn
 	case level >= slog.LevelInfo:
-		color, label = ansiCyan, "INFO"
+		if h.color {
+			return colorInfo
+		}
+		return plainInfo
 	default:
-		color, label = ansiGray, "DEBUG"
+		if h.color {
+			return colorDebug
+		}
+		return plainDebug
 	}
-	if !h.color {
-		return "[" + label + "]"
-	}
-	return color + "[" + label + "]" + ansiReset
 }
 
 // Renders a slog.Attr as a logfmt key=value pair; complex values are JSON-encoded and truncated at 200 chars.

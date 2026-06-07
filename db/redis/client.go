@@ -19,6 +19,7 @@ type API interface {
 	Expire(ctx context.Context, key string, ttl int64) error
 	SetNX(ctx context.Context, key string, value string, ttl int64) (bool, error)
 	Exists(ctx context.Context, key string) (bool, error)
+	Ping(ctx context.Context) error
 	Close() error
 	AllowDistributed(ctx context.Context, key string, rate, burst float64, ttlSec int) (bool, time.Duration, error)
 }
@@ -165,6 +166,18 @@ func (c *Client) SetNX(ctx context.Context, key string, value string, ttl int64)
 		return false, err
 	}
 	return ok, nil
+}
+
+// Pings the Redis server to confirm connectivity.
+func (c *Client) Ping(ctx context.Context) error {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
+	if err := c.rc.Ping(ctx).Err(); err != nil {
+		logger.Error("failed to ping redis", err)
+		return err
+	}
+	return nil
 }
 
 // Reports whether a key exists in Redis.

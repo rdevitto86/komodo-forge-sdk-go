@@ -20,6 +20,7 @@ type API interface {
 	GetObjectAs(ctx context.Context, bucket, key string, out any) error
 	PutObject(ctx context.Context, bucket, key string, data []byte, contentType string) error
 	DeleteObject(ctx context.Context, bucket, key string) error
+	HeadBucket(ctx context.Context, bucket string) error
 }
 
 type Config struct {
@@ -71,6 +72,15 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	}
 
 	return &Client{s3: s3.NewFromConfig(cfg, opts...)}, nil
+}
+
+// Confirms that a bucket exists and is reachable.
+func (c *Client) HeadBucket(ctx context.Context, bucket string) error {
+	if _, err := c.s3.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)}); err != nil {
+		logger.Error("failed to head s3 bucket", err)
+		return WrapError(err, "HeadBucket")
+	}
+	return nil
 }
 
 // Retrieves an object from S3 as raw bytes.

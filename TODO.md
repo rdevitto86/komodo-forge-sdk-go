@@ -4,6 +4,12 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 
 ---
 
+## `api/handlers/health`
+
+> **Migration note (2026-06-07):** `komodo-auth-api` already wired `GET /health/ready` with a hand-rolled stopgap (`internal/api.HealthReadyHandler`, raw `func(context.Context) error` checks, first-failure-only `{"status","error"}` body, no result caching) ahead of this package shipping — see `apis/komodo-auth-api/internal/api/health.go`. It diverges from the spec below on checker shape (no `Name()`/`Checker` interface), failure reporting (single error vs. the full `{"failing": [...]}` list), and caching (none vs. TTL-cached `cachedResult` map). When this ships, plan a migration pass in auth-api: swap to `NewReadyHandler`/`Checker`/`CheckerFunc`, adopt the `{"failing": [...]}` body shape (downstream consumers parsing the current shape need updating too), and pick up TTL-cached checks. Also note auth-api currently only injects a Redis `Reachable` check — no JWKS checker — despite this TODO citing "JWKS endpoint reachability in auth-api" as the `CheckerFunc` worked example; confirm with auth-api whether that check should be added.
+
+---
+
 ## `auth` package — consumer token verification
 
 > Implements the local-verify side of the introspect-vs-denylist ADR. Consumers inject `auth.Verifier` rather than calling `POST /v1/oauth/introspect` directly. Phase 1 (JWKS-backed local verify) shipped in v0.14.2. Phase 2 adds a bloom-filter denylist when Redis is in the infra budget.
@@ -48,6 +54,7 @@ A running list of gaps, incomplete work, and planned additions. Each item is lab
 ### `aws/secretsmanager`
 - [ ] **H** Replace `context.TODO()` with proper timeout context in `GetSecret`/`GetSecrets`
 - [ ] **H** Distinguish "not found" from other errors
+- [ ] **M** Add `Watch(ctx context.Context, interval time.Duration, keys []string, onChange func(map[string]string))` — background goroutine re-fetches the secret blob at `interval`, diffs against the previous snapshot, and calls `onChange` only when at least one value in `keys` has changed; supervised with `defer recover()` + restart loop (or `safego.GoEvery` once that ships); services currently call `sm.Close()` immediately after bootstrap which destroys the client — callers that want live rotation must keep the client alive and call `Watch` before the secrets are needed; auth-api needs this to pick up rotated JWT signing keys without an ECS restart
 - [ ] **M** Pagination for batch secret retrieval
 - [ ] **L** Support binary secrets
 

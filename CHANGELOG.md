@@ -6,6 +6,16 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.15.6]
+
+### Added
+
+- **`api/handlers/health` — `Checker` interface, `NewReadyHandler`, and built-in checker factories.** `Checker` (`Name() string`, `Check(ctx context.Context) error`) and the `CheckerFunc(name string, fn func(ctx context.Context) error) Checker` adaptor let services register downstream-dependency probes without declaring named types. `NewReadyHandler(checkers []Checker, opts ...Option) http.HandlerFunc` runs every registered checker concurrently, caches each result for `CacheTTL` (default 10s, `WithCacheTTL`) behind a `singleflight`-deduped, mutex-protected map to absorb load-balancer probe spam, and bounds each probe with `CheckTimeout` (default 3s, `WithCheckTimeout`) when the request context carries no deadline. Responds `200 {"status":"OK"}` when every dependency is reachable, or `503 {"failing": [{"dep","error"}]}` with the complete failure list — and the verbatim error per dependency — otherwise; any single failure marks the whole probe unhealthy. The existing static `HealthHandler` is unchanged and remains the liveness probe (`GET /health`); `NewReadyHandler` is wired separately as `GET /health/ready`. Built-in factories — `DynamoDBChecker` (`DescribeTable`), `RedisChecker` (`Ping`), `S3Checker` (`HeadBucket`), `HTTPChecker` (GET with a 2s timeout, checks for 2xx) — cover the common dependency types; services inject whichever they own.
+
+- **`db/redis`, `aws/dynamodb`, `aws/s3` — `Ping`, `DescribeTable`, `HeadBucket` added to `API` and `Client`.** Lightweight reachability probes (`Ping(ctx) error`, `DescribeTable(ctx, table) error`, `HeadBucket(ctx, bucket) error`) added to back the new health-check factories above; existing fakes/stubs implementing these `API` interfaces need the new methods.
+
+---
+
 ## [0.15.5]
 
 ### Added

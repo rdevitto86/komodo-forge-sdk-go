@@ -13,6 +13,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
+// Confirms that a table exists and is reachable.
+func (c *Client) DescribeTable(ctx context.Context, table string) error {
+	if _, err := c.db.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(table)}); err != nil {
+		logger.Error("failed to describe table", err)
+		return WrapError(err, "DescribeTable")
+	}
+	return nil
+}
+
 func (c *Client) getItem(ctx context.Context, tableName string, key map[string]types.AttributeValue) (map[string]types.AttributeValue, error) {
 	result, err := c.db.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(tableName),

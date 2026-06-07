@@ -31,6 +31,7 @@ type API interface {
 	ScanAs(ctx context.Context, input ScanInput, out any) (*ScanOutput, error)
 	ScanAll(ctx context.Context, input ScanInput) ([]map[string]types.AttributeValue, error)
 	ScanAllAs(ctx context.Context, input ScanInput, out any) error
+	DescribeTable(ctx context.Context, table string) error
 }
 
 type Config struct {

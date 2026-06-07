@@ -264,6 +264,77 @@ func (c *Client) GetSecrets(ctx context.Context, keys []string) (map[string]stri
 	return extractKeys(raw.(map[string]string), keys), nil
 }
 
+// Polls SecretPath on a supervised background goroutine, calling onChange only when a
+// requested key's value changes; cancel ctx to stop. Close tears down the cache
+// eviction loop Watch also relies on, so the client must stay open while watching.
+func (c *Client) Watch(ctx context.Context, interval time.Duration, keys []string, onChange func(map[string]string)) {
+	if interval <= 0 || len(keys) == 0 || onChange == nil || c.secretPath == "" {
+		return
+	}
+	go c.runWatch(ctx, interval, keys, onChange)
+}
+
+func (c *Client) runWatch(ctx context.Context, interval time.Duration, keys []string, onChange func(map[string]string)) {
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Error("secret watch loop panicked; restarting", fmt.Errorf("%v", r))
+			go c.runWatch(ctx, interval, keys, onChange)
+		}
+	}()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	var previous map[string]string
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			current, err := c.pollSecrets(ctx, keys)
+			if err != nil {
+				logger.Error("secret watch poll failed", err)
+				continue
+			}
+			if previous != nil && secretsChanged(previous, current) {
+				onChange(current)
+			}
+			previous = current
+		}
+	}
+}
+
+// Re-fetches directly from Secrets Manager, bypassing the cache, so Watch always observes the live value.
+func (c *Client) pollSecrets(ctx context.Context, keys []string) (map[string]string, error) {
+	result, err := c.sm.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
+		SecretId: aws.String(c.secretPath),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if result.SecretString == nil {
+		return nil, fmt.Errorf("secret has no string value")
+	}
+	var all map[string]string
+	if err := json.Unmarshal([]byte(*result.SecretString), &all); err != nil {
+		return nil, fmt.Errorf("failed to parse secret JSON: %w", err)
+	}
+	c.cache.setParsed(c.secretPath, all)
+	return extractKeys(all, keys), nil
+}
+
+func secretsChanged(prev, current map[string]string) bool {
+	if len(prev) != len(current) {
+		return true
+	}
+	for k, v := range current {
+		if prev[k] != v {
+			return true
+		}
+	}
+	return false
+}
+
 func extractKeys(all map[string]string, keys []string) map[string]string {
 	result := make(map[string]string, len(keys))
 	var missing []string

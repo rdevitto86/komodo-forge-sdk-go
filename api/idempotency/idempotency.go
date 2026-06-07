@@ -1,9 +1,13 @@
 package idempotency
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/rdevitto86/komodo-forge-sdk-go/db/redis"
 )
 
 var evictOnce sync.Once
@@ -28,14 +32,14 @@ func startEvictor(c *LocalCache) {
 
 const DEFAULT_IDEM_TTL_SEC int64 = 300 // 5 minutes
 
-// Implementations can be local (in-memory) or distributed (Redis, ElastiCache, etc.).
 type Cache interface {
 	Load(key string) (any, bool)
 	Store(key string, value any, ttl int64) error
+	// stores atomically only when absent, avoiding the race a separate Load-then-Store allows
+	StoreIfAbsent(key string, value any, ttl int64) (bool, error)
 	Delete(key string)
 }
 
-// In-memory sync.Map implementation. Suitable for single-instance deployments or testing.
 type LocalCache struct {
 	store sync.Map
 }
@@ -50,27 +54,57 @@ func (c *LocalCache) Store(key string, value any, ttl int64) error {
 	return nil
 }
 
+// Retries via compare-and-swap to claim a key whose previous entry has expired.
+func (c *LocalCache) StoreIfAbsent(key string, value any, ttl int64) (bool, error) {
+	startEvictor(c)
+	for {
+		actual, loaded := c.store.LoadOrStore(key, value)
+		if !loaded {
+			return true, nil
+		}
+		if until, ok := actual.(int64); ok && until > time.Now().Unix() {
+			return false, nil // live entry — duplicate
+		}
+		if c.store.CompareAndSwap(key, actual, value) {
+			return true, nil // replaced an expired entry
+		}
+		// lost the race against another writer — retry
+	}
+}
+
 func (c *LocalCache) Delete(key string) {
 	c.store.Delete(key)
 }
 
-// Placeholder; implement when Redis/ElastiCache integration is needed.
+// relies on Redis's native TTL rather than tracking expiry timestamps like LocalCache does
 type DistributedCache struct {
-	// client interface for redis/elasticache
+	client redis.API
 }
 
+func NewDistributedCache(client redis.API) *DistributedCache {
+	return &DistributedCache{client: client}
+}
+
+// Reports existence via Exists; the returned value is a sentinel, not a tracked expiry timestamp.
 func (c *DistributedCache) Load(key string) (any, bool) {
-	// TODO: Implement distributed cache load
-	return nil, false
+	exists, err := c.client.Exists(context.Background(), key)
+	if err != nil || !exists {
+		return nil, false
+	}
+	return true, true
 }
 
 func (c *DistributedCache) Store(key string, value any, ttl int64) error {
-	// TODO: Implement distributed cache store
-	return nil
+	return c.client.Set(context.Background(), key, fmt.Sprint(value), ttl)
+}
+
+// Delegates to Redis SETNX for atomic create-if-absent.
+func (c *DistributedCache) StoreIfAbsent(key string, value any, ttl int64) (bool, error) {
+	return c.client.SetNX(context.Background(), key, fmt.Sprint(value), ttl)
 }
 
 func (c *DistributedCache) Delete(key string) {
-	// TODO: Implement distributed cache delete
+	_ = c.client.Delete(context.Background(), key)
 }
 
 type Store struct {
@@ -78,27 +112,29 @@ type Store struct {
 	ttl   int64
 }
 
-// Creates an idempotency Store backed by "local" (in-memory) or "distributed" cache; ttl defaults to 300s when 0.
+// Creates a Store backed by an in-memory LocalCache; ttl defaults to 300s when 0.
 func NewStore(mode string, ttl int64) *Store {
 	if ttl == 0 {
 		ttl = getIdemTTL()
 	}
-
-	var cache Cache
-	switch mode {
-	case "distributed":
-		cache = &DistributedCache{}
-	default: // local
-		cache = &LocalCache{}
-	}
-
 	return &Store{
-		cache: cache,
+		cache: &LocalCache{},
 		ttl:   ttl,
 	}
 }
 
-// Reports whether the key is new (allowed); returns false for duplicates and deletes expired keys before deciding.
+// Creates a Store backed by a Redis DistributedCache for multi-instance deployments; ttl defaults to 300s when 0.
+func NewDistributedStore(client redis.API, ttl int64) *Store {
+	if ttl == 0 {
+		ttl = getIdemTTL()
+	}
+	return &Store{
+		cache: NewDistributedCache(client),
+		ttl:   ttl,
+	}
+}
+
+// Reports whether key is new, deleting it first if its entry has expired.
 func (s *Store) Check(key string) (bool, error) {
 	if exp, ok := s.cache.Load(key); ok {
 		if until, ok := exp.(int64); ok && until > time.Now().Unix() {
@@ -109,13 +145,17 @@ func (s *Store) Check(key string) (bool, error) {
 	return true, nil // Key is new
 }
 
-// Stores the key with expiration.
 func (s *Store) Set(key string) error {
 	expiry := time.Now().Unix() + s.ttl
 	return s.cache.Store(key, expiry, s.ttl)
 }
 
-// Removes the key from storage.
+// Checks and reserves key atomically; unlike separate Check+Set, two concurrent callers can't both observe "new".
+func (s *Store) CheckAndSet(key string) (bool, error) {
+	expiry := time.Now().Unix() + s.ttl
+	return s.cache.StoreIfAbsent(key, expiry, s.ttl)
+}
+
 func (s *Store) Delete(key string) {
 	s.cache.Delete(key)
 }

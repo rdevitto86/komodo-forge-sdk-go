@@ -56,8 +56,8 @@ func IdempotencyMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Check if key already exists
-		allowed, err := defaultStore.Check(key)
+		// CheckAndSet is atomic — avoids the race a separate Check+Set allows
+		allowed, err := defaultStore.CheckAndSet(key)
 		if err != nil {
 			logger.Error("idempotency check failed for key: "+key, err)
 			httpErr.SendError(
@@ -78,12 +78,6 @@ func IdempotencyMiddleware(next http.Handler) http.Handler {
 		req = req.WithContext(context.WithValue(
 			req.Context(), ctxKeys.IDEMPOTENCY_VALID_KEY, true,
 		))
-
-		// Store key with expiration
-		if err := defaultStore.Set(key); err != nil {
-			logger.Error("failed to store idempotency key: "+key, err)
-			// Continue anyway - the request is allowed, just logging the failure
-		}
 
 		next.ServeHTTP(wtr, req)
 	})

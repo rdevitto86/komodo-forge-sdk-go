@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 
@@ -115,6 +116,36 @@ func (c *Client) runParallel(n int, fn func(i int) error) error {
 	return nil
 }
 
+const (
+	maxBatchRetries     = 5
+	batchRetryBaseDelay = 50 * time.Millisecond
+)
+
+// Resends unprocessed items with exponential backoff, returning a wrapped terminal error once retries are exhausted.
+func (c *Client) retryUnprocessed(ctx context.Context, op string, unprocessed map[string][]types.WriteRequest) error {
+	delay := batchRetryBaseDelay
+	for attempt := 1; len(unprocessed) > 0; attempt++ {
+		if attempt > maxBatchRetries {
+			return WrapError(fmt.Errorf("%s has unprocessed items after %d retries", op, maxBatchRetries), op)
+		}
+
+		select {
+		case <-ctx.Done():
+			return WrapError(ctx.Err(), op)
+		case <-time.After(delay):
+		}
+		delay *= 2
+
+		result, err := c.db.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{RequestItems: unprocessed})
+		if err != nil {
+			logger.Error("retry of unprocessed batch items failed", err)
+			return WrapError(err, op)
+		}
+		unprocessed = result.UnprocessedItems
+	}
+	return nil
+}
+
 func (c *Client) batchGetItems(
 	ctx context.Context,
 	tableName string,
@@ -198,7 +229,7 @@ func (c *Client) batchWriteItems(
 			return WrapError(err, "batchWriteItem")
 		}
 		if len(result.UnprocessedItems) > 0 {
-			return WrapError(fmt.Errorf("batch write has unprocessed items"), "batchWriteItem")
+			return c.retryUnprocessed(ctx, "batchWriteItem", result.UnprocessedItems)
 		}
 		return nil
 	})
@@ -231,7 +262,7 @@ func (c *Client) batchDeleteItems(
 			return WrapError(err, "batchDeleteItem")
 		}
 		if len(result.UnprocessedItems) > 0 {
-			return WrapError(fmt.Errorf("batch delete has unprocessed items"), "batchDeleteItem")
+			return c.retryUnprocessed(ctx, "batchDeleteItem", result.UnprocessedItems)
 		}
 		return nil
 	})

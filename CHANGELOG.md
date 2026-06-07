@@ -6,6 +6,25 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.16.0]
+
+### Added
+
+- **`api/idempotency` — Redis-backed `DistributedCache`, `NewDistributedStore`, and atomic `Store.CheckAndSet`.** `DistributedCache` (built on `db/redis.API`) replaces the placeholder stub, mapping `Store`/`Load`/`Delete`/`StoreIfAbsent` onto `Set`/`Exists`/`Delete`/`SetNX`. `NewDistributedStore(client redis.API, ttl int64) *Store` constructs a `Store` backed by it for multi-instance deployments. `Cache.StoreIfAbsent(key, value, ttl) (bool, error)` is a new race-free check-and-reserve primitive — `LocalCache` implements it via `sync.Map.LoadOrStore` + `CompareAndSwap`, `DistributedCache` via Redis `SETNX` — and `Store.CheckAndSet(key) (bool, error)` exposes it at the store level. `IdempotencyMiddleware` now calls `CheckAndSet` instead of separate `Check`+`Set`, closing a TOCTOU race where two concurrent identical requests could both observe "new" and both proceed. `NewStore(mode, ttl)` remains local-only (constructs `LocalCache`); pass a Redis client through `NewDistributedStore` instead.
+
+- **`security/bannedcustomers` (new package) — `Client`, `Checker`, `Config`, `IsBanned`.** DynamoDB-backed deny-list lookup keyed by email. `IsBanned(ctx, email) (bool, error)` distinguishes "not banned" from "lookup failed" via `errors.Is(err, dynamodb.ErrNotFound)`, proactively treats records whose `expires_at` has passed as not-banned (without waiting on DynamoDB's own TTL sweep), and fails open — logging and reporting "not banned" — on any other lookup error so a DynamoDB outage never blocks legitimate customers. An empty `email` is treated as caller error and returned directly. Replaces the `strings.Contains`-based workaround duplicated in `komodo-auth-api/internal/clients.BannedCustomersClient`.
+
+- **`aws/secretsmanager` — `Client.Watch`.** `Watch(ctx, interval, keys, onChange)` polls the secret blob at `SecretPath` on a supervised background goroutine (panics recovered, loop restarted), re-fetching directly from Secrets Manager each tick — bypassing the read cache so rotations are observed immediately — and invokes `onChange` with the requested keys' current values only when at least one differs from the prior poll. Lets `komodo-auth-api` pick up rotated JWT signing keys without an ECS restart. Because `Close` tears down the client's cache-eviction loop, callers that start a `Watch` must keep the client alive for as long as rotation needs to be observed.
+
+- **`aws/dynamodb` — retry-with-backoff for unprocessed batch items; `dynamoDBAPI` test-injection interface.** `batchWriteItems`/`batchDeleteItems` no longer return a hard error the moment `BatchWriteItem` reports `UnprocessedItems`; `retryUnprocessed` now resends just the unprocessed subset with exponential backoff (50ms base, doubling, capped at 5 attempts), returning a `WrapError`-wrapped terminal error only once retries are exhausted. The package also gained a private `dynamoDBAPI` interface wrapping the raw `*dynamodb.Client` surface (`GetItem`, `PutItem`, `BatchWriteItem`, `Query`, `Scan`, `DescribeTable`, etc.) plus a `newWithAPI` test backdoor, bringing it in line with the SDK's standard test-injection convention and unblocking component tests for batch operations that previously required a live endpoint.
+
+### Changed
+
+- **Release process — version now derived from `CHANGELOG.md` instead of a tracked `VERSION` file.** `make release` reads the most recent `## [x.y.z]` heading from `CHANGELOG.md`, errors out if none is found or the resulting tag already exists, then tags and pushes from that. The `VERSION` file is removed; bumping the release version is now just adding a new heading here. `pre-commit` (renamed `pre-commit.sh`) drops its `VERSION`-bump step accordingly and now only formats and re-stages modified Go files.
+- **`TODO.md` is no longer tracked.** Removed from the repo and added to `.gitignore` (`TODO.md`, `**/TODO.md`); it remains a local planning scratchpad rather than a checked-in artifact.
+
+---
+
 ## [0.15.6]
 
 ### Added

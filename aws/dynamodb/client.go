@@ -34,6 +34,19 @@ type API interface {
 	DescribeTable(ctx context.Context, table string) error
 }
 
+// mirrors the *dynamodb.Client surface so tests can inject a fake without a live endpoint
+type dynamoDBAPI interface {
+	GetItem(ctx context.Context, input *dynamodb.GetItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error)
+	PutItem(ctx context.Context, input *dynamodb.PutItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error)
+	UpdateItem(ctx context.Context, input *dynamodb.UpdateItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.UpdateItemOutput, error)
+	DeleteItem(ctx context.Context, input *dynamodb.DeleteItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.DeleteItemOutput, error)
+	BatchGetItem(ctx context.Context, input *dynamodb.BatchGetItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.BatchGetItemOutput, error)
+	BatchWriteItem(ctx context.Context, input *dynamodb.BatchWriteItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.BatchWriteItemOutput, error)
+	Query(ctx context.Context, input *dynamodb.QueryInput, opts ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error)
+	Scan(ctx context.Context, input *dynamodb.ScanInput, opts ...func(*dynamodb.Options)) (*dynamodb.ScanOutput, error)
+	DescribeTable(ctx context.Context, input *dynamodb.DescribeTableInput, opts ...func(*dynamodb.Options)) (*dynamodb.DescribeTableOutput, error)
+}
+
 type Config struct {
 	Region    string
 	AccessKey string
@@ -43,8 +56,16 @@ type Config struct {
 }
 
 type Client struct {
-	db          *dynamodb.Client
+	db          dynamoDBAPI
 	maxParallel int // semaphore cap for batch operations
+}
+
+// test-only constructor that bypasses AWS config loading to inject a fake API
+func newWithAPI(api dynamoDBAPI, maxParallel int) *Client {
+	if maxParallel <= 0 {
+		maxParallel = 5
+	}
+	return &Client{db: api, maxParallel: maxParallel}
 }
 
 func New(ctx context.Context, config Config) (*Client, error) {

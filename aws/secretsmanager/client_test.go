@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/rdevitto86/komodo-forge-sdk-go/testing/testutil"
 
@@ -237,6 +239,73 @@ func TestGetSecrets_NilSecretString(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for nil SecretString, got nil")
 	}
+}
+
+func TestWatch_FiresOnChangeOnlyOnDiff(t *testing.T) {
+	testutil.Component(t)
+
+	var calls atomic.Int32
+	blobs := []string{
+		string(mustJSON(map[string]string{"SIGNING_KEY": "v1"})),
+		string(mustJSON(map[string]string{"SIGNING_KEY": "v1"})), // unchanged — no onChange
+		string(mustJSON(map[string]string{"SIGNING_KEY": "v2"})), // rotated — onChange
+		string(mustJSON(map[string]string{"SIGNING_KEY": "v2"})), // unchanged — no onChange
+	}
+	fake := &fakeSecretsAPI{
+		getSecretValueFunc: func(_ context.Context, _ *secretsmanager.GetSecretValueInput, _ ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
+			i := calls.Add(1) - 1
+			if int(i) >= len(blobs) {
+				i = int32(len(blobs) - 1)
+			}
+			return &secretsmanager.GetSecretValueOutput{SecretString: aws.String(blobs[i])}, nil
+		},
+	}
+	c := newWithAPI(fake, "svc/prod/all")
+	defer c.Close()
+
+	changes := make(chan map[string]string, 4)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c.Watch(ctx, 10*time.Millisecond, []string{"SIGNING_KEY"}, func(current map[string]string) {
+		changes <- current
+	})
+
+	select {
+	case got := <-changes:
+		if got["SIGNING_KEY"] != "v2" {
+			t.Errorf("onChange fired with SIGNING_KEY = %q, want %q", got["SIGNING_KEY"], "v2")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for onChange to fire on rotation")
+	}
+
+	select {
+	case got := <-changes:
+		t.Fatalf("onChange fired again with no change: %v", got)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestWatch_NoOpWhenMisconfigured(t *testing.T) {
+	testutil.Component(t)
+
+	c := newWithAPI(&fakeSecretsAPI{}, "svc/prod/all")
+	defer c.Close()
+
+	called := func(map[string]string) { t.Fatal("onChange should not fire") }
+
+	c.Watch(context.Background(), 0, []string{"K"}, called)
+	c.Watch(context.Background(), time.Second, nil, called)
+	c.Watch(context.Background(), time.Second, []string{"K"}, nil)
+}
+
+func mustJSON(v map[string]string) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
 }
 
 // ── Integration Tests ──────────────────────────────────────────────────────────

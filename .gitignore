@@ -20,6 +20,8 @@
 CLAUDE.md
 claude.md
 .claude/
+TODO.md
+**/TODO.md
 
 # Go workspace files (local development only)
 go.work

@@ -6,6 +6,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.16.2]
+
+### Added
+
+- **`http/client` — configurable retry-with-backoff via `ClientConfig.Retry`.** `RetryConfig{MaxAttempts, BaseDelay, MaxDelay, ShouldRetry}` is a new opt-in `*Config` field (nil by default, mirroring `CircuitBreaker *BreakerConfig`); when set, `Client.Do` retries a request with exponential backoff (doubling from `BaseDelay`, capped at `MaxDelay`) until `ShouldRetry` rejects the outcome, the attempt budget is exhausted, the request context is done, or the circuit breaker reports `ErrOpen`. The default `ShouldRetry` retries transport errors, `429`, and `5xx` responses. Each retried attempt is replayed via `req.GetBody` (already wired in `PostJSON`) so request bodies survive across attempts, and each attempt is routed through the circuit breaker individually — a breaker that opens mid-retry short-circuits the remaining attempts with `ErrOpen` rather than continuing to hammer the upstream. Adds `BenchmarkClientDo_Retry` establishing happy-path overhead.
+
+---
+
 ## [0.16.1]
 
 ### Fixed

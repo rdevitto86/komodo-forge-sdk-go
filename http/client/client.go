@@ -27,14 +27,16 @@ type ClientConfig struct {
 	Timeout        time.Duration
 	Transport      http.RoundTripper
 	CircuitBreaker *BreakerConfig
+	Retry          *RetryConfig
 }
 
 type Client struct {
 	httpClient *http.Client
 	breaker    *breaker
+	retry      *RetryConfig
 }
 
-// Returns a Client configured from cfg; zero-value cfg defaults to a 30s timeout, DefaultTransport, and no circuit breaker.
+// Returns a Client configured from cfg; zero-value cfg defaults to a 30s timeout, DefaultTransport, and no circuit breaker or retry.
 func NewClient(cfg ClientConfig) *Client {
 	timeout := cfg.Timeout
 	if timeout == 0 {
@@ -56,11 +58,36 @@ func NewClient(cfg ClientConfig) *Client {
 	if cfg.CircuitBreaker != nil {
 		c.breaker = newBreaker(*cfg.CircuitBreaker)
 	}
+
+	if cfg.Retry != nil {
+		r := *cfg.Retry
+		if r.MaxAttempts <= 0 {
+			r.MaxAttempts = 3
+		}
+		if r.BaseDelay <= 0 {
+			r.BaseDelay = 100 * time.Millisecond
+		}
+		if r.MaxDelay <= 0 {
+			r.MaxDelay = 2 * time.Second
+		}
+		if r.ShouldRetry == nil {
+			r.ShouldRetry = defaultShouldRetry
+		}
+		c.retry = &r
+	}
 	return c
 }
 
-// Executes the request; when a circuit breaker is configured, failures are counted per host and ErrOpen is returned when the breaker is open.
+// Executes the request, retrying with backoff when configured and routing each attempt through the circuit breaker; failures are counted per host and ErrOpen is returned when the breaker is open.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
+	if c.retry != nil {
+		return c.doWithRetry(req)
+	}
+	return c.do(req)
+}
+
+// do issues a single attempt, routing through the circuit breaker when one is configured.
+func (c *Client) do(req *http.Request) (*http.Response, error) {
 	if c.breaker == nil {
 		return c.httpClient.Do(req)
 	}

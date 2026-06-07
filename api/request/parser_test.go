@@ -202,84 +202,11 @@ func TestGetClientType_APIKey(t *testing.T) {
 	}
 }
 
-func TestGetClientType_BearerWithGrantType(t *testing.T) {
-	claims := map[string]any{
-		"sub":        "user123",
-		"grant_type": "client_credentials",
-	}
-	token := makeTestJWT(claims)
+func TestGetClientType_BearerClaimsIgnored(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	got := GetClientType(req)
-	if got != "api" {
-		t.Errorf("GetClientType = %q, want api (grant_type=client_credentials)", got)
-	}
-}
-
-func TestGetClientType_BearerWithApiScope(t *testing.T) {
-	claims := map[string]any{
-		"scope": "api:read api:write",
-	}
-	token := makeTestJWT(claims)
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	got := GetClientType(req)
-	if got != "api" {
-		t.Errorf("GetClientType = %q, want api (scope contains api:)", got)
-	}
-}
-
-func TestGetClientType_BearerWithServiceScope(t *testing.T) {
-	claims := map[string]any{
-		"scope": "service:internal",
-	}
-	token := makeTestJWT(claims)
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	got := GetClientType(req)
-	if got != "api" {
-		t.Errorf("GetClientType = %q, want api (scope contains service:)", got)
-	}
-}
-
-func TestGetClientType_BearerWithClientType(t *testing.T) {
-	claims := map[string]any{
-		"client_type": "browser",
-	}
-	token := makeTestJWT(claims)
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	got := GetClientType(req)
-	if got != "browser" {
-		t.Errorf("GetClientType = %q, want browser (client_type=browser)", got)
-	}
-}
-
-func TestGetClientType_BearerWithAPIClientType(t *testing.T) {
-	claims := map[string]any{
-		"client_type": "api",
-	}
-	token := makeTestJWT(claims)
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	got := GetClientType(req)
-	if got != "api" {
-		t.Errorf("GetClientType = %q, want api (client_type=api)", got)
-	}
-}
-
-func TestGetClientType_BearerWithUnknownClientType(t *testing.T) {
-	// client_type present but not "api" or "browser"
-	claims := map[string]any{
-		"client_type": "other",
-	}
-	token := makeTestJWT(claims)
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("Authorization", "Bearer "+token)
-	got := GetClientType(req)
-	// Falls through to browser default
-	if got != "browser" {
-		t.Errorf("GetClientType = %q, want browser for unknown client_type", got)
+	req.Header.Set("Authorization", "Bearer "+makeTestJWT(map[string]any{"client_type": "api", "scope": "api:write"}))
+	if got := GetClientType(req); got != "browser" {
+		t.Errorf("GetClientType = %q, want browser — Bearer claims must not influence client type", got)
 	}
 }
 
@@ -288,27 +215,6 @@ func TestGetClientType_NoSpecialHeaders_DefaultBrowser(t *testing.T) {
 	got := GetClientType(req)
 	if got != "browser" {
 		t.Errorf("GetClientType = %q, want browser (default)", got)
-	}
-}
-
-func TestGetClientType_InvalidBearerFormat(t *testing.T) {
-	// Not a valid 3-part JWT
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("Authorization", "Bearer not.a.valid.jwt.token.here")
-	got := GetClientType(req)
-	// Falls through to browser
-	if got != "browser" {
-		t.Errorf("GetClientType = %q, want browser for non-3-part JWT", got)
-	}
-}
-
-func TestGetClientType_InvalidBase64Payload(t *testing.T) {
-	// Valid 3-part format but invalid base64
-	req := httptest.NewRequest("GET", "/", nil)
-	req.Header.Set("Authorization", "Bearer header.!!!invalid!!.sig")
-	got := GetClientType(req)
-	if got != "browser" {
-		t.Errorf("GetClientType = %q, want browser for invalid base64", got)
 	}
 }
 

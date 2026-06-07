@@ -1,17 +1,24 @@
 package idempotency
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
+
+	ctxKeys "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 )
 
 func okHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+}
+
+func withClientType(req *http.Request, clientType string) *http.Request {
+	return req.WithContext(context.WithValue(req.Context(), ctxKeys.CLIENT_TYPE_KEY, clientType))
 }
 
 // clearStore removes all keys from the default store between tests.
@@ -37,8 +44,7 @@ func TestIdempotencyMiddleware_SafeMethodsPassThrough(t *testing.T) {
 
 // API clients (identified by X-API-Key) bypass the idempotency check.
 func TestIdempotencyMiddleware_APIClientPassesThrough(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/", nil)
-	req.Header.Set("X-API-Key", "service-key")
+	req := withClientType(httptest.NewRequest(http.MethodPost, "/", nil), "api")
 	rec := httptest.NewRecorder()
 
 	IdempotencyMiddleware(okHandler()).ServeHTTP(rec, req)

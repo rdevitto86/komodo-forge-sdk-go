@@ -6,6 +6,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.16.1]
+
+### Fixed
+
+- **`api/headers` — `Authorization` header validation no longer fails every request.** `ValidateHeaderValue("authorization", …)` was passing the literal `"Bearer <token>"` string to `jwt.ValidateToken`, which expects a bare token; every Bearer-token request failed validation. The `Bearer ` prefix is now stripped (and its presence required) before validation, matching `jwt.ExtractTokenFromRequest`.
+- **`api/headers`/`api/csrf` — CSRF token validation now actually validates.** `isValidCSRF` returned `true` for any non-empty header, so CSRF protection was effectively disabled. It now implements the double-submit cookie pattern: `CSRFMiddleware` mints a random token (`csrf.GenerateToken`, `crypto/rand`), sets it as a `csrf_token` cookie (`headers.COOKIE_CSRF_TOKEN`) on every response, and `isValidCSRF` constant-time-compares (`crypto/subtle`) the `X-CSRF-Token` header against that cookie — a forged header alone, without the cookie, is rejected.
+- **`http/websocket` — `CheckOrigin` no longer accepts every origin.** The upgrader's `CheckOrigin` returned `true` unconditionally, leaving WebSocket connections open to cross-site hijacking. `SetAllowedOrigins([]string)` now configures an explicit allowlist (case-insensitive exact match against the `Origin` header); requests carrying a non-allowlisted `Origin` are rejected, and the allowlist is empty (deny-all cross-origin) by default — no default-allow. Requests with no `Origin` header (non-browser clients) still pass, matching gorilla's same-origin default.
+- **`api/request`/`auth`/`api/csrf`/`api/idempotency` — client type can no longer be forged via an unverified JWT.** `GetClientType` decoded the `Authorization` Bearer payload without checking its signature and used `client_type`/`grant_type`/`scope` claims to grant CSRF and idempotency exemptions — any caller could mint an unsigned-looking token claiming `client_type:"api"` to bypass both. `GetClientType` now checks only `X-API-Key` (falling through to `"browser"`); `AuthMiddleware`/`Middleware` derive `ctxKeys.CLIENT_TYPE_KEY` from cryptographically verified claims (`"api"` when the token carries scopes, `"browser"` otherwise) after `ValidateAndParseClaims`/`Verify`. `CSRFMiddleware` and `IdempotencyMiddleware` now read `CLIENT_TYPE_KEY` from context exclusively — an absent value fails closed as `"browser"` rather than falling back to the forgeable decode.
+
+---
+
 ## [0.16.0]
 
 ### Added

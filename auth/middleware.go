@@ -94,10 +94,12 @@ func Middleware(v Verifier) func(http.Handler) http.Handler {
 
 			if isUIRequest {
 				ctx = context.WithValue(ctx, ctxKeys.REQUEST_TYPE_KEY, "ui")
+				ctx = context.WithValue(ctx, ctxKeys.CLIENT_TYPE_KEY, "browser")
 			}
 			if isAPIRequest {
 				ctx = context.WithValue(ctx, ctxKeys.REQUEST_TYPE_KEY, "api")
 				ctx = context.WithValue(ctx, ctxKeys.SCOPES_KEY, claims.Scopes)
+				ctx = context.WithValue(ctx, ctxKeys.CLIENT_TYPE_KEY, "api")
 			}
 			if claims.IsAdmin {
 				ctx = context.WithValue(ctx, ctxKeys.IS_ADMIN_KEY, true)

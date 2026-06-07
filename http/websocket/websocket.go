@@ -3,14 +3,43 @@ package websocket
 import (
 	"log"
 	"net/http"
+	"strings"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
 
+var (
+	allowedOriginsMu sync.RWMutex
+	allowedOrigins   = map[string]struct{}{}
+)
+
+// SetAllowedOrigins replaces the WebSocket upgrade origin allowlist; an empty list rejects every cross-origin upgrade.
+func SetAllowedOrigins(origins []string) {
+	m := make(map[string]struct{}, len(origins))
+	for _, o := range origins {
+		m[strings.ToLower(o)] = struct{}{}
+	}
+	allowedOriginsMu.Lock()
+	allowedOrigins = m
+	allowedOriginsMu.Unlock()
+}
+
+func checkOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	allowedOriginsMu.RLock()
+	defer allowedOriginsMu.RUnlock()
+	_, ok := allowedOrigins[strings.ToLower(origin)]
+	return ok
+}
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin:     func(r *http.Request) bool { return true },
+	CheckOrigin:     checkOrigin,
 }
 
 type Client struct {

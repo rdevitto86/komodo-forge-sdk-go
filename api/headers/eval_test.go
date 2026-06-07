@@ -1,19 +1,29 @@
 package headers
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 )
 
 func TestHeaderEval_ValidateHeaderValue_Authorization(t *testing.T) {
-	// "authorization" goes through jwt.ValidateToken — keys not initialized,
-	// so it will return false/error for any token value
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Authorization", "Bearer some.jwt.token")
 	ok, _ := ValidateHeaderValue("authorization", req)
-	// We just ensure the code path is exercised; result depends on JWT keys
 	_ = ok
+}
+
+func TestHeaderEval_ValidateHeaderValue_Authorization_MissingBearerPrefix(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("Authorization", "some.jwt.token")
+	ok, err := ValidateHeaderValue("authorization", req)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if ok {
+		t.Error("expected an Authorization header without a Bearer prefix to be rejected")
+	}
 }
 
 func TestHeaderEval_ValidateHeaderValue_AccessControlAllowOrigin(t *testing.T) {
@@ -275,23 +285,32 @@ func TestHeaderEval_ValidateHeaderValue_UserAgent(t *testing.T) {
 
 func TestHeaderEval_ValidateHeaderValue_XCSRFToken(t *testing.T) {
 	tests := []struct {
-		val  string
-		want bool
+		name      string
+		headerVal string
+		cookieVal string
+		setCookie bool
+		want      bool
 	}{
-		{"some-csrf-token", true},
-		{"abc123", true},
-		{"", false},
+		{"matching header and cookie", "abc123", "abc123", true, true},
+		{"header does not match cookie", "abc123", "xyz789", true, false},
+		{"missing cookie", "abc123", "", false, false},
+		{"empty header", "", "abc123", true, false},
 	}
 	for _, tc := range tests {
-		req := httptest.NewRequest("POST", "/", nil)
-		req.Header.Set("X-CSRF-Token", tc.val)
-		ok, err := ValidateHeaderValue("x-csrf-token", req)
-		if err != nil {
-			t.Errorf("unexpected error for %q: %v", tc.val, err)
-		}
-		if ok != tc.want {
-			t.Errorf("ValidateHeaderValue(x-csrf-token, %q) = %v, want %v", tc.val, ok, tc.want)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/", nil)
+			req.Header.Set("X-CSRF-Token", tc.headerVal)
+			if tc.setCookie {
+				req.AddCookie(&http.Cookie{Name: COOKIE_CSRF_TOKEN, Value: tc.cookieVal})
+			}
+			ok, err := ValidateHeaderValue("x-csrf-token", req)
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+			if ok != tc.want {
+				t.Errorf("ValidateHeaderValue(x-csrf-token) = %v, want %v", ok, tc.want)
+			}
+		})
 	}
 }
 

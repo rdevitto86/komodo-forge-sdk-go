@@ -1,6 +1,7 @@
 package headers
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"os"
 	"regexp"
@@ -24,7 +25,10 @@ func ValidateHeaderValue(hdr string, req *http.Request) (bool, error) {
 	case "access-control-allow-origin":
 		return isValidCORS(val), nil
 	case "authorization":
-		return jwt.ValidateToken(val)
+		if !strings.HasPrefix(val, "Bearer ") {
+			return false, nil
+		}
+		return jwt.ValidateToken(strings.TrimPrefix(val, "Bearer "))
 	case "cache-control":
 		return isValidCacheControl(val), nil
 	case "cookie":
@@ -40,7 +44,7 @@ func ValidateHeaderValue(hdr string, req *http.Request) (bool, error) {
 	case "user-agent":
 		return isValidUserAgent(val), nil
 	case "x-csrf-token":
-		return isValidCSRF(val), nil
+		return isValidCSRF(req, val), nil
 	case "x-requested-by":
 		return isValidRequestedBy(val), nil
 	default:
@@ -108,12 +112,15 @@ func isValidIdempotencyKey(s string) bool {
 	return idempotencyKeyRE.MatchString(s)
 }
 
-func isValidCSRF(s string) bool {
-	if s == "" {
+func isValidCSRF(req *http.Request, headerVal string) bool {
+	if headerVal == "" {
 		return false
 	}
-	// TODO - implement CSRF token validation logic
-	return true
+	cookie, err := req.Cookie(COOKIE_CSRF_TOKEN)
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(headerVal), []byte(cookie.Value)) == 1
 }
 
 func isValidCORS(s string) bool {

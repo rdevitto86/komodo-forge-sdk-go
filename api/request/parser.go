@@ -1,8 +1,6 @@
 package request
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"net"
 	"net/http"
 	"net/url"
@@ -119,46 +117,12 @@ func GetQueryParams(req *http.Request) map[string]string {
 	return out
 }
 
-// Determines whether the request is from an API client or browser by inspecting API-Key and JWT bearer claims.
+// Checks only the X-API-Key header — Bearer claims are unverified at this layer and forgeable; prefer
+// ctxKeys.CLIENT_TYPE_KEY, which AuthMiddleware derives from verified claims.
 func GetClientType(req *http.Request) string {
 	if apiKey := req.Header.Get("X-API-Key"); apiKey != "" && IsValidAPIKey(apiKey) {
 		return "api"
 	}
-
-	authHeader := req.Header.Get("Authorization")
-	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
-		parts := strings.Split(strings.TrimPrefix(authHeader, "Bearer "), ".")
-
-		if len(parts) == 3 {
-			payload := parts[1]
-			// Add padding if needed
-			if m := len(payload) % 4; m != 0 {
-				payload += strings.Repeat("=", 4-m)
-			}
-
-			if decoded, err := base64.URLEncoding.DecodeString(payload); err == nil {
-				var claims map[string]any
-				if err := json.Unmarshal(decoded, &claims); err == nil {
-					if clientType, ok := claims["client_type"].(string); ok {
-						switch clientType {
-						case "api", "browser":
-							return clientType
-						}
-					}
-					if grantType, ok := claims["grant_type"].(string); ok && grantType == "client_credentials" {
-						return "api"
-					}
-					if scope, ok := claims["scope"].(string); ok {
-						if strings.Contains(scope, "api:") || strings.Contains(scope, "service:") {
-							return "api"
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Default to browser (enforces CSRF)
 	return "browser"
 }
 

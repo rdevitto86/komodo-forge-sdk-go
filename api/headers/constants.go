@@ -18,6 +18,8 @@ const (
 	HEADER_X_CSRF_TOKEN     = "X-CSRF-Token"
 )
 
+const COOKIE_CSRF_TOKEN = "csrf_token"
+
 const (
 	REQUESTED_BY_API_INT            = "API_INTERNAL"
 	REQUESTED_BY_API_EXT            = "API_EXTERNAL"

@@ -8,7 +8,6 @@ import (
 
 	httpErr "github.com/rdevitto86/komodo-forge-sdk-go/api/errors"
 	"github.com/rdevitto86/komodo-forge-sdk-go/api/headers"
-	httpReq "github.com/rdevitto86/komodo-forge-sdk-go/api/request"
 	ctxKeys "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 )
@@ -34,12 +33,7 @@ func IdempotencyMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		clientType := req.Context().Value(ctxKeys.CLIENT_TYPE_KEY)
-		if clientType == nil {
-			clientType = httpReq.GetClientType(req)
-		}
-
-		if clientType == "api" {
+		if req.Context().Value(ctxKeys.CLIENT_TYPE_KEY) == "api" {
 			ctx := context.WithValue(req.Context(), ctxKeys.IDEMPOTENCY_VALID_KEY, true)
 			req = req.WithContext(ctx)
 			next.ServeHTTP(wtr, req)

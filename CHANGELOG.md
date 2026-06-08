@@ -6,6 +6,30 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.16.3]
+
+### Fixed
+
+- **`security/jwt` — data race on key initialization.** `keysInitialized` was a plain `bool` read outside `keyMutex` by `InitializeKeys`, `SignToken`, `ValidateToken`, `ValidateAndParseClaims`, and `ParseClaims` while `InitializeKeys` wrote it under the write lock — a data race on concurrent first callers (caught by `-race`). It is now an `atomic.Bool`, and `InitializeKeys` re-checks it under the write lock before loading keys. Behavior is unchanged: a failed load (keys absent from the environment) still returns an error and can be retried, rather than being made permanent as a `sync.Once` would.
+
+- **`http/client` — circuit breaker no longer trips on 4xx responses.** The breaker counted any `StatusCode >= 400` as an upstream failure, so client errors (400, 401, 404) opened the breaker and denied subsequent traffic to an otherwise-healthy service. It now counts only `>= 500`. Adds `TestWithCircuitBreaker_DoesNotTripOn4xx` as a regression guard. (The retry path's default `ShouldRetry` already retried only `429`/`5xx`.)
+
+- **`api/request` — `GetClientKey` no longer trusts a spoofable `X-Forwarded-For`.** It returned the leftmost (client-supplied) `X-Forwarded-For` entry unconditionally, letting any caller forge the rate-limit / IP-access-control key. It now ignores the header by default (using the direct peer `RemoteAddr`), and when a trusted-proxy depth is configured via `SetTrustedProxyDepth(n)` or the `TRUSTED_PROXY_DEPTH` env var, reads the client IP `n` entries from the right — the trusted-proxy side — ignoring injected left hops; a header shorter than the configured depth falls back to the peer. Affects both callers (`api/ratelimit`, `api/ipaccess`).
+
+- **`auth/middleware` — internal error detail no longer leaked to clients.** Both `AuthMiddleware` and `Middleware` passed `err.Error()` straight into the client response via `WithDetail` on token extract/validate/verify failures, exposing JWT and crypto internals. All four paths now log the full error internally and return a generic detail (`"missing or malformed authorization header"`, `"token validation failed"`, or `"token verification failed"`).
+
+- **`api/request` — `GetRequestID` falls back to the `X-Request-ID` header.** It read only the request-ID context value (set by `RequestIDMiddleware`) and returned `"unknown"` whenever the middleware had not run (e.g. early panics, error responses on unrouted paths). It now falls back to the inbound `X-Request-ID` header before `"unknown"`, so error envelopes carry the caller's request ID even before middleware runs.
+
+- **`api/ratelimit` — `LoadConfig` no longer clobbered by lazy env defaults.** `loadCfg`'s one-time env loader overwrote a configuration set explicitly via `LoadConfig` on its first call, silently resetting programmatic RPS/burst settings to env defaults. The loader now skips the default load when a config is already present.
+
+### Changed
+
+- **`api/ratelimit` — bucket TTL consolidated onto a single env var.** The distributed-cache TTL (read in `loadEnv`, formerly from `BUCKET_TTL_SECOND`) and the in-memory bucket evictor (`startBucketEvictor`, from `RATE_LIMIT_BUCKET_TTL_SEC`) used two different env var names, so neither was authoritative. Both now read `RATE_LIMIT_BUCKET_TTL_SEC` through `envCfg`; `BUCKET_TTL_SECOND` is no longer consulted. The evictor still defaults to 300s when unset.
+
+- **Comment-standard pass over the 0.16.x diff.** Doc comments across the changed source and test files were brought in line with the SDK comment standard: comments no longer open with the symbol name (they lead with a verb), `BreakerConfig`/`RetryConfig` field docs moved inline, over-long doc blocks were trimmed to the non-obvious contract, and test-function comments that merely restated assertions were removed. No behavioral change.
+
+---
+
 ## [0.16.2]
 
 ### Added

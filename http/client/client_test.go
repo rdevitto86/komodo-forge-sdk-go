@@ -164,6 +164,34 @@ func TestWithCircuitBreaker_ReturnsErrOpenWhenOpen(t *testing.T) {
 	}
 }
 
+func TestWithCircuitBreaker_DoesNotTripOn4xx(t *testing.T) {
+	const threshold = 3
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := newBreakerClient(threshold, time.Hour)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, srv.URL, nil)
+
+	// Far exceed the failure threshold with 4xx responses; the breaker must stay closed.
+	for i := range threshold * 3 {
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatalf("call %d: unexpected error from 4xx response: %v", i, err)
+		}
+		resp.Body.Close()
+	}
+
+	resp, err := c.Do(req)
+	if errors.Is(err, ErrOpen) {
+		t.Fatal("breaker opened on 4xx responses; only 5xx should count as failures")
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+}
+
 func TestNoBreaker_TransportErrorPassesThrough(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	srv.Close()

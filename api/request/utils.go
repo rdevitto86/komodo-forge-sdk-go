@@ -10,9 +10,13 @@ import (
 	httpcontext "github.com/rdevitto86/komodo-forge-sdk-go/http/context"
 )
 
-// Returns the request ID from context, falling back to "unknown" if absent.
+// Returns the request ID from context (set by RequestIDMiddleware), falling back to the
+// X-Request-ID header when the middleware has not run, then to "unknown".
 func GetRequestID(req *http.Request) string {
 	if rid, ok := req.Context().Value(httpcontext.REQUEST_ID_KEY).(string); ok && rid != "" {
+		return rid
+	}
+	if rid := req.Header.Get("X-Request-ID"); rid != "" {
 		return rid
 	}
 	return "unknown"

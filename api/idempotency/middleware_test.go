@@ -21,14 +21,12 @@ func withClientType(req *http.Request, clientType string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), ctxKeys.CLIENT_TYPE_KEY, clientType))
 }
 
-// clearStore removes all keys from the default store between tests.
+// Installs a fresh local store so each test is isolated.
 func clearStore() {
-	// Create a fresh local store for each test to ensure isolation
 	testStore := NewStore("local", 0)
 	SetStore(testStore)
 }
 
-// Safe HTTP methods skip the idempotency check entirely.
 func TestIdempotencyMiddleware_SafeMethodsPassThrough(t *testing.T) {
 	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions} {
 		t.Run(method, func(t *testing.T) {
@@ -42,7 +40,6 @@ func TestIdempotencyMiddleware_SafeMethodsPassThrough(t *testing.T) {
 	}
 }
 
-// API clients (identified by X-API-Key) bypass the idempotency check.
 func TestIdempotencyMiddleware_APIClientPassesThrough(t *testing.T) {
 	req := withClientType(httptest.NewRequest(http.MethodPost, "/", nil), "api")
 	rec := httptest.NewRecorder()
@@ -54,7 +51,6 @@ func TestIdempotencyMiddleware_APIClientPassesThrough(t *testing.T) {
 	}
 }
 
-// Browser client with a valid idempotency key (8-64 alphanum chars) passes.
 func TestIdempotencyMiddleware_BrowserValidKey(t *testing.T) {
 	clearStore()
 
@@ -69,7 +65,6 @@ func TestIdempotencyMiddleware_BrowserValidKey(t *testing.T) {
 	}
 }
 
-// Browser client with a key shorter than 8 characters is rejected.
 func TestIdempotencyMiddleware_BrowserShortKey(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	req.Header.Set("Idempotency-Key", "short") // 5 chars — below minimum
@@ -82,7 +77,6 @@ func TestIdempotencyMiddleware_BrowserShortKey(t *testing.T) {
 	}
 }
 
-// Browser client with no idempotency key is rejected.
 func TestIdempotencyMiddleware_BrowserMissingKey(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	rec := httptest.NewRecorder()
@@ -94,7 +88,6 @@ func TestIdempotencyMiddleware_BrowserMissingKey(t *testing.T) {
 	}
 }
 
-// A duplicate (already-stored, non-expired) key is rejected with 409.
 func TestIdempotencyMiddleware_BrowserDuplicateKey(t *testing.T) {
 	clearStore()
 
@@ -118,7 +111,6 @@ func TestIdempotencyMiddleware_BrowserDuplicateKey(t *testing.T) {
 	}
 }
 
-// An expired store entry is evicted and the request proceeds normally.
 func TestIdempotencyMiddleware_ExpiredKeyEvictedAndAllowed(t *testing.T) {
 	clearStore()
 
@@ -139,8 +131,6 @@ func TestIdempotencyMiddleware_ExpiredKeyEvictedAndAllowed(t *testing.T) {
 	}
 }
 
-// TestGetIdemTTL_DefaultWhenNoEnv verifies getIdemTTL returns the default when
-// IDEMPOTENCY_TTL_SEC is not set.
 func TestGetIdemTTL_DefaultWhenNoEnv(t *testing.T) {
 	os.Unsetenv("IDEMPOTENCY_TTL_SEC")
 	if got := getIdemTTL(); got != DEFAULT_IDEM_TTL_SEC {
@@ -148,7 +138,6 @@ func TestGetIdemTTL_DefaultWhenNoEnv(t *testing.T) {
 	}
 }
 
-// TestGetIdemTTL_ValidPositiveValue verifies getIdemTTL parses a valid positive duration.
 func TestGetIdemTTL_ValidPositiveValue(t *testing.T) {
 	os.Setenv("IDEMPOTENCY_TTL_SEC", "600")
 	defer os.Unsetenv("IDEMPOTENCY_TTL_SEC")
@@ -158,8 +147,6 @@ func TestGetIdemTTL_ValidPositiveValue(t *testing.T) {
 	}
 }
 
-// TestGetIdemTTL_ZeroOrNegativeReturnsDefault verifies that a non-positive value
-// falls back to the 300-second default guard.
 func TestGetIdemTTL_ZeroOrNegativeReturnsDefault(t *testing.T) {
 	// "0s" parses to 0 duration which triggers the <= 0 guard.
 	os.Setenv("IDEMPOTENCY_TTL_SEC", "0")

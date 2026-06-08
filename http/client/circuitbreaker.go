@@ -6,7 +6,6 @@ import (
 	"time"
 )
 
-// Returned by Do when the circuit breaker for the target host is open.
 var ErrOpen = errors.New("circuit breaker is open")
 
 type BreakerState int
@@ -32,30 +31,12 @@ func (s BreakerState) String() string {
 
 // Controls the behaviour of the circuit breaker attached via ClientConfig.CircuitBreaker.
 type BreakerConfig struct {
-	// FailureThreshold is the number of failures before the breaker opens.
-	// Recommended default: 5.
-	FailureThreshold int
-
-	// SuccessThreshold is the number of consecutive successes in HalfOpen
-	// required before the breaker closes again.
-	// Recommended default: 2.
-	SuccessThreshold int
-
-	// OpenTimeout is how long the breaker stays Open before moving to HalfOpen.
-	// Recommended default: 60s.
-	OpenTimeout time.Duration
-
-	// MaxHalfOpenRequests is the max concurrent requests allowed through in HalfOpen.
-	// Recommended default: 1.
-	MaxHalfOpenRequests int
-
-	// MaxHosts caps the number of tracked hosts. When the cap is reached, new
-	// hosts bypass the breaker entirely (fail open). 0 means unlimited.
-	MaxHosts int
-
-	// OnStateChange is called when a breaker for a key transitions state.
-	// nil means no-op.
-	OnStateChange func(key string, from, to BreakerState)
+	FailureThreshold    int                                     // failures before the breaker opens; recommended default 5
+	SuccessThreshold    int                                     // consecutive HalfOpen successes needed to close; recommended default 2
+	OpenTimeout         time.Duration                           // time Open before moving to HalfOpen; recommended default 60s
+	MaxHalfOpenRequests int                                     // max concurrent requests allowed through in HalfOpen; recommended default 1
+	MaxHosts            int                                     // caps tracked hosts; new hosts fail open past the cap; 0 means unlimited
+	OnStateChange       func(key string, from, to BreakerState) // called on a key's state transition; nil means no-op
 }
 
 type breakerState struct {
@@ -66,7 +47,7 @@ type breakerState struct {
 	openedAt         time.Time
 }
 
-// breakerEntry pairs per-host state with its own mutex so hosts don't contend with each other.
+// Pairs per-host breaker state with its own mutex so hosts don't contend.
 type breakerEntry struct {
 	mu    sync.Mutex
 	state breakerState

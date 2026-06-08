@@ -6,24 +6,11 @@ import (
 	"time"
 )
 
-// Controls retry-with-backoff behavior attached via ClientConfig.Retry.
 type RetryConfig struct {
-	// MaxAttempts is the total number of attempts, including the first.
-	// Recommended default: 3.
-	MaxAttempts int
-
-	// BaseDelay is the backoff before the first retry; it doubles after each
-	// subsequent attempt up to MaxDelay.
-	// Recommended default: 100ms.
-	BaseDelay time.Duration
-
-	// MaxDelay caps the exponential backoff between attempts.
-	// Recommended default: 2s.
-	MaxDelay time.Duration
-
-	// ShouldRetry decides whether a response/error warrants another attempt.
-	// nil falls back to retrying transport errors, 429, and 5xx responses.
-	ShouldRetry func(resp *http.Response, err error) bool
+	MaxAttempts int                                       // total attempts including the first; recommended default 3
+	BaseDelay   time.Duration                             // backoff before the first retry, doubling each attempt up to MaxDelay; recommended default 100ms
+	MaxDelay    time.Duration                             // caps the exponential backoff between attempts; recommended default 2s
+	ShouldRetry func(resp *http.Response, err error) bool // decides whether to retry; nil retries transport errors, 429, and 5xx
 }
 
 func defaultShouldRetry(resp *http.Response, err error) bool {
@@ -33,9 +20,8 @@ func defaultShouldRetry(resp *http.Response, err error) bool {
 	return resp != nil && (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500)
 }
 
-// doWithRetry issues req through do, retrying with exponential backoff until cfg.ShouldRetry
-// returns false, the attempt budget is exhausted, the request context is done, or the
-// circuit breaker reports it is open.
+// Issues req through do, retrying with exponential backoff until ShouldRetry returns false,
+// the attempt budget is exhausted, the request context is done, or the breaker reports open.
 func (c *Client) doWithRetry(req *http.Request) (*http.Response, error) {
 	cfg := c.retry
 	delay := cfg.BaseDelay
@@ -71,8 +57,8 @@ func (c *Client) doWithRetry(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
-// cloneRequest produces a replayable copy of req via GetBody, since the original
-// request body is consumed by the first attempt.
+// Produces a replayable copy of req via GetBody, since the original body is consumed
+// by the first attempt.
 func cloneRequest(req *http.Request) (*http.Request, error) {
 	clone := req.Clone(req.Context())
 	if req.GetBody != nil {

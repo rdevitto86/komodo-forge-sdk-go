@@ -12,7 +12,7 @@ import (
 	golangJWT "github.com/golang-jwt/jwt/v5"
 )
 
-// generateTestKeys creates a fresh RSA-2048 key pair and returns PEM-encoded strings.
+// Creates a fresh RSA-2048 key pair and returns PEM-encoded strings.
 func generateTestKeys(t *testing.T) (privPEM, pubPEM string) {
 	t.Helper()
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -30,11 +30,11 @@ func generateTestKeys(t *testing.T) (privPEM, pubPEM string) {
 	return
 }
 
-// resetJWTState wipes all package-level JWT state so each test starts clean.
+// Wipes all package-level JWT state so each test starts clean.
 func resetJWTState() {
 	keyMutex.Lock()
 	defer keyMutex.Unlock()
-	keysInitialized = false
+	keysInitialized.Store(false)
 	cachedPrivateKey = nil
 	cachedPublicKey = nil
 	kid = ""
@@ -42,7 +42,7 @@ func resetJWTState() {
 	aud = ""
 }
 
-// setupInitializedKeys sets up config + calls InitializeKeys, cleaning up on t.Cleanup.
+// Configures keys, calls InitializeKeys, and registers t.Cleanup teardown.
 func setupInitializedKeys(t *testing.T) {
 	t.Helper()
 	resetJWTState()
@@ -68,7 +68,7 @@ func setupInitializedKeys(t *testing.T) {
 func TestJWT_InitializeKeys_Success(t *testing.T) {
 	setupInitializedKeys(t)
 
-	if !keysInitialized {
+	if !keysInitialized.Load() {
 		t.Error("expected keysInitialized = true")
 	}
 	if cachedPrivateKey == nil {

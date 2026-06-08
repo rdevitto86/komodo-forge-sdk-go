@@ -19,14 +19,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		tokenString, err := jwt.ExtractTokenFromRequest(req)
 		if err != nil {
 			logger.Error("failed to extract token", err)
-			httpErr.SendError(wtr, req, httpErr.Auth.InvalidToken, httpErr.WithDetail(err.Error()))
+			httpErr.SendError(wtr, req, httpErr.Auth.InvalidToken, httpErr.WithDetail("missing or malformed authorization header"))
 			return
 		}
 
 		claims, err := jwt.ValidateAndParseClaims(tokenString)
 		if err != nil {
 			logger.Error("token validation failed", err)
-			httpErr.SendError(wtr, req, httpErr.Auth.InvalidToken, httpErr.WithDetail(err.Error()))
+			httpErr.SendError(wtr, req, httpErr.Auth.InvalidToken, httpErr.WithDetail("token validation failed"))
 			return
 		}
 
@@ -65,7 +65,7 @@ func Middleware(v Verifier) func(http.Handler) http.Handler {
 			tokenString, err := jwt.ExtractTokenFromRequest(req)
 			if err != nil {
 				logger.Error("failed to extract token from request", err)
-				httpErr.SendError(wtr, req, httpErr.Auth.InvalidToken, httpErr.WithDetail(err.Error()))
+				httpErr.SendError(wtr, req, httpErr.Auth.InvalidToken, httpErr.WithDetail("missing or malformed authorization header"))
 				return
 			}
 
@@ -76,7 +76,7 @@ func Middleware(v Verifier) func(http.Handler) http.Handler {
 				if errors.Is(err, ErrExpired) {
 					errCode = httpErr.Auth.ExpiredToken
 				}
-				httpErr.SendError(wtr, req, errCode, httpErr.WithDetail(err.Error()))
+				httpErr.SendError(wtr, req, errCode, httpErr.WithDetail("token verification failed"))
 				return
 			}
 

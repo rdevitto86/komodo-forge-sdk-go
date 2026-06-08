@@ -78,7 +78,8 @@ func NewClient(cfg ClientConfig) *Client {
 	return c
 }
 
-// Executes the request, retrying with backoff when configured and routing each attempt through the circuit breaker; failures are counted per host and ErrOpen is returned when the breaker is open.
+// Executes the request, retrying with backoff when configured and routing each attempt through the circuit breaker;
+// failures are counted per host and ErrOpen is returned when the breaker is open.
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	if c.retry != nil {
 		return c.doWithRetry(req)
@@ -86,7 +87,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	return c.do(req)
 }
 
-// do issues a single attempt, routing through the circuit breaker when one is configured.
+// Issues a single attempt, routing through the circuit breaker when one is configured.
 func (c *Client) do(req *http.Request) (*http.Response, error) {
 	if c.breaker == nil {
 		return c.httpClient.Do(req)
@@ -102,8 +103,11 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return err
 		}
-		if resp.StatusCode >= 400 {
-			return fmt.Errorf("upstream %d", resp.StatusCode)
+		// Count only 5xx as upstream failures. A 4xx reflects a caller mistake
+		// (bad request, not found, unauthorized), not service health, so it must
+		// not trip the breaker.
+		if resp.StatusCode >= 500 {
+			return fmt.Errorf("upstream returned %d", resp.StatusCode)
 		}
 		return nil
 	})
@@ -112,7 +116,7 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 		return nil, ErrOpen
 	}
 
-	// For non-ErrOpen breaker errors (transport error or 4xx/5xx), return the
+	// For non-ErrOpen breaker errors (transport error or 5xx), return the
 	// original resp and err so the caller sees the real HTTP response when present.
 	return resp, err
 }

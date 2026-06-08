@@ -6,7 +6,15 @@ import (
 	"os"
 	"sync"
 	"testing"
+
+	"github.com/rdevitto86/komodo-forge-sdk-go/api/request"
 )
+
+// Trusts a single proxy hop so GetClientKey reads the test X-Forwarded-For value.
+func TestMain(m *testing.M) {
+	request.SetTrustedProxyDepth(1)
+	os.Exit(m.Run())
+}
 
 func okHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -14,8 +22,7 @@ func okHandler() http.Handler {
 	})
 }
 
-// resetIPState resets the package-level sync.Once and list so each test
-// can inject a fresh config via os.Setenv.
+// Resets the package-level sync.Once and list so each test can inject a fresh config via os.Setenv.
 func resetIPState() {
 	ipOnce = sync.Once{}
 	lists = Lists{}
@@ -113,8 +120,7 @@ func TestIPAccessMiddleware_BlocksCIDRBlacklist(t *testing.T) {
 	}
 }
 
-// TestIPAccessMiddleware_EmptyClientKey covers the branch where GetClientKey
-// returns an empty string (RemoteAddr is empty, no X-Forwarded-For header).
+// Forces an empty client key via empty RemoteAddr and no X-Forwarded-For header.
 func TestIPAccessMiddleware_EmptyClientKey(t *testing.T) {
 	resetIPState()
 
@@ -130,9 +136,7 @@ func TestIPAccessMiddleware_EmptyClientKey(t *testing.T) {
 	}
 }
 
-// TestIPAccessMiddleware_InvalidIPWithPort covers the path where the raw client
-// value is not a bare IP but parses as "hostname:port" with a non-IP hostname,
-// triggering the second ip == nil guard.
+// Feeds a "hostname:port" value with a non-IP hostname to hit the second ip == nil guard.
 func TestIPAccessMiddleware_InvalidIPWithPort(t *testing.T) {
 	resetIPState()
 

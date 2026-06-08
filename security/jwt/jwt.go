@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -20,7 +21,7 @@ var (
 	iss              string
 	aud              string
 	keyMutex         sync.RWMutex
-	keysInitialized  bool
+	keysInitialized  atomic.Bool
 )
 
 type CustomClaims struct {
@@ -31,12 +32,18 @@ type CustomClaims struct {
 
 // Loads RSA signing and verification keys from environment variables and assigns a KID for rotation support.
 func InitializeKeys() error {
-	if keysInitialized {
+	if keysInitialized.Load() {
 		return nil
 	}
 
 	keyMutex.Lock()
 	defer keyMutex.Unlock()
+
+	// Re-check under the write lock: a concurrent first caller may have loaded the
+	// keys between the unlocked Load above and acquiring the lock here.
+	if keysInitialized.Load() {
+		return nil
+	}
 
 	kid = os.Getenv("JWT_KID")
 	iss = os.Getenv("JWT_ISSUER")
@@ -59,13 +66,13 @@ func InitializeKeys() error {
 		return fmt.Errorf("failed to parse public key: %w", err)
 	}
 
-	keysInitialized = true
+	keysInitialized.Store(true)
 	return nil
 }
 
 // Mints a signed JWT with the given claims and a KID header for key rotation.
 func SignToken(issuer string, subject string, audience string, ttl int64, scopes []string) (string, error) {
-	if !keysInitialized {
+	if !keysInitialized.Load() {
 		return "", fmt.Errorf("failed to sign token: jwt keys not initialized")
 	}
 
@@ -92,7 +99,7 @@ func SignToken(issuer string, subject string, audience string, ttl int64, scopes
 
 // Validates a token's signature, expiration, issuer, and audience against env-configured values.
 func ValidateToken(tokenString string) (bool, error) {
-	if !keysInitialized {
+	if !keysInitialized.Load() {
 		return false, fmt.Errorf("failed to validate token: jwt keys not initialized")
 	}
 
@@ -138,7 +145,7 @@ func ValidateToken(tokenString string) (bool, error) {
 
 // Validates the token and returns its embedded claims in a single parse; prefer over ValidateToken + ParseClaims.
 func ValidateAndParseClaims(tokenString string) (*CustomClaims, error) {
-	if !keysInitialized {
+	if !keysInitialized.Load() {
 		return nil, fmt.Errorf("failed to validate token: jwt keys not initialized")
 	}
 
@@ -182,7 +189,7 @@ func ValidateAndParseClaims(tokenString string) (*CustomClaims, error) {
 
 // Parses and returns the embedded claims from a token string without re-validating issuer or audience.
 func ParseClaims(tokenString string) (*CustomClaims, error) {
-	if !keysInitialized {
+	if !keysInitialized.Load() {
 		return nil, fmt.Errorf("failed to parse claims: jwt keys not initialized")
 	}
 

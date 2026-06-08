@@ -190,6 +190,10 @@ func (bkt *bucket) retryAfter() time.Duration {
 
 func loadCfg() rlCfg {
 	cfgOnce.Do(func() {
+		// Don't clobber a config already set explicitly via LoadConfig.
+		if cfgPtr.Load() != nil {
+			return
+		}
 		parseFloat := func(key string, dflt float64) float64 {
 			if val := strings.TrimSpace(os.Getenv(key)); val != "" {
 				if f, err := strconv.ParseFloat(val, 64); err == nil && f > 0 {
@@ -233,7 +237,7 @@ func loadEnv() envCfg {
 	envOnce.Do(func() {
 		env := strings.ToLower(strings.TrimSpace(os.Getenv("ENV")))
 		ttlSec := 0
-		if val := strings.TrimSpace(os.Getenv("BUCKET_TTL_SECOND")); val != "" {
+		if val := strings.TrimSpace(os.Getenv("RATE_LIMIT_BUCKET_TTL_SEC")); val != "" {
 			if i, err := strconv.Atoi(val); err == nil {
 				ttlSec = i
 			}
@@ -254,11 +258,10 @@ func getBucket(key string) *bucket {
 }
 
 func startBucketEvictor() {
-	ttlSec := 300
-	if val := strings.TrimSpace(os.Getenv("RATE_LIMIT_BUCKET_TTL_SEC")); val != "" {
-		if i, err := strconv.Atoi(val); err == nil && i > 0 {
-			ttlSec = i
-		}
+	// Sourced from envCfg (RATE_LIMIT_BUCKET_TTL_SEC); falls back to 300s when unset.
+	ttlSec := loadEnv().ttlSec
+	if ttlSec <= 0 {
+		ttlSec = 300
 	}
 	ttl := time.Duration(ttlSec) * time.Second
 	ticker := time.NewTicker(time.Minute)

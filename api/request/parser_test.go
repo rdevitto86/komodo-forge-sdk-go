@@ -166,12 +166,55 @@ func TestGetQueryParams_NilURL(t *testing.T) {
 	}
 }
 
-func TestGetClientKey_XForwardedFor(t *testing.T) {
+func TestGetClientKey_XForwardedFor_IgnoredByDefault(t *testing.T) {
+	SetTrustedProxyDepth(0)
 	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "203.0.113.5:9999"
 	req.Header.Set("X-Forwarded-For", "10.0.0.1, 10.0.0.2, 10.0.0.3")
+	got := GetClientKey(req)
+	if got != "203.0.113.5" {
+		t.Errorf("GetClientKey = %q, want peer 203.0.113.5 (XFF must be ignored at depth 0)", got)
+	}
+}
+
+func TestGetClientKey_XForwardedFor_TrustedDepth(t *testing.T) {
+	// Two trusted proxies (proxyA, proxyB=peer) each append one X-Forwarded-For entry:
+	// "client, proxyA". Counting 2 from the right lands on the originating client.
+	SetTrustedProxyDepth(2)
+	defer SetTrustedProxyDepth(0)
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.3:9999"
+	req.Header.Set("X-Forwarded-For", "10.0.0.1, 10.0.0.2")
 	got := GetClientKey(req)
 	if got != "10.0.0.1" {
 		t.Errorf("GetClientKey = %q, want 10.0.0.1", got)
+	}
+}
+
+func TestGetClientKey_XForwardedFor_IgnoresInjectedLeftHop(t *testing.T) {
+	// An attacker prepends a spoofed hop; counting depth from the right still selects
+	// the real client recorded by the outermost trusted proxy.
+	SetTrustedProxyDepth(2)
+	defer SetTrustedProxyDepth(0)
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "10.0.0.3:9999"
+	req.Header.Set("X-Forwarded-For", "1.2.3.4, 10.0.0.1, 10.0.0.2")
+	got := GetClientKey(req)
+	if got != "10.0.0.1" {
+		t.Errorf("GetClientKey = %q, want 10.0.0.1 (spoofed 1.2.3.4 must be ignored)", got)
+	}
+}
+
+func TestGetClientKey_XForwardedFor_ShorterThanDepthFallsBack(t *testing.T) {
+	// A header shorter than the configured depth indicates spoofing/misconfig; use the peer.
+	SetTrustedProxyDepth(3)
+	defer SetTrustedProxyDepth(0)
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "203.0.113.5:9999"
+	req.Header.Set("X-Forwarded-For", "10.0.0.1")
+	got := GetClientKey(req)
+	if got != "203.0.113.5" {
+		t.Errorf("GetClientKey = %q, want peer 203.0.113.5", got)
 	}
 }
 
@@ -237,7 +280,7 @@ func TestIsValidAPIKey(t *testing.T) {
 	}
 }
 
-// makeTestJWT creates an unsigned test JWT (header.payload.sig).
+// Creates an unsigned test JWT (header.payload.sig).
 func makeTestJWT(claims map[string]any) string {
 	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"none","typ":"JWT"}`))
 	payload, _ := json.Marshal(claims)
@@ -245,8 +288,7 @@ func makeTestJWT(claims map[string]any) string {
 	return header + "." + encodedPayload + ".sig"
 }
 
-// TestGetAPIRoute_QueryInPath covers the branch where URL.Path contains a literal '?'
-// (e.g., a manually constructed URL rather than one parsed by net/url).
+// Exercises a URL.Path containing a literal '?' (manually built, not net/url-parsed).
 func TestGetAPIRoute_QueryInPath_Success(t *testing.T) {
 	req := &http.Request{
 		Method: "GET",
@@ -259,7 +301,6 @@ func TestGetAPIRoute_QueryInPath_Success(t *testing.T) {
 	}
 }
 
-// TestGetQueryParams_InvalidRawQuery covers the url.ParseQuery error path.
 func TestGetQueryParams_InvalidRawQuery_Failure(t *testing.T) {
 	req := &http.Request{URL: &url.URL{RawQuery: "%gg"}} // invalid percent-encoding
 	params := GetQueryParams(req)

@@ -4,8 +4,42 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 )
+
+var (
+	proxyDepthLoadOnce sync.Once
+	trustedProxyDepth  atomic.Int32
+)
+
+// Sets how many trusted reverse-proxy hops sit in front of the service, controlling how
+// far from the right of X-Forwarded-For GetClientKey reads the client IP. A depth of 0
+// (the default) ignores the header and uses the peer; overrides TRUSTED_PROXY_DEPTH.
+func SetTrustedProxyDepth(n int) {
+	// Mark the env loader as run so it cannot later overwrite this explicit setting.
+	proxyDepthLoadOnce.Do(func() {})
+	if n < 0 {
+		n = 0
+	}
+	trustedProxyDepth.Store(int32(n))
+}
+
+// Returns the configured trusted-proxy depth, loading it once from TRUSTED_PROXY_DEPTH
+// unless SetTrustedProxyDepth has already been called.
+func clientTrustDepth() int {
+	proxyDepthLoadOnce.Do(func() {
+		if v := strings.TrimSpace(os.Getenv("TRUSTED_PROXY_DEPTH")); v != "" {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				trustedProxyDepth.Store(int32(n))
+			}
+		}
+	})
+	return int(trustedProxyDepth.Load())
+}
 
 // Extracts the API version from Accept or Content-Type headers (primary) or the URL path prefix as a fallback.
 func GetAPIVersion(req *http.Request) string {
@@ -138,18 +172,26 @@ func IsValidAPIKey(apiKey string) bool {
 	return true
 }
 
-// Extracts a client identifier from the request, preferring X-Forwarded-For.
+// Extracts a client identifier from the request: the direct peer address by default,
+// or the originating client from X-Forwarded-For when a trusted-proxy depth is configured.
+// Never trusts the client-supplied leftmost hop, which would let callers spoof the key
+// and bypass rate limiting and IP access control.
 func GetClientKey(req *http.Request) string {
-	// prefer first X-Forwarded-For entry when present
-	if xf := req.Header.Get("X-Forwarded-For"); xf != "" {
-		parts := strings.Split(xf, ",")
-		if len(parts) > 0 {
-			if ip := strings.TrimSpace(parts[0]); ip != "" {
-				return ip
+	if depth := clientTrustDepth(); depth > 0 {
+		if xf := req.Header.Get("X-Forwarded-For"); xf != "" {
+			parts := strings.Split(xf, ",")
+			// With `depth` trusted proxies in front, the originating client is the entry
+			// `depth` positions from the right (index len-depth); anything further left
+			// may be a client-injected spoof and is ignored. A header shorter than depth
+			// signals spoofing or misconfig — fall through to the unspoofable peer.
+			if idx := len(parts) - depth; idx >= 0 && idx < len(parts) {
+				if ip := strings.TrimSpace(parts[idx]); ip != "" {
+					return ip
+				}
 			}
 		}
 	}
-	// fallback to remote addr host
+	// Fall back to the direct peer host — the only source a client cannot forge.
 	host, _, err := net.SplitHostPort(req.RemoteAddr)
 	if err == nil && host != "" {
 		return host

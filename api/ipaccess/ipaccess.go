@@ -5,7 +5,6 @@ import (
 	"strings"
 )
 
-// Parsed whitelist/blacklist IPs and CIDR networks.
 type Lists struct {
 	WhitelistIPs  []net.IP
 	WhitelistNets []*net.IPNet

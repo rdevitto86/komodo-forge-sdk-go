@@ -12,8 +12,7 @@ import (
 	"time"
 )
 
-// sequenceTransport returns the configured status codes in order, repeating the
-// last one once the sequence is exhausted, and counts how many attempts it served.
+// Returns the configured status codes in order, repeating the last once exhausted, and counts attempts served.
 type sequenceTransport struct {
 	mu       sync.Mutex
 	attempts int

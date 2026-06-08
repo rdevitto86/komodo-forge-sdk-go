@@ -20,7 +20,6 @@ func okHandler() http.Handler {
 	})
 }
 
-// Safe methods bypass CSRF checks entirely.
 func TestCSRFMiddleware_SafeMethodsPassThrough(t *testing.T) {
 	for _, method := range []string{http.MethodGet, http.MethodHead, http.MethodOptions} {
 		t.Run(method, func(t *testing.T) {
@@ -36,7 +35,6 @@ func TestCSRFMiddleware_SafeMethodsPassThrough(t *testing.T) {
 	}
 }
 
-// Verified API clients (CLIENT_TYPE_KEY set in context by AuthMiddleware) are exempt from CSRF.
 func TestCSRFMiddleware_APIClientExempt(t *testing.T) {
 	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
 		t.Run(method, func(t *testing.T) {
@@ -52,7 +50,6 @@ func TestCSRFMiddleware_APIClientExempt(t *testing.T) {
 	}
 }
 
-// An unverified X-API-Key header alone does not exempt a request — only a verified context value does.
 func TestCSRFMiddleware_ForgedAPIKeyHeaderDoesNotExempt(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
 	req.Header.Set("X-API-Key", "service-api-key")
@@ -65,7 +62,6 @@ func TestCSRFMiddleware_ForgedAPIKeyHeaderDoesNotExempt(t *testing.T) {
 	}
 }
 
-// Browser client POST with a CSRF header matching the issued cookie passes (double-submit).
 func TestCSRFMiddleware_BrowserWithValidToken(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.Handle("/", CSRFMiddleware(okHandler()))
@@ -96,7 +92,6 @@ func TestCSRFMiddleware_BrowserWithValidToken(t *testing.T) {
 	}
 }
 
-// A header token that doesn't match the cookie is rejected — guards against a forged header alone.
 func TestCSRFMiddleware_BrowserWithMismatchedToken(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/items", nil)
 	req.Header.Set("X-CSRF-Token", "forged-token")
@@ -110,7 +105,6 @@ func TestCSRFMiddleware_BrowserWithMismatchedToken(t *testing.T) {
 	}
 }
 
-// Browser client POST without CSRF token is rejected.
 func TestCSRFMiddleware_BrowserWithoutToken(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/items", nil)
 	rec := httptest.NewRecorder()
@@ -122,7 +116,6 @@ func TestCSRFMiddleware_BrowserWithoutToken(t *testing.T) {
 	}
 }
 
-// PUT and DELETE from browser without CSRF token are also rejected.
 func TestCSRFMiddleware_BrowserMutatingMethodsRequireToken(t *testing.T) {
 	for _, method := range []string{http.MethodPut, http.MethodDelete, http.MethodPatch} {
 		t.Run(method, func(t *testing.T) {

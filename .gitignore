@@ -22,6 +22,8 @@ claude.md
 .claude/
 TODO.md
 **/TODO.md
+MEMORY.md
+**/MEMORY.md
 
 # Go workspace files (local development only)
 go.work

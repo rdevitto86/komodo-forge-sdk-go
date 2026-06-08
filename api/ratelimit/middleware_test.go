@@ -5,7 +5,15 @@ import (
 	"net/http/httptest"
 	"os"
 	"testing"
+
+	"github.com/rdevitto86/komodo-forge-sdk-go/api/request"
 )
+
+// Trusts a single proxy hop so GetClientKey reads the test X-Forwarded-For value.
+func TestMain(m *testing.M) {
+	request.SetTrustedProxyDepth(1)
+	os.Exit(m.Run())
+}
 
 func okHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -80,15 +88,15 @@ func TestRateLimiterMiddleware_IsolatesBucketsByKey(t *testing.T) {
 	}
 }
 
-// TestRateLimiterMiddleware_FailOpen covers the err!=nil + ShouldFailOpen()==true branch.
-// Setting ENV=prod causes ratelimit.Allow to call AllowDistributed which errors because
-// no Elasticache client is configured; with RATE_LIMIT_FAIL_OPEN=true the request passes.
+// In prod, Allow hits the unconfigured distributed store and errors; FAIL_OPEN=true lets the request pass.
 func TestRateLimiterMiddleware_FailOpen(t *testing.T) {
 	os.Setenv("ENV", "prod")
 	os.Setenv("RATE_LIMIT_FAIL_OPEN", "true")
+	resetState() // re-read env after setting it; the loaders cache via sync.Once
 	defer func() {
 		os.Unsetenv("ENV")
 		os.Unsetenv("RATE_LIMIT_FAIL_OPEN")
+		resetState()
 	}()
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -111,15 +119,15 @@ func TestRateLimiterMiddleware_FailOpen(t *testing.T) {
 	}
 }
 
-// TestRateLimiterMiddleware_FailClosed covers the err!=nil + ShouldFailOpen()==false branch.
-// Setting ENV=prod causes ratelimit.Allow to error; with RATE_LIMIT_FAIL_OPEN=false the
-// middleware returns 500.
+// In prod, Allow errors on the unconfigured distributed store; FAIL_OPEN=false yields 500.
 func TestRateLimiterMiddleware_FailClosed(t *testing.T) {
 	os.Setenv("ENV", "prod")
 	os.Setenv("RATE_LIMIT_FAIL_OPEN", "false")
+	resetState() // re-read env after setting it; the loaders cache via sync.Once
 	defer func() {
 		os.Unsetenv("ENV")
 		os.Unsetenv("RATE_LIMIT_FAIL_OPEN")
+		resetState()
 	}()
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

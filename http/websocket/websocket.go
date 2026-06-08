@@ -14,7 +14,7 @@ var (
 	allowedOrigins   = map[string]struct{}{}
 )
 
-// SetAllowedOrigins replaces the WebSocket upgrade origin allowlist; an empty list rejects every cross-origin upgrade.
+// Replaces the WebSocket upgrade origin allowlist; an empty list rejects every cross-origin upgrade.
 func SetAllowedOrigins(origins []string) {
 	m := make(map[string]struct{}, len(origins))
 	for _, o := range origins {

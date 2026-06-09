@@ -1,6 +1,3 @@
-// LocalStack community does not support Bedrock. Tests are component-only via
-// SDK interface mocking. Integration coverage requires a real AWS account with
-// the relevant model access granted.
 package bedrock
 
 import (
@@ -14,9 +11,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 )
 
-// ── Fakes ─────────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-// fakeRuntimeAPI implements bedrockRuntimeAPI for component tests.
 type fakeRuntimeAPI struct {
 	invokeModelFunc func(ctx context.Context, in *bedrockruntime.InvokeModelInput, opts ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error)
 	converseFunc    func(ctx context.Context, in *bedrockruntime.ConverseInput, opts ...func(*bedrockruntime.Options)) (*bedrockruntime.ConverseOutput, error)
@@ -36,7 +32,7 @@ func (f *fakeRuntimeAPI) Converse(ctx context.Context, in *bedrockruntime.Conver
 	return nil, errors.New("Converse not configured on fake")
 }
 
-// ── New tests ─────────────────────────────────────────────────────────────────
+// ── Unit Tests ───────────────────────────────────────────────────────────────
 
 func TestNew_EmptyRegion(t *testing.T) {
 	_, err := New(context.Background(), Config{})
@@ -47,8 +43,6 @@ func TestNew_EmptyRegion(t *testing.T) {
 		t.Errorf("got %v, want \"missing region\"", err)
 	}
 }
-
-// ── InvokeJSON tests ──────────────────────────────────────────────────────────
 
 func TestInvokeJSON_PassThrough(t *testing.T) {
 	rawBody := []byte(`{"custom":"payload","value":42}`)
@@ -96,8 +90,6 @@ func TestInvokeJSON_RejectsUnknownModel(t *testing.T) {
 		t.Error("InvokeJSON called the SDK despite an invalid model")
 	}
 }
-
-// ── Invoke tests ──────────────────────────────────────────────────────────────
 
 func TestInvoke_RejectsUnknownModel(t *testing.T) {
 	called := false
@@ -202,8 +194,6 @@ func TestInvoke_NonAnthropicReturnsError(t *testing.T) {
 		t.Errorf("Invoke error should not be ErrUnknownModel for a valid non-Anthropic model: %v", err)
 	}
 }
-
-// ── Converse tests ────────────────────────────────────────────────────────────
 
 func TestConverse_HappyPath(t *testing.T) {
 	const wantText = "Hello! I am doing well."

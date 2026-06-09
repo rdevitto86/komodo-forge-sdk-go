@@ -1,3 +1,10 @@
+// Package jwt provides RS256 token issuance and verification primitives.
+//
+// Token issuance (InitializeKeys, SignToken) is intended for the Auth API only — the single
+// service that holds the private signing key and runs the OAuth token endpoint. Application
+// services must NOT call SignToken: verify inbound tokens via the auth package
+// (auth.JWKSVerifier, the canonical verify path) and obtain their own service tokens via
+// http/client.WithServiceAuth (the OAuth2 client_credentials grant against the Auth API).
 package jwt
 
 import (
@@ -31,6 +38,9 @@ type CustomClaims struct {
 }
 
 // Loads RSA signing and verification keys from environment variables and assigns a KID for rotation support.
+//
+// Auth-API-only: this loads the private signing key (JWT_PRIVATE_KEY). Application services
+// must not configure a private key; they verify via auth.JWKSVerifier instead.
 func InitializeKeys() error {
 	if keysInitialized.Load() {
 		return nil
@@ -71,6 +81,9 @@ func InitializeKeys() error {
 }
 
 // Mints a signed JWT with the given claims and a KID header for key rotation.
+//
+// Auth-API-only: token issuance must originate from the central Auth API. Application services
+// must not call SignToken — obtain service tokens via http/client.WithServiceAuth instead.
 func SignToken(issuer string, subject string, audience string, ttl int64, scopes []string) (string, error) {
 	if !keysInitialized.Load() {
 		return "", fmt.Errorf("failed to sign token: jwt keys not initialized")
@@ -134,11 +147,6 @@ func ValidateToken(tokenString string) (bool, error) {
 	if !token.Valid {
 		return false, fmt.Errorf("invalid token")
 	}
-
-	// If the JTI is in Redis, it means this token was revoked/logged out
-	// if isBlacklisted(context.Background(), claims.ID) {
-	// 	return false, fmt.Errorf("token has been revoked")
-	// }
 
 	return true, nil
 }

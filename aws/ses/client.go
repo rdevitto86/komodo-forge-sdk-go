@@ -16,14 +16,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sesv2/types"
 )
 
-// Represents a file to attach to an outgoing email.
 type Attachment struct {
 	Filename    string
 	ContentType string
 	Data        []byte
 }
 
-// Carries all parameters for a SendEmail call.
 type SendEmailInput struct {
 	From        string
 	To          []string
@@ -36,17 +34,15 @@ type SendEmailInput struct {
 	Attachments []Attachment
 }
 
-// sesAPI is the interface seam over the AWS SESv2 SDK client; allows test injection without a real endpoint.
+// Interface seam over the AWS SESv2 SDK client; allows test injection without a real endpoint.
 type sesAPI interface {
 	SendEmail(ctx context.Context, in *sesv2.SendEmailInput, opts ...func(*sesv2.Options)) (*sesv2.SendEmailOutput, error)
 }
 
-// Defines the SES operations exposed by this package.
 type API interface {
 	SendEmail(ctx context.Context, input SendEmailInput) (messageID string, err error)
 }
 
-// Holds connection parameters for the SES client.
 type Config struct {
 	Region    string
 	AccessKey string
@@ -54,12 +50,11 @@ type Config struct {
 	Endpoint  string // optional; set to LocalStack URL in non-prod environments
 }
 
-// Wraps the AWS SESv2 SDK client.
 type Client struct {
 	ses sesAPI
 }
 
-// Creates and returns a new SES Client. Accepts a context for AWS config loading. Returns an error if Region is empty.
+// Creates a SES Client; returns an error if Region is empty.
 func New(ctx context.Context, config Config) (*Client, error) {
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
@@ -92,12 +87,12 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{ses: sesv2.NewFromConfig(cfg, opts...)}, nil
 }
 
-// newWithAPI constructs a Client with an injected sesAPI — used only in tests.
+// Constructs a Client with an injected sesAPI — used only in tests.
 func newWithAPI(api sesAPI) *Client {
 	return &Client{ses: api}
 }
 
-// Sends an outgoing email via SESv2. Assembles raw multipart/mixed MIME when attachments are present. Returns the SES message ID.
+// Sends an outgoing email via SESv2, assembling raw multipart/mixed MIME when attachments are present. Returns the SES message ID.
 func (c *Client) SendEmail(ctx context.Context, input SendEmailInput) (string, error) {
 	if input.From == "" {
 		return "", fmt.Errorf("missing from address")

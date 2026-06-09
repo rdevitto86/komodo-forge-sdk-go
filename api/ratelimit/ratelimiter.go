@@ -35,7 +35,7 @@ type Config struct {
 	FailOpen        *bool
 }
 
-// rlCfg holds rate-limit parameters stored in an atomic pointer so LoadConfig and rateConfig are race-free.
+// Holds rate-limit parameters stored in an atomic pointer so LoadConfig and rateConfig are race-free.
 type rlCfg struct {
 	rps   float64
 	burst float64
@@ -47,11 +47,9 @@ type envCfg struct {
 }
 
 var (
-	// cfgPtr is an atomic pointer to the current rlCfg.
 	cfgPtr  atomic.Pointer[rlCfg]
 	cfgOnce sync.Once
 
-	// envPtr is an atomic pointer to the cached envCfg.
 	envPtr  atomic.Pointer[envCfg]
 	envOnce sync.Once
 
@@ -59,16 +57,16 @@ var (
 	evictOnce      sync.Once
 	redisClientVal atomic.Value // stores *redisHolder; use loadRedis() to read
 
-	// failOpen is stored as an atomic int32 (0 = not loaded, 1 = open, 2 = closed).
-	// Separate from envCfg so ShouldFailOpen stays cheap.
+	// stored as an atomic int32 (0 = not loaded, 1 = open, 2 = closed);
+	// separate from envCfg so ShouldFailOpen stays cheap
 	failOpenVal int32
 	failOnce    sync.Once
 )
 
-// redisHolder wraps the redis.API interface so atomic.Value can store it.
+// Wraps the redis.API interface so atomic.Value can store it.
 type redisHolder struct{ c redis.API }
 
-// loadRedis returns the current Redis client, or nil if none is set.
+// Returns the current Redis client, or nil if none is set.
 func loadRedis() redis.API {
 	if h, ok := redisClientVal.Load().(*redisHolder); ok {
 		return h.c
@@ -258,7 +256,7 @@ func getBucket(key string) *bucket {
 }
 
 func startBucketEvictor() {
-	// Sourced from envCfg (RATE_LIMIT_BUCKET_TTL_SEC); falls back to 300s when unset.
+	// sourced from envCfg (RATE_LIMIT_BUCKET_TTL_SEC); falls back to 300s when unset
 	ttlSec := loadEnv().ttlSec
 	if ttlSec <= 0 {
 		ttlSec = 300

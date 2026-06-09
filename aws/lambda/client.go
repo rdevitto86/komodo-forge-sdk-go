@@ -11,13 +11,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/lambda/types"
 )
 
-// Exposes the Lambda operations provided by this package.
 type API interface {
 	Invoke(ctx context.Context, functionName string, payload []byte) ([]byte, error)
 	InvokeAsync(ctx context.Context, functionName string, payload []byte) error
 }
 
-// Holds credentials and endpoint configuration for the Lambda client.
 type Config struct {
 	Region    string
 	AccessKey string
@@ -25,7 +23,6 @@ type Config struct {
 	Endpoint  string // optional; set to LocalStack URL in non-prod environments
 }
 
-// Wraps the AWS Lambda SDK client.
 type Client struct {
 	lambda *lambda.Client
 }

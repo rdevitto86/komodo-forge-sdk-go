@@ -23,8 +23,8 @@ func IPAccessMiddleware(next http.Handler) http.Handler {
 	ipOnce.Do(func() {
 		wlIPs, wlNets := ParseList(os.Getenv("IP_WHITELIST"))
 		blIPs, blNets := ParseList(os.Getenv("IP_BLACKLIST"))
-		logger.Debug("parsed IP whitelist: ", logger.Attr("whitelist", wlIPs))
-		logger.Debug("parsed IP blacklist: ", logger.Attr("blacklist", blIPs))
+		logger.Debug("parsed IP whitelist", logger.Attr("whitelist", wlIPs))
+		logger.Debug("parsed IP blacklist", logger.Attr("blacklist", blIPs))
 
 		lists = Lists{
 			WhitelistIPs:  wlIPs,
@@ -53,7 +53,7 @@ func IPAccessMiddleware(next http.Handler) http.Handler {
 			}
 		}
 		if ip == nil {
-			logger.Error("invalid client IP: "+client, fmt.Errorf("invalid client IP"))
+			logger.Error("invalid client IP", fmt.Errorf("invalid client IP"), logger.Attr("client", client))
 			httpErr.SendError(
 				wtr, req, httpErr.Global.Forbidden, httpErr.WithDetail("invalid client IP"),
 			)
@@ -62,7 +62,7 @@ func IPAccessMiddleware(next http.Handler) http.Handler {
 
 		allowed := Evaluate(ip, &lists)
 		if !allowed {
-			logger.Error("access denied for client ip: "+client, fmt.Errorf("access denied for client IP"))
+			logger.Error("access denied", fmt.Errorf("access denied for client IP"), logger.Attr("client", client))
 			httpErr.SendError(
 				wtr, req, httpErr.Global.Forbidden, httpErr.WithDetail("access denied for client IP"),
 			)

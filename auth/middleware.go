@@ -111,6 +111,11 @@ func Middleware(v Verifier) func(http.Handler) http.Handler {
 }
 
 // Rejects requests whose JWT does not carry at least one "svc:"-prefixed scope.
+//
+// Service identity is conveyed by a "svc:<name>" scope: the Auth API issues machine tokens
+// (client_credentials grant) carrying such a scope, and consumers obtain them via
+// http/client.WithServiceAuth. Tokens should also set aud to the target service for
+// defense-in-depth, enforced separately by auth.JWKSVerifier (ExpectedAudience).
 func RequireServiceScope(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
 		scopes, ok := req.Context().Value(ctxKeys.SCOPES_KEY).([]string)

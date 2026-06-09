@@ -1,8 +1,3 @@
-// LocalStack community does not support the RDS Data API (rds-data is Pro-only).
-// Tests are component-only via SDK interface mocking. Integration coverage
-// requires LocalStack Pro or a sandbox AWS account with an Aurora cluster
-// that has the Data API enabled.
-
 package rds
 
 import (
@@ -15,10 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/rdsdata/types"
 )
 
-// ── Fakes ─────────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-// fakeRDSData captures calls made to each SDK method so tests can assert on
-// the inputs received, and returns pre-configured responses.
 type fakeRDSData struct {
 	executeIn   *rdsdata.ExecuteStatementInput
 	executeOut  *rdsdata.ExecuteStatementOutput
@@ -67,13 +60,10 @@ func (f *fakeRDSData) RollbackTransaction(_ context.Context, in *rdsdata.Rollbac
 	return &rdsdata.RollbackTransactionOutput{}, f.rollbackErr
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 func newTestClient(fake *fakeRDSData) *Client {
 	return newWithAPI(fake, "arn:aws:rds:us-east-1:123456789012:cluster:test", "arn:aws:secretsmanager:us-east-1:123456789012:secret:test", "testdb")
 }
 
-// findParam returns the SqlParameter with the given name from a slice, or nil.
 func findParam(params []types.SqlParameter, name string) *types.SqlParameter {
 	for i := range params {
 		if aws.ToString(params[i].Name) == name {
@@ -83,7 +73,7 @@ func findParam(params []types.SqlParameter, name string) *types.SqlParameter {
 	return nil
 }
 
-// ── Unit Tests ────────────────────────────────────────────────────────────────
+// ── Unit Tests ───────────────────────────────────────────────────────────────
 
 func TestNew_MissingRegion(t *testing.T) {
 	_, err := New(context.Background(), Config{

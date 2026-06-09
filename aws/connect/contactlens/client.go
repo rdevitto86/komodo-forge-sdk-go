@@ -11,17 +11,16 @@ import (
 	clstypes "github.com/aws/aws-sdk-go-v2/service/connectcontactlens/types"
 )
 
-// Exposes the Contact Lens operations provided by this package.
 type API interface {
 	ListRealtimeContactAnalysisSegments(ctx context.Context, instanceID, contactID string) ([]Segment, error)
 }
 
-// contactLensAPI is the interface seam over the AWS SDK client; allows test injection without a real endpoint.
+// Interface seam over the AWS SDK client; allows test injection without a real endpoint.
 type contactLensAPI interface {
 	ListRealtimeContactAnalysisSegments(ctx context.Context, in *connectcontactlens.ListRealtimeContactAnalysisSegmentsInput, opts ...func(*connectcontactlens.Options)) (*connectcontactlens.ListRealtimeContactAnalysisSegmentsOutput, error)
 }
 
-// Flattened view of a real-time analysis transcript segment; only TRANSCRIPT segments populate all fields.
+// Flattens a real-time analysis transcript segment; only TRANSCRIPT segments populate all fields.
 type Segment struct {
 	Type              string
 	Content           string
@@ -31,7 +30,6 @@ type Segment struct {
 	Sentiment         string
 }
 
-// Holds AWS configuration for constructing a Contact Lens client.
 type Config struct {
 	Region    string
 	AccessKey string
@@ -39,7 +37,6 @@ type Config struct {
 	Endpoint  string
 }
 
-// Wraps the AWS Connect Contact Lens SDK client behind the contactLensAPI interface.
 type Client struct {
 	api contactLensAPI
 }
@@ -77,7 +74,7 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{api: connectcontactlens.NewFromConfig(cfg, opts...)}, nil
 }
 
-// newWithAPI constructs a Client backed by a supplied fake; used in tests only.
+// Constructs a Client backed by a supplied fake; used in tests only.
 func newWithAPI(api contactLensAPI) *Client {
 	return &Client{api: api}
 }
@@ -118,7 +115,7 @@ func (c *Client) ListRealtimeContactAnalysisSegments(ctx context.Context, instan
 	return segments, nil
 }
 
-// mapSegment converts a raw SDK segment; non-transcript segments are returned with only Type set.
+// Converts a raw SDK segment; non-transcript segments are returned with only Type set.
 func mapSegment(raw clstypes.RealtimeContactAnalysisSegment) Segment {
 	if raw.Transcript == nil {
 		return Segment{Type: "UNKNOWN"}

@@ -13,19 +13,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 )
 
-// bedrockRuntimeAPI is the interface seam over the AWS SDK client; allows test injection without a real endpoint.
+// Interface seam over the AWS SDK client; allows test injection without a real endpoint.
 type bedrockRuntimeAPI interface {
 	InvokeModel(ctx context.Context, in *bedrockruntime.InvokeModelInput, opts ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error)
 	Converse(ctx context.Context, in *bedrockruntime.ConverseInput, opts ...func(*bedrockruntime.Options)) (*bedrockruntime.ConverseOutput, error)
 }
 
-// Represents a single conversation turn for use in Converse API calls.
 type Message struct {
 	Role    string // "user" or "assistant"
 	Content string
 }
 
-// Carries parameters for a Bedrock Converse API call.
 type ConverseInput struct {
 	Model       Model
 	Messages    []Message
@@ -34,7 +32,6 @@ type ConverseInput struct {
 	Temperature *float32
 }
 
-// Holds the model's text response and token usage from a Bedrock Converse API call.
 type ConverseOutput struct {
 	Text         string
 	StopReason   string
@@ -42,14 +39,12 @@ type ConverseOutput struct {
 	OutputTokens int32
 }
 
-// Exposes the Bedrock operations provided by this package.
 type API interface {
 	Invoke(ctx context.Context, model Model, prompt string) (string, error)
 	InvokeJSON(ctx context.Context, model Model, body []byte) ([]byte, error)
 	Converse(ctx context.Context, input ConverseInput) (*ConverseOutput, error)
 }
 
-// Holds connection parameters for the Bedrock client.
 type Config struct {
 	Region    string
 	AccessKey string
@@ -57,7 +52,6 @@ type Config struct {
 	Endpoint  string
 }
 
-// Wraps the AWS Bedrock Runtime SDK client.
 type Client struct {
 	api bedrockRuntimeAPI
 }
@@ -97,7 +91,7 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{api: bedrockruntime.NewFromConfig(cfg, opts...)}, nil
 }
 
-// newWithAPI constructs a Client backed by a supplied fake; used in tests only.
+// Constructs a Client backed by a supplied fake; used in tests only.
 func newWithAPI(api bedrockRuntimeAPI) *Client {
 	return &Client{api: api}
 }

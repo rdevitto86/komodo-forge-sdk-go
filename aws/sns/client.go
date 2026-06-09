@@ -11,7 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sns/types"
 )
 
-// Carries all parameters for an SNS publish call, including the optional FIFO fields GroupID and DedupID.
 type PublishInput struct {
 	TopicARN string
 	Message  string

@@ -56,6 +56,40 @@ func TestRun_LambdaEnv(t *testing.T) {
 	}
 }
 
+func TestApplyTimeoutDefaults(t *testing.T) {
+	t.Run("fills zero-value timeouts", func(t *testing.T) {
+		srv := &http.Server{}
+		applyTimeoutDefaults(srv)
+		if srv.ReadHeaderTimeout != DefaultReadHeaderTimeout {
+			t.Errorf("ReadHeaderTimeout = %v, want %v", srv.ReadHeaderTimeout, DefaultReadHeaderTimeout)
+		}
+		if srv.ReadTimeout != DefaultReadTimeout {
+			t.Errorf("ReadTimeout = %v, want %v", srv.ReadTimeout, DefaultReadTimeout)
+		}
+		if srv.WriteTimeout != DefaultWriteTimeout {
+			t.Errorf("WriteTimeout = %v, want %v", srv.WriteTimeout, DefaultWriteTimeout)
+		}
+		if srv.IdleTimeout != DefaultIdleTimeout {
+			t.Errorf("IdleTimeout = %v, want %v", srv.IdleTimeout, DefaultIdleTimeout)
+		}
+	})
+
+	t.Run("preserves caller-set timeouts", func(t *testing.T) {
+		srv := &http.Server{ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 7 * time.Second}
+		applyTimeoutDefaults(srv)
+		if srv.ReadHeaderTimeout != 3*time.Second {
+			t.Errorf("ReadHeaderTimeout overwritten: got %v", srv.ReadHeaderTimeout)
+		}
+		if srv.ReadTimeout != 7*time.Second {
+			t.Errorf("ReadTimeout overwritten: got %v", srv.ReadTimeout)
+		}
+		// Unset fields still get defaults.
+		if srv.WriteTimeout != DefaultWriteTimeout {
+			t.Errorf("WriteTimeout = %v, want %v", srv.WriteTimeout, DefaultWriteTimeout)
+		}
+	})
+}
+
 // ── Integration Tests ────────────────────────────────────────────────────────
 
 func TestRun(t *testing.T) {

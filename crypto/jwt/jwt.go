@@ -1,3 +1,9 @@
+// Package jwt is a deprecated re-export shim for security/jwt.
+//
+// Deprecated: import github.com/rdevitto86/komodo-forge-sdk-go/security/jwt directly.
+// Token issuance (SignToken/InitializeKeys) belongs to the Auth API only; application
+// services must verify tokens via the auth package (auth.JWKSVerifier) and obtain their
+// own service tokens via http/client.WithServiceAuth — never mint tokens themselves.
 package jwt
 
 import (

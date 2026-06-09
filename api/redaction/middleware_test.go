@@ -102,7 +102,6 @@ func TestRedactionMiddleware_OriginalBodyRestoredForDownstream(t *testing.T) {
 	}
 }
 
-// TestRedactionMiddleware_RedactsNilHeader covers the nil-guard in redactHeaders.
 func TestRedactionMiddleware_RedactsNilHeader(t *testing.T) {
 	// Build a request with a nil header map to exercise the nil guard in redactHeaders.
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -121,7 +120,6 @@ func TestRedactionMiddleware_RedactsNilHeader(t *testing.T) {
 	}
 }
 
-// TestRedactionMiddleware_LooksLikeTokenBearerPrefix covers the bearerRE branch.
 func TestRedactionMiddleware_LooksLikeTokenBearerPrefix(t *testing.T) {
 	// A non-sensitive header whose value looks like a bearer token should be redacted.
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -135,7 +133,6 @@ func TestRedactionMiddleware_LooksLikeTokenBearerPrefix(t *testing.T) {
 	}
 }
 
-// TestRedactionMiddleware_LooksLikeTokenLongString covers the longTokenRE branch.
 func TestRedactionMiddleware_LooksLikeTokenLongString(t *testing.T) {
 	// A value >30 chars matching [A-Za-z0-9\-\._~\+/]{20,} must be redacted.
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -148,7 +145,6 @@ func TestRedactionMiddleware_LooksLikeTokenLongString(t *testing.T) {
 	}
 }
 
-// TestRedactionMiddleware_NonJSONBodyFallback covers the non-JSON body path in redactBody.
 func TestRedactionMiddleware_NonJSONBodyFallback(t *testing.T) {
 	// Plain text body — no JSON content type — exercises the regex-fallback path.
 	body := "Bearer eyJhbGciOiJSUzI1NiJ9.payload.signature"
@@ -166,7 +162,6 @@ func TestRedactionMiddleware_NonJSONBodyFallback(t *testing.T) {
 	}
 }
 
-// TestRedactionMiddleware_RedactInterfaceArray covers the []interface{} case in redactInterface.
 func TestRedactionMiddleware_RedactInterfaceArray(t *testing.T) {
 	// JSON array body — exercises the []interface{} branch in redactInterface.
 	body := `[{"password":"secret"},{"name":"alice"}]`
@@ -184,7 +179,6 @@ func TestRedactionMiddleware_RedactInterfaceArray(t *testing.T) {
 	}
 }
 
-// TestRedactionMiddleware_RedactQueryTokenValue covers the looksLikeToken check in redactQuery.
 func TestRedactionMiddleware_RedactQueryTokenValue(t *testing.T) {
 	// A query param whose value is a long token (>30 chars) should be redacted.
 	longVal := "abcdefghijklmnopqrstuvwxyz01234567890abcde"
@@ -197,7 +191,6 @@ func TestRedactionMiddleware_RedactQueryTokenValue(t *testing.T) {
 	}
 }
 
-// TestRedactionMiddleware_NilQueryValues covers the nil-guard in redactQuery.
 func TestRedactionMiddleware_NilQueryValues(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	// URL with nil RawQuery produces empty Values, not nil; testing via URL = nil.
@@ -215,14 +208,12 @@ func TestRedactionMiddleware_NilQueryValues(t *testing.T) {
 	}
 }
 
-// TestLooksLikeToken_EmptyString covers the s=="" early-return in looksLikeToken.
 func TestLooksLikeToken_EmptyString(t *testing.T) {
 	if looksLikeToken("") {
 		t.Error("empty string should not look like a token")
 	}
 }
 
-// TestRedactQuery_NilValues covers the nil-guard in redactQuery.
 func TestRedactQuery_NilValues(t *testing.T) {
 	if got := redactQuery(nil); got != nil {
 		t.Errorf("expected nil for nil input, got %v", got)

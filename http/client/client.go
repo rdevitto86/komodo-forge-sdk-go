@@ -23,17 +23,24 @@ var DefaultTransport http.RoundTripper = &http.Transport{
 	}).DialContext,
 }
 
+// DefaultMaxResponseBytes caps how much of a response body GetJSON/PostJSON will read
+// when ClientConfig.MaxResponseBytes is left at zero, guarding against memory exhaustion
+// from a hostile or buggy upstream. Set MaxResponseBytes < 0 to disable the cap.
+const DefaultMaxResponseBytes int64 = 10 << 20 // 10 MiB
+
 type ClientConfig struct {
-	Timeout        time.Duration
-	Transport      http.RoundTripper
-	CircuitBreaker *BreakerConfig
-	Retry          *RetryConfig
+	Timeout          time.Duration
+	Transport        http.RoundTripper
+	CircuitBreaker   *BreakerConfig
+	Retry            *RetryConfig
+	MaxResponseBytes int64 // per-response read cap; 0 = DefaultMaxResponseBytes, <0 = unlimited
 }
 
 type Client struct {
-	httpClient *http.Client
-	breaker    *breaker
-	retry      *RetryConfig
+	httpClient   *http.Client
+	breaker      *breaker
+	retry        *RetryConfig
+	maxRespBytes int64
 }
 
 // Returns a Client configured from cfg; zero-value cfg defaults to a 30s timeout, DefaultTransport, and no circuit breaker or retry.
@@ -48,11 +55,17 @@ func NewClient(cfg ClientConfig) *Client {
 		transport = DefaultTransport
 	}
 
+	maxResp := cfg.MaxResponseBytes
+	if maxResp == 0 {
+		maxResp = DefaultMaxResponseBytes
+	}
+
 	c := &Client{
 		httpClient: &http.Client{
 			Timeout:   timeout,
 			Transport: transport,
 		},
+		maxRespBytes: maxResp,
 	}
 
 	if cfg.CircuitBreaker != nil {
@@ -121,6 +134,15 @@ func (c *Client) do(req *http.Request) (*http.Response, error) {
 	return resp, err
 }
 
+// limitedBody wraps r so reads stop after the configured MaxResponseBytes, preventing a
+// hostile upstream from forcing unbounded allocation. A negative cap disables the limit.
+func (c *Client) limitedBody(r io.Reader) io.Reader {
+	if c.maxRespBytes < 0 {
+		return r
+	}
+	return io.LimitReader(r, c.maxRespBytes)
+}
+
 type HTTPError struct {
 	StatusCode int
 	Body       []byte
@@ -145,12 +167,12 @@ func GetJSON[T any](c *Client, ctx context.Context, url string) (*T, error) {
 	defer res.Body.Close()
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		body, _ := io.ReadAll(res.Body)
+		body, _ := io.ReadAll(c.limitedBody(res.Body))
 		return nil, &HTTPError{StatusCode: res.StatusCode, Body: body}
 	}
 
 	var result T
-	if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(c.limitedBody(res.Body)).Decode(&result); err != nil {
 		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
 	return &result, nil
@@ -182,12 +204,12 @@ func PostJSON[T any](c *Client, ctx context.Context, url string, body any) (*T, 
 	defer res.Body.Close()
 
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		raw, _ := io.ReadAll(res.Body)
+		raw, _ := io.ReadAll(c.limitedBody(res.Body))
 		return nil, &HTTPError{StatusCode: res.StatusCode, Body: raw}
 	}
 
 	var result T
-	if err := json.NewDecoder(res.Body).Decode(&result); err != nil {
+	if err := json.NewDecoder(c.limitedBody(res.Body)).Decode(&result); err != nil {
 		return nil, fmt.Errorf("unmarshal: %w", err)
 	}
 	return &result, nil

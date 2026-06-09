@@ -23,12 +23,8 @@ func okHandler() http.Handler {
 	})
 }
 
-// testRSAKey holds the generated RSA key pair for the test run.
 var testRSAKey *rsa.PrivateKey
 
-// TestMain generates a single RSA-2048 key pair, initializes the jwt package
-// once, and then runs all tests. Using a package-level key avoids the
-// keysInitialized once-flag from blocking re-initialization.
 func TestMain(m *testing.M) {
 	var err error
 	testRSAKey, err = rsa.GenerateKey(rand.Reader, 2048)
@@ -58,8 +54,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// signCustomToken creates a signed RS256 JWT with the provided claims using
-// the test RSA key. This allows testing specific claim combinations (e.g. IsAdmin).
 func signCustomToken(t *testing.T, claims gojwt.Claims) string {
 	t.Helper()
 	token := gojwt.NewWithClaims(gojwt.SigningMethodRS256, claims)
@@ -101,8 +95,6 @@ func TestAuthMiddleware_Success(t *testing.T) {
 	}
 }
 
-// TestAuthMiddleware_SetsSubjectAndSessionID verifies that Subject and ID claims
-// populate USER_ID_KEY and SESSION_ID_KEY in context.
 func TestAuthMiddleware_SetsSubjectAndSessionID(t *testing.T) {
 	tokenStr, err := jwt.SignToken("test-issuer", "subject-abc", "test-audience", 3600, nil)
 	if err != nil {
@@ -129,8 +121,6 @@ func TestAuthMiddleware_SetsSubjectAndSessionID(t *testing.T) {
 	}
 }
 
-// TestAuthMiddleware_WithAPIScopes verifies that scopes populate REQUEST_TYPE_KEY=api
-// and SCOPES_KEY in context.
 func TestAuthMiddleware_WithAPIScopes(t *testing.T) {
 	tokenStr, err := jwt.SignToken("test-issuer", "user-api", "test-audience", 3600, []string{"read:items", "write:items"})
 	if err != nil {
@@ -158,8 +148,6 @@ func TestAuthMiddleware_WithAPIScopes(t *testing.T) {
 	}
 }
 
-// TestAuthMiddleware_WithIsAdminClaim verifies that IsAdmin=true sets IS_ADMIN_KEY
-// and REQUEST_TYPE_KEY="ui" (admin with no scopes is treated as UI).
 func TestAuthMiddleware_WithIsAdminClaim(t *testing.T) {
 	type adminClaims struct {
 		Scopes  []string `json:"scp,omitempty"`

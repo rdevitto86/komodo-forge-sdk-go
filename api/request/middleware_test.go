@@ -92,8 +92,6 @@ func TestRequestIDMiddleware_NoCorrelationIDWhenAbsent(t *testing.T) {
 	}
 }
 
-// TestRequestIDMiddleware_UsesContextRequestID covers the branch where no
-// X-Request-ID header is present but the context carries REQUEST_ID_KEY.
 func TestRequestIDMiddleware_UsesContextRequestID(t *testing.T) {
 	const ctxID = "ctx-id-12345"
 

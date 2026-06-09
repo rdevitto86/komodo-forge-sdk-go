@@ -6,6 +6,25 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.17.0]
+
+> **Auth architecture: central issuance, verify-only SDK.** Token issuance is owned by the Auth API (the sole holder of the private signing key); every other service verifies tokens via the `auth` package and obtains its own service tokens via the OAuth2 `client_credentials` grant. This release adds the keyless service-token client, fences off issuance in the universal SDK surface, and deprecates the `crypto/*` minting shims. Issuance hardening (KMS-backed keys, key rotation, `jti`/revocation) is tracked in `komodo-auth-api`.
+
+### Added
+
+- **`http/client` — `WithServiceAuth` + `ClientCredentialsTokenSource`.** A keyless service-to-service auth primitive: `NewClientCredentialsTokenSource(ServiceAuthConfig)` obtains a token from the Auth API via the OAuth2 `client_credentials` grant (form-encoded `grant_type=client_credentials`), caches it, and proactively refreshes ~15% before expiry; concurrent refreshes collapse to a single upstream fetch via `singleflight`. `WithServiceAuth(base, src) http.RoundTripper` wraps any transport so every outbound request carries `Authorization: Bearer <token>` (the inbound request is never mutated, per the `RoundTripper` contract). Composes into `ClientConfig.Transport` or any generated client's transport. Holds no private signing key — issuance stays with the Auth API. Replaces the previously-planned self-minting `WithServiceAuth` design.
+
+### Changed
+
+- **`security/jwt` — issuance fenced as Auth-API-only.** Package, `InitializeKeys`, and `SignToken` doc comments now state that issuance is intended for the Auth API only (the single service holding the private key); application services must verify via `auth.JWKSVerifier` and obtain service tokens via `http/client.WithServiceAuth`, never minting their own. No behavioral change.
+- **`auth.RequireServiceScope` — documented service-identity contract.** Clarified that service identity is conveyed by a `svc:<name>` scope (issued by the Auth API on `client_credentials` tokens, requested via `WithServiceAuth`), with `aud` set to the target service for defense-in-depth (enforced separately by `JWKSVerifier.ExpectedAudience`). No behavioral change.
+
+### Deprecated
+
+- **`crypto/jwt` and `crypto/oauth` re-export shims.** Import `security/jwt` and `security/oauth` directly. The `crypto/jwt` shim in particular exposed token minting (`SignToken`) to every consumer — the canonical paths are `auth` (verify) and `http/client.WithServiceAuth` (obtain). The shims still forward for now; they will be removed in a future release once consumers migrate.
+
+---
+
 ## [0.16.3]
 
 ### Fixed

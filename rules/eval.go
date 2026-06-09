@@ -9,9 +9,28 @@ import (
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 	"io"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 )
+
+// Reports whether val satisfies the configured pattern. An empty pattern always matches.
+// A pattern that is set but has no pre-compiled regex falls back to compiling on demand;
+// if it still fails to compile, the value is rejected rather than silently accepted, so a
+// misconfigured pattern can never disable validation.
+func matchesPattern(pattern string, compiled *regexp.Regexp, val string) bool {
+	if pattern == "" {
+		return true
+	}
+	re := compiled
+	if re == nil {
+		var err error
+		if re, err = regexp.Compile(pattern); err != nil {
+			return false
+		}
+	}
+	return re.MatchString(val)
+}
 
 // Checks if the request complies with all aspects of the provided EvalRule.
 func IsRuleValid(req *http.Request, rule *EvalRule) bool {
@@ -25,23 +44,23 @@ func IsRuleValid(req *http.Request, rule *EvalRule) bool {
 	}
 
 	if !isValidVersion(req, rule) {
-		logger.Error("validation failure: version check", fmt.Errorf("version validation failed"))
+		logger.Error("request failed version validation", fmt.Errorf("version validation failed"))
 		return false
 	}
 	if !areValidHeaders(req, rule) {
-		logger.Error("validation failure: headers check", fmt.Errorf("headers validation failed"))
+		logger.Error("request failed header validation", fmt.Errorf("headers validation failed"))
 		return false
 	}
 	if !areValidPathParams(req, rule) {
-		logger.Error("validation failure: path params check", fmt.Errorf("path params validation failed"))
+		logger.Error("request failed path-param validation", fmt.Errorf("path params validation failed"))
 		return false
 	}
 	if !areValidQueryParams(req, rule) {
-		logger.Error("validation failure: query params check", fmt.Errorf("query params validation failed"))
+		logger.Error("request failed query-param validation", fmt.Errorf("query params validation failed"))
 		return false
 	}
 	if !isValidBody(req, rule) {
-		logger.Error("validation failure: body check", fmt.Errorf("body validation failed"))
+		logger.Error("request failed body validation", fmt.Errorf("body validation failed"))
 		return false
 	}
 
@@ -152,8 +171,9 @@ func areValidHeaders(req *http.Request, rule *EvalRule) bool {
 			}
 		}
 
-		// Use pre-compiled pattern (compiled at config load time).
-		if spec.compiled != nil && !spec.compiled.MatchString(val) {
+		// Use pre-compiled pattern (compiled at config load time); a configured pattern
+		// that failed to compile rejects the value rather than skipping the check.
+		if !matchesPattern(spec.Pattern, spec.compiled, val) {
 			logger.Error(
 				fmt.Sprintf("header %q value %q does not match pattern %q", hName, val, spec.Pattern),
 				fmt.Errorf("header pattern mismatch"),
@@ -241,8 +261,9 @@ func areValidPathParams(req *http.Request, rule *EvalRule) bool {
 			continue
 		}
 
-		// Use pre-compiled pattern (compiled at config load time).
-		if spec.compiled != nil && !spec.compiled.MatchString(val) {
+		// Use pre-compiled pattern (compiled at config load time); a configured pattern
+		// that failed to compile rejects the value rather than skipping the check.
+		if !matchesPattern(spec.Pattern, spec.compiled, val) {
 			logger.Error(
 				fmt.Sprintf("path param %q value %q does not match pattern %q", name, val, spec.Pattern),
 				fmt.Errorf("path param pattern mismatch"),
@@ -328,8 +349,9 @@ func areValidQueryParams(req *http.Request, rule *EvalRule) bool {
 			continue
 		}
 
-		// Use pre-compiled pattern (compiled at config load time).
-		if spec.compiled != nil && !spec.compiled.MatchString(val) {
+		// Use pre-compiled pattern (compiled at config load time); a configured pattern
+		// that failed to compile rejects the value rather than skipping the check.
+		if !matchesPattern(spec.Pattern, spec.compiled, val) {
 			logger.Error(
 				fmt.Sprintf("query param %q value %q does not match pattern %q", name, val, spec.Pattern),
 				fmt.Errorf("query param pattern mismatch"),

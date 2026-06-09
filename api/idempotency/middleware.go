@@ -43,7 +43,7 @@ func IdempotencyMiddleware(next http.Handler) http.Handler {
 		key := req.Header.Get("Idempotency-Key")
 
 		if ok, err := headers.ValidateHeaderValue(headers.HEADER_IDEMPOTENCY, req); !ok || err != nil {
-			logger.Error("invalid idempotency key for browser client: "+key, err)
+			logger.Error("invalid idempotency key for browser client", err, logger.Attr("key", key))
 			httpErr.SendError(
 				wtr, req, httpErr.Global.BadRequest, httpErr.WithDetail("invalid idempotency key"),
 			)
@@ -53,7 +53,7 @@ func IdempotencyMiddleware(next http.Handler) http.Handler {
 		// CheckAndSet is atomic — avoids the race a separate Check+Set allows
 		allowed, err := defaultStore.CheckAndSet(key)
 		if err != nil {
-			logger.Error("idempotency check failed for key: "+key, err)
+			logger.Error("idempotency check failed", err, logger.Attr("key", key))
 			httpErr.SendError(
 				wtr, req, httpErr.Global.Internal, httpErr.WithDetail("idempotency check failed"),
 			)
@@ -62,7 +62,7 @@ func IdempotencyMiddleware(next http.Handler) http.Handler {
 
 		if !allowed {
 			wtr.Header().Set("Idempotency-Replayed", "true")
-			logger.Error("duplicate request: "+key, fmt.Errorf("duplicate request"))
+			logger.Error("duplicate request", fmt.Errorf("duplicate request"), logger.Attr("key", key))
 			httpErr.SendError(
 				wtr, req, httpErr.Global.Conflict, httpErr.WithDetail("duplicate request"),
 			)

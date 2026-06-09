@@ -2,10 +2,9 @@ package bannedcustomers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
-
-	"errors"
 
 	"github.com/rdevitto86/komodo-forge-sdk-go/aws/dynamodb"
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
@@ -18,12 +17,19 @@ type Checker interface {
 type Config struct {
 	TableName string
 	DynamoDB  dynamodb.API
+	// FailOpen controls behaviour when a lookup errors: when nil or true (the default),
+	// errors are swallowed so a DynamoDB outage never blocks legitimate customers; set it
+	// to false for fraud/abuse controls that must fail closed (return the error so the
+	// caller blocks the request).
+	FailOpen *bool
 }
 
-// fails open on lookup errors so a DynamoDB outage never blocks legitimate customers
+// Looks up ban records in DynamoDB; fails open on lookup errors by default so an outage
+// never blocks legitimate customers, unless Config.FailOpen is set to false.
 type Client struct {
-	table string
-	db    dynamodb.API
+	table    string
+	db       dynamodb.API
+	failOpen bool
 }
 
 type record struct {
@@ -39,7 +45,8 @@ func New(cfg Config) (*Client, error) {
 	if cfg.DynamoDB == nil {
 		return nil, errors.New("missing dynamodb client")
 	}
-	return &Client{table: cfg.TableName, db: cfg.DynamoDB}, nil
+	failOpen := cfg.FailOpen == nil || *cfg.FailOpen
+	return &Client{table: cfg.TableName, db: cfg.DynamoDB, failOpen: failOpen}, nil
 }
 
 // Treats expired ban records as inactive and fails open on lookup errors other than not-found.
@@ -50,8 +57,11 @@ func (c *Client) IsBanned(ctx context.Context, email string) (bool, error) {
 
 	key, err := c.db.BuildKey("email", email, "", nil)
 	if err != nil {
-		logger.Error("failed to build banned-customer lookup key; failing open", err)
-		return false, nil
+		if c.failOpen {
+			logger.Error("failed to build banned-customer lookup key; failing open", err)
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to build banned-customer lookup key: %w", err)
 	}
 
 	var rec record
@@ -59,8 +69,11 @@ func (c *Client) IsBanned(ctx context.Context, email string) (bool, error) {
 		if errors.Is(err, dynamodb.ErrNotFound) {
 			return false, nil
 		}
-		logger.Error("banned-customer lookup failed; failing open", err)
-		return false, nil
+		if c.failOpen {
+			logger.Error("banned-customer lookup failed; failing open", err)
+			return false, nil
+		}
+		return false, fmt.Errorf("banned-customer lookup failed: %w", err)
 	}
 
 	if rec.ExpiresAt > 0 && rec.ExpiresAt <= time.Now().Unix() {

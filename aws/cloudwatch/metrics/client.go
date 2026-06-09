@@ -17,27 +17,21 @@ const (
 	maxDatumsPerCall = 1000
 )
 
-// Represents a single CloudWatch metric data point.
 type MetricDatum struct {
-	Name  string
-	Value float64
-	// Unit is the string form of a CloudWatch StandardUnit (e.g. "Count", "Bytes").
-	Unit string
-	// Timestamp is the time the data point was recorded; defaults to time.Now() if zero.
-	Timestamp  time.Time
+	Name       string
+	Value      float64
+	Unit       string    // string form of a CloudWatch StandardUnit (e.g. "Count", "Bytes")
+	Timestamp  time.Time // time the datapoint was recorded; defaults to time.Now() if zero
 	Dimensions map[string]string
 }
 
-// Carries parameters for a GetMetricStatistics request.
 type GetMetricStatisticsInput struct {
 	Namespace  string
 	MetricName string
 	StartTime  time.Time
 	EndTime    time.Time
-	// Period is the granularity of returned statistics (rounded to seconds).
-	Period time.Duration
-	// Statistics lists the stat names to retrieve, e.g. ["Average", "Sum"].
-	Statistics []string
+	Period     time.Duration // granularity of returned statistics (rounded to seconds)
+	Statistics []string      // stat names to retrieve, e.g. ["Average", "Sum"]
 	Dimensions map[string]string
 }
 
@@ -60,7 +54,6 @@ type Config struct {
 	Endpoint string
 }
 
-// Wraps the AWS CloudWatch SDK client.
 type Client struct {
 	cw *cloudwatch.Client
 }

@@ -64,12 +64,6 @@ func TestTelemetryMiddleware_RecoversPanic(t *testing.T) {
 	}
 }
 
-// TestTelemetryMiddleware_RecoversPanicWithStatusAlreadyWritten covers the
-// panic-recovery branch where a status was already written before the panic
-// (status != 0), so no additional 500 is sent.
-// TestTelemetryMiddleware_HandlerWritesNoStatus covers the non-panic branch where
-// next does not call WriteHeader or Write, leaving resWtr.Status == 0 and causing
-// the middleware to default to http.StatusOK.
 func TestTelemetryMiddleware_HandlerWritesNoStatus(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()

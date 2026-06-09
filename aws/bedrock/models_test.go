@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// ── Model enum tests ──────────────────────────────────────────────────────────
+// ── Unit Tests ───────────────────────────────────────────────────────────────
 
 func TestParseModel_Valid(t *testing.T) {
 	cases := []Model{

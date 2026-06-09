@@ -38,6 +38,20 @@ func TestIPAccess_ParseList(t *testing.T) {
 	}
 }
 
+func TestIPAccess_ParseListStrict(t *testing.T) {
+	ips, nets, err := ParseListStrict("192.0.2.1, not-an-ip, 10.0.0.0/8, 999.0.0.0/8")
+	if err == nil {
+		t.Fatal("expected error for invalid entries, got nil")
+	}
+	if len(ips) != 1 || len(nets) != 1 {
+		t.Errorf("expected 1 ip and 1 net parsed, got %d ips %d nets", len(ips), len(nets))
+	}
+
+	if _, _, err := ParseListStrict("192.0.2.1,10.0.0.0/8"); err != nil {
+		t.Errorf("expected no error for all-valid input, got %v", err)
+	}
+}
+
 func TestIPAccess_Evaluate(t *testing.T) {
 	ip1 := net.ParseIP("192.168.1.100")
 	ip2 := net.ParseIP("10.0.0.5")

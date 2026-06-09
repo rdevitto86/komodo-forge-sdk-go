@@ -113,9 +113,6 @@ func TestSanitizationMiddleware_SkipsBodySanitizationForNonJSON(t *testing.T) {
 	}
 }
 
-// TestSanitizationMiddleware_SanitizesPathParams covers the sanitizePathParams branch.
-// Go 1.22+ populates req.Pattern when a request is dispatched through a ServeMux
-// that uses the "{name}" wildcard syntax.
 func TestSanitizationMiddleware_SanitizesPathParams(t *testing.T) {
 	called := false
 	var gotID string
@@ -141,8 +138,6 @@ func TestSanitizationMiddleware_SanitizesPathParams(t *testing.T) {
 	}
 }
 
-// TestSanitizationMiddleware_XSSInPathParam verifies that an XSS payload in a
-// path parameter is sanitized before the inner handler sees it.
 func TestSanitizationMiddleware_XSSInPathParam(t *testing.T) {
 	var gotID string
 
@@ -186,9 +181,6 @@ func TestSanitizationMiddleware_BodyReadError(t *testing.T) {
 	}
 }
 
-// TestSanitizationMiddleware_InvalidJSONBody covers the json.Unmarshal error path.
-// sanitizeBody sets req.Body = nil on JSON parse error; the middleware's nil-guard
-// short-circuits and next is NOT called.
 func TestSanitizationMiddleware_InvalidJSONBody(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString("not-json{"))
 	req.Header.Set("Content-Type", "application/json")
@@ -203,7 +195,6 @@ func TestSanitizationMiddleware_InvalidJSONBody(t *testing.T) {
 	}
 }
 
-// TestSanitizationMiddleware_JSONArrayBody covers the []interface{} branch in sanitizeJSON.
 func TestSanitizationMiddleware_JSONArrayBody(t *testing.T) {
 	body := `["hello","world","<script>"]`
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
@@ -216,8 +207,6 @@ func TestSanitizationMiddleware_JSONArrayBody(t *testing.T) {
 	}
 }
 
-// TestSanitizationMiddleware_JSONDefaultType covers the default case in sanitizeJSON
-// where the value is a non-string, non-map, non-array type (e.g. a number).
 func TestSanitizationMiddleware_JSONDefaultType(t *testing.T) {
 	body := `{"count":42,"active":true}`
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
@@ -230,7 +219,6 @@ func TestSanitizationMiddleware_JSONDefaultType(t *testing.T) {
 	}
 }
 
-// TestSanitizationMiddleware_XSSPatternInString covers the XSS branch in sanitizeString.
 func TestSanitizationMiddleware_XSSPatternInString(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	// An XSS payload that passes the initial html.EscapeString but still matches

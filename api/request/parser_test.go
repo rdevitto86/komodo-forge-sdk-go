@@ -236,12 +236,14 @@ func TestGetClientKey_RemoteAddrNoPort(t *testing.T) {
 	}
 }
 
-func TestGetClientType_APIKey(t *testing.T) {
+func TestGetClientType_APIKey_FailsClosedUntilImplemented(t *testing.T) {
+	// IsValidAPIKey is a fail-closed placeholder, so an unverified X-API-Key must
+	// classify as "browser" — an unimplemented validator must not grant "api".
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("X-API-Key", "some-api-key")
 	got := GetClientType(req)
-	if got != "api" {
-		t.Errorf("GetClientType = %q, want api", got)
+	if got != "browser" {
+		t.Errorf("GetClientType = %q, want browser (placeholder validator denies)", got)
 	}
 }
 
@@ -271,12 +273,12 @@ func TestGetPathParams(t *testing.T) {
 }
 
 func TestIsValidAPIKey(t *testing.T) {
-	// Current implementation always returns true
-	if !IsValidAPIKey("any-key") {
-		t.Error("IsValidAPIKey should return true (placeholder)")
+	// Placeholder fails closed: every key is denied until a real lookup is wired.
+	if IsValidAPIKey("any-key") {
+		t.Error("IsValidAPIKey should return false (fail-closed placeholder)")
 	}
-	if !IsValidAPIKey("") {
-		t.Error("IsValidAPIKey('') should return true (placeholder)")
+	if IsValidAPIKey("") {
+		t.Error("IsValidAPIKey('') should return false (fail-closed placeholder)")
 	}
 }
 

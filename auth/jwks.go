@@ -13,13 +13,15 @@ import (
 	"time"
 
 	gojwt "github.com/golang-jwt/jwt/v5"
+	"golang.org/x/sync/singleflight"
 )
 
-// Config holds the options for constructing a JWKSVerifier.
 type Config struct {
-	JWKSURL    string
-	CacheTTL   time.Duration
-	HTTPClient *http.Client
+	JWKSURL          string
+	ExpectedAudience string // required; tokens must carry this audience
+	ExpectedIssuer   string // required; tokens must carry this issuer
+	CacheTTL         time.Duration
+	HTTPClient       *http.Client
 }
 
 type jwk struct {
@@ -41,19 +43,34 @@ type jwtClaims struct {
 	gojwt.RegisteredClaims
 }
 
-// JWKSVerifier implements Verifier by resolving RS256 public keys from a remote JWKS endpoint.
-// Keys are cached by kid; a cache miss triggers a single re-fetch before returning ErrInvalidToken.
+// negCacheTTL bounds how long an absent kid is remembered so repeat lookups of the
+// same unknown kid don't re-hit the JWKS endpoint (DoS amplification guard).
+const negCacheTTL = 30 * time.Second
+
+// Resolves RS256 public keys from a remote JWKS endpoint to satisfy Verifier.
+// Keys are cached by kid; a cache miss triggers a single, singleflight-deduped re-fetch
+// before returning ErrInvalidToken, and tokens are checked against the configured
+// audience and issuer.
 type JWKSVerifier struct {
-	cfg   Config
-	mu    sync.RWMutex
-	cache map[string]*rsa.PublicKey
+	cfg         Config
+	mu          sync.RWMutex
+	cache       map[string]*rsa.PublicKey
+	negCache    map[string]time.Time // kid → time it was last confirmed absent
+	lastRefresh time.Time
+	sf          singleflight.Group
 }
 
 // Returns a JWKSVerifier that fetches public keys from cfg.JWKSURL and caches them by kid.
-// Returns an error if cfg.JWKSURL is empty.
+// Returns an error if JWKSURL, ExpectedAudience, or ExpectedIssuer is empty.
 func NewJWKSVerifier(cfg Config) (*JWKSVerifier, error) {
 	if cfg.JWKSURL == "" {
 		return nil, errors.New("invalid JWKS configuration: JWKSURL is required")
+	}
+	if cfg.ExpectedAudience == "" {
+		return nil, errors.New("invalid JWKS configuration: ExpectedAudience is required")
+	}
+	if cfg.ExpectedIssuer == "" {
+		return nil, errors.New("invalid JWKS configuration: ExpectedIssuer is required")
 	}
 	if cfg.CacheTTL == 0 {
 		cfg.CacheTTL = 5 * time.Minute
@@ -62,43 +79,73 @@ func NewJWKSVerifier(cfg Config) (*JWKSVerifier, error) {
 		cfg.HTTPClient = &http.Client{Timeout: 10 * time.Second}
 	}
 	return &JWKSVerifier{
-		cfg:   cfg,
-		cache: make(map[string]*rsa.PublicKey),
+		cfg:      cfg,
+		cache:    make(map[string]*rsa.PublicKey),
+		negCache: make(map[string]time.Time),
 	}, nil
 }
 
-// Validates a raw JWT string against keys fetched from the configured JWKS endpoint.
+// Validates a raw JWT string against keys fetched from the configured JWKS endpoint,
+// enforcing the configured audience and issuer.
 // Returns ErrExpired, ErrInvalidSignature, or ErrInvalidToken for the respective failure modes.
 func (v *JWKSVerifier) Verify(ctx context.Context, token string) (*Claims, error) {
 	kid, err := extractKID(token)
 	if err != nil {
 		return nil, ErrInvalidToken
 	}
-	key, err := v.resolveKey(ctx, kid, false)
+	key, err := v.resolveKey(ctx, kid)
 	if err != nil {
 		return nil, err
 	}
 	return v.verifyWithKey(token, key)
 }
 
-func (v *JWKSVerifier) resolveKey(ctx context.Context, kid string, afterRefresh bool) (*rsa.PublicKey, error) {
+func (v *JWKSVerifier) resolveKey(ctx context.Context, kid string) (*rsa.PublicKey, error) {
 	v.mu.RLock()
 	key, ok := v.cache[kid]
+	fresh := time.Since(v.lastRefresh) <= v.cfg.CacheTTL
+	negAt, negative := v.negCache[kid]
 	v.mu.RUnlock()
 
+	// Fast path: key present and the cache is within its TTL.
+	if ok && fresh {
+		return key, nil
+	}
+	// Absent kid we recently confirmed missing — reject without hammering the endpoint.
+	if !ok && negative && time.Since(negAt) < negCacheTTL {
+		return nil, ErrInvalidToken
+	}
+
+	// Refresh (deduped via singleflight). On failure, fall back to a usable cached key.
+	if err := v.refreshCache(ctx); err != nil {
+		if ok {
+			return key, nil
+		}
+		return nil, err
+	}
+
+	v.mu.RLock()
+	key, ok = v.cache[kid]
+	v.mu.RUnlock()
 	if ok {
 		return key, nil
 	}
-	if afterRefresh {
-		return nil, ErrInvalidToken
-	}
-	if err := v.refreshCache(ctx); err != nil {
-		return nil, err
-	}
-	return v.resolveKey(ctx, kid, true)
+
+	v.mu.Lock()
+	v.negCache[kid] = time.Now()
+	v.mu.Unlock()
+	return nil, ErrInvalidToken
 }
 
+// refreshCache collapses concurrent refreshes into a single upstream fetch.
 func (v *JWKSVerifier) refreshCache(ctx context.Context) error {
+	_, err, _ := v.sf.Do("refresh", func() (any, error) {
+		return nil, v.fetchAndStore(ctx)
+	})
+	return err
+}
+
+func (v *JWKSVerifier) fetchAndStore(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, v.cfg.JWKSURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to build JWKS request: %w", err)
@@ -133,6 +180,8 @@ func (v *JWKSVerifier) refreshCache(ctx context.Context) error {
 
 	v.mu.Lock()
 	v.cache = newCache
+	v.lastRefresh = time.Now()
+	v.negCache = make(map[string]time.Time) // a rotated kid may now be present
 	v.mu.Unlock()
 
 	return nil
@@ -145,7 +194,11 @@ func (v *JWKSVerifier) verifyWithKey(tokenString string, key *rsa.PublicKey) (*C
 			return nil, fmt.Errorf("invalid signing method: %v", t.Header["alg"])
 		}
 		return key, nil
-	})
+	},
+		gojwt.WithAudience(v.cfg.ExpectedAudience),
+		gojwt.WithIssuer(v.cfg.ExpectedIssuer),
+		gojwt.WithValidMethods([]string{"RS256"}),
+	)
 
 	if err != nil {
 		if errors.Is(err, gojwt.ErrTokenExpired) {

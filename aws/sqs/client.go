@@ -11,7 +11,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/sqs/types"
 )
 
-// Carries all parameters for an SQS send call, including optional FIFO fields GroupID and DedupID.
 type SendInput struct {
 	QueueURL string
 	Body     string

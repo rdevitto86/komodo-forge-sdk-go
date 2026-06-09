@@ -95,6 +95,22 @@ func TestIsBanned_LookupErrorFailsOpen(t *testing.T) {
 	}
 }
 
+func TestIsBanned_FailClosedReturnsError(t *testing.T) {
+	failClosed := false
+	c, err := New(Config{
+		TableName: "banned-customers",
+		DynamoDB:  fakeDynamoDB{err: errors.New("connection refused")},
+		FailOpen:  &failClosed,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error constructing client: %v", err)
+	}
+
+	if _, err := c.IsBanned(context.Background(), "someone@example.com"); err == nil {
+		t.Error("expected fail-closed lookup failure to return an error")
+	}
+}
+
 func TestIsBanned_EmptyEmailIsCallerError(t *testing.T) {
 	c := newClient(t, fakeDynamoDB{})
 

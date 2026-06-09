@@ -127,7 +127,6 @@ func GetAPIRoute(req *http.Request) string {
 
 // Extracts path parameters from the request URL; placeholder — replace with actual routing-aware logic.
 func GetPathParams(req *http.Request) map[string]string {
-	// Placeholder: return empty map as path parameter extraction requires route pattern knowledge
 	return map[string]string{}
 }
 
@@ -160,16 +159,17 @@ func GetClientType(req *http.Request) string {
 	return "browser"
 }
 
-// Validates that an API key exists and is active; placeholder — replace with DynamoDB/RDS lookup when the database is ready.
+// Validates that an API key exists and is active; placeholder that fails closed
+// (denies every key) until a real lookup is wired, so an unimplemented validator
+// cannot silently authenticate every caller. Replace with a DynamoDB/RDS lookup.
 func IsValidAPIKey(apiKey string) bool {
-	// Placeholder: Replace with actual database lookup
-	// Expected implementation:
-	// 1. Query DynamoDB/RDS for api_key
-	// 2. Check if key exists and is active (not revoked/expired)
-	// 3. Optional: Rate limit check, scope validation
-	// 4. Log the API key usage for auditing
-
-	return true
+	// Placeholder: replace with an actual database lookup that
+	// 1. queries DynamoDB/RDS for api_key,
+	// 2. checks the key exists and is active (not revoked/expired),
+	// 3. optionally applies rate-limit / scope checks,
+	// 4. logs the API key usage for auditing.
+	// Until then, deny so callers cannot rely on an unverified key.
+	return false
 }
 
 // Extracts a client identifier from the request: the direct peer address by default,

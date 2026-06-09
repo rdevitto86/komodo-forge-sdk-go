@@ -17,9 +17,9 @@ func RateLimiterMiddleware(next http.Handler) http.Handler {
 
 		if err != nil {
 			if ShouldFailOpen() {
-				logger.Error("rate limiter failing open for client: "+key, err)
+				logger.Error("rate limiter failing open", err, logger.Attr("client", key))
 			} else {
-				logger.Error("rate limiter failed for client: "+key, err)
+				logger.Error("rate limiter failed", err, logger.Attr("client", key))
 				httpErr.SendError(
 					wtr, req, httpErr.Global.Internal, httpErr.WithDetail("internal rate limiter error"),
 				)
@@ -29,7 +29,7 @@ func RateLimiterMiddleware(next http.Handler) http.Handler {
 			if wait > 0 {
 				wtr.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds()+0.5)))
 			}
-			logger.Error("rate limit exceeded for client: "+key, fmt.Errorf("rate limit exceeded"))
+			logger.Error("rate limit exceeded", fmt.Errorf("rate limit exceeded"), logger.Attr("client", key))
 			httpErr.SendError(
 				wtr, req, httpErr.Global.TooManyRequests, httpErr.WithDetail("rate limit exceeded"),
 			)

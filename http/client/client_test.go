@@ -33,6 +33,42 @@ func TestGetJSON_200(t *testing.T) {
 	}
 }
 
+func TestGetJSON_RespectsMaxResponseBytes(t *testing.T) {
+	// 2xx body well over the cap: LimitReader truncates it, so the JSON decode fails
+	// rather than allocating the whole payload.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"id":1,"name":"`))
+		w.Write(make([]byte, 1<<20)) // 1 MiB of padding inside the string
+		w.Write([]byte(`"}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(ClientConfig{MaxResponseBytes: 64})
+	if _, err := GetJSON[testPayload](c, context.Background(), srv.URL); err == nil {
+		t.Fatal("expected decode error from truncated oversized body, got nil")
+	}
+}
+
+func TestGetJSON_404_BodyCappedNotErrored(t *testing.T) {
+	// Non-2xx oversized body is truncated to the cap, not rejected.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		w.Write(make([]byte, 1<<20))
+	}))
+	defer srv.Close()
+
+	c := NewClient(ClientConfig{MaxResponseBytes: 128})
+	_, err := GetJSON[testPayload](c, context.Background(), srv.URL)
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("expected *HTTPError, got %T: %v", err, err)
+	}
+	if int64(len(httpErr.Body)) > 128 {
+		t.Errorf("expected body capped at 128 bytes, got %d", len(httpErr.Body))
+	}
+}
+
 func TestGetJSON_404(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)

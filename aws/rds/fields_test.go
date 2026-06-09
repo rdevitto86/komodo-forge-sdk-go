@@ -6,7 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/rdsdata/types"
 )
 
-// ── Unit Tests ────────────────────────────────────────────────────────────────
+// ── Unit Tests ───────────────────────────────────────────────────────────────
 
 func TestToField(t *testing.T) {
 	t.Parallel()

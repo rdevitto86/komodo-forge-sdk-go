@@ -10,7 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/opensearch"
 )
 
-// Flattened view of an OpenSearch domain returned by the control-plane API.
+// Flattens an OpenSearch domain returned by the control-plane API.
 type Domain struct {
 	Name          string
 	Endpoint      string
@@ -20,7 +20,6 @@ type Domain struct {
 	Processing    bool
 }
 
-// Defines the OpenSearch control-plane operations exposed by this package.
 type API interface {
 	DescribeDomain(ctx context.Context, name string) (*Domain, error)
 	ListDomainNames(ctx context.Context) ([]string, error)
@@ -33,7 +32,6 @@ type Config struct {
 	Endpoint  string // optional; set to LocalStack URL in non-prod environments
 }
 
-// Wraps the AWS OpenSearch control-plane SDK client.
 type Client struct {
 	os *opensearch.Client
 }

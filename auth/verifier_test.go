@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -18,6 +19,20 @@ import (
 )
 
 // ── Unit Tests ───────────────────────────────────────────────────────────────
+
+const (
+	testAudience = "komodo-test-api"
+	testIssuer   = "komodo-auth"
+)
+
+// testConfig returns a Config with the required audience/issuer pre-filled.
+func testConfig(jwksURL string) Config {
+	return Config{
+		JWKSURL:          jwksURL,
+		ExpectedAudience: testAudience,
+		ExpectedIssuer:   testIssuer,
+	}
+}
 
 type testTokenClaims struct {
 	Scopes  []string `json:"scp,omitempty"`
@@ -82,6 +97,8 @@ func validClaims(subject, jti string, scopes []string) testTokenClaims {
 		Scopes: scopes,
 		RegisteredClaims: gojwt.RegisteredClaims{
 			Subject:   subject,
+			Audience:  gojwt.ClaimStrings{testAudience},
+			Issuer:    testIssuer,
 			ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
 			IssuedAt:  gojwt.NewNumericDate(time.Now()),
 			ID:        jti,
@@ -108,7 +125,7 @@ func TestJWKSVerifier_ValidToken(t *testing.T) {
 	server := newJWKSServer(t, &key.PublicKey, "kid-1")
 	defer server.Close()
 
-	v, err := NewJWKSVerifier(Config{JWKSURL: server.URL})
+	v, err := NewJWKSVerifier(testConfig(server.URL))
 	if err != nil {
 		t.Fatalf("failed to create verifier: %v", err)
 	}
@@ -138,7 +155,7 @@ func TestJWKSVerifier_ExpiredToken(t *testing.T) {
 	server := newJWKSServer(t, &key.PublicKey, "kid-exp")
 	defer server.Close()
 
-	v, err := NewJWKSVerifier(Config{JWKSURL: server.URL})
+	v, err := NewJWKSVerifier(testConfig(server.URL))
 	if err != nil {
 		t.Fatalf("failed to create verifier: %v", err)
 	}
@@ -146,6 +163,8 @@ func TestJWKSVerifier_ExpiredToken(t *testing.T) {
 	expired := testTokenClaims{
 		RegisteredClaims: gojwt.RegisteredClaims{
 			Subject:   "user-exp",
+			Audience:  gojwt.ClaimStrings{testAudience},
+			Issuer:    testIssuer,
 			ExpiresAt: gojwt.NewNumericDate(time.Now().Add(-time.Hour)),
 			IssuedAt:  gojwt.NewNumericDate(time.Now().Add(-2 * time.Hour)),
 			ID:        "jti-exp",
@@ -165,7 +184,7 @@ func TestJWKSVerifier_TamperedSignature(t *testing.T) {
 	server := newJWKSServer(t, &keyB.PublicKey, "kid-tampered")
 	defer server.Close()
 
-	v, err := NewJWKSVerifier(Config{JWKSURL: server.URL})
+	v, err := NewJWKSVerifier(testConfig(server.URL))
 	if err != nil {
 		t.Fatalf("failed to create verifier: %v", err)
 	}
@@ -192,7 +211,7 @@ func TestJWKSVerifier_StaleCache_RefetchSucceeds(t *testing.T) {
 	}))
 	defer server.Close()
 
-	v, err := NewJWKSVerifier(Config{JWKSURL: server.URL})
+	v, err := NewJWKSVerifier(testConfig(server.URL))
 	if err != nil {
 		t.Fatalf("failed to create verifier: %v", err)
 	}
@@ -224,7 +243,7 @@ func TestJWKSVerifier_UnknownKidAfterRefetch(t *testing.T) {
 	server := newJWKSServer(t, &key.PublicKey, "kid-a")
 	defer server.Close()
 
-	v, err := NewJWKSVerifier(Config{JWKSURL: server.URL})
+	v, err := NewJWKSVerifier(testConfig(server.URL))
 	if err != nil {
 		t.Fatalf("failed to create verifier: %v", err)
 	}
@@ -237,12 +256,113 @@ func TestJWKSVerifier_UnknownKidAfterRefetch(t *testing.T) {
 	assertError(t, err, ErrInvalidToken)
 }
 
+func TestNewJWKSVerifier_RequiresAudienceAndIssuer(t *testing.T) {
+	if _, err := NewJWKSVerifier(Config{JWKSURL: "https://example.test/jwks"}); err == nil {
+		t.Error("expected error when ExpectedAudience is empty, got nil")
+	}
+	if _, err := NewJWKSVerifier(Config{JWKSURL: "https://example.test/jwks", ExpectedAudience: testAudience}); err == nil {
+		t.Error("expected error when ExpectedIssuer is empty, got nil")
+	}
+	if _, err := NewJWKSVerifier(Config{JWKSURL: "https://example.test/jwks", ExpectedAudience: testAudience, ExpectedIssuer: testIssuer}); err != nil {
+		t.Errorf("expected success with audience and issuer set, got %v", err)
+	}
+}
+
+func TestJWKSVerifier_WrongAudience(t *testing.T) {
+	key := mustGenerateKey(t)
+	server := newJWKSServer(t, &key.PublicKey, "kid-aud")
+	defer server.Close()
+
+	v, err := NewJWKSVerifier(testConfig(server.URL))
+	if err != nil {
+		t.Fatalf("failed to create verifier: %v", err)
+	}
+
+	claims := testTokenClaims{
+		RegisteredClaims: gojwt.RegisteredClaims{
+			Subject:   "user-aud",
+			Audience:  gojwt.ClaimStrings{"some-other-api"},
+			Issuer:    testIssuer,
+			ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
+			ID:        "jti-aud",
+		},
+	}
+	token := signTestToken(t, key, "kid-aud", claims)
+
+	_, err = v.Verify(context.Background(), token)
+	assertError(t, err, ErrInvalidToken)
+}
+
+func TestJWKSVerifier_WrongIssuer(t *testing.T) {
+	key := mustGenerateKey(t)
+	server := newJWKSServer(t, &key.PublicKey, "kid-iss")
+	defer server.Close()
+
+	v, err := NewJWKSVerifier(testConfig(server.URL))
+	if err != nil {
+		t.Fatalf("failed to create verifier: %v", err)
+	}
+
+	claims := testTokenClaims{
+		RegisteredClaims: gojwt.RegisteredClaims{
+			Subject:   "user-iss",
+			Audience:  gojwt.ClaimStrings{testAudience},
+			Issuer:    "some-other-issuer",
+			ExpiresAt: gojwt.NewNumericDate(time.Now().Add(time.Hour)),
+			ID:        "jti-iss",
+		},
+	}
+	token := signTestToken(t, key, "kid-iss", claims)
+
+	_, err = v.Verify(context.Background(), token)
+	assertError(t, err, ErrInvalidToken)
+}
+
+// Concurrent verifies bearing the same unknown kid must collapse to a single JWKS
+// fetch (singleflight dedup) rather than one fetch per request.
+func TestJWKSVerifier_DedupConcurrentUnknownKid(t *testing.T) {
+	key := mustGenerateKey(t)
+
+	var fetches int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&fetches, 1)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(buildJWKSJSON(&key.PublicKey, "kid-known"))
+	}))
+	defer server.Close()
+
+	v, err := NewJWKSVerifier(testConfig(server.URL))
+	if err != nil {
+		t.Fatalf("failed to create verifier: %v", err)
+	}
+
+	other := mustGenerateKey(t)
+	token := signTestToken(t, other, "kid-unknown", validClaims("user-z", "jti-z", nil))
+
+	const n = 50
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for range n {
+		go func() {
+			defer wg.Done()
+			if _, err := v.Verify(context.Background(), token); !errors.Is(err, ErrInvalidToken) {
+				t.Errorf("expected ErrInvalidToken, got %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt32(&fetches); got > 2 {
+		t.Errorf("expected at most 2 JWKS fetches under concurrent unknown kids, got %d", got)
+	}
+}
+
 func TestJWKSVerifier_ServerUnreachable(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 	url := server.URL
 	server.Close() // shut down immediately so the address is unreachable
 
-	v, err := NewJWKSVerifier(Config{JWKSURL: url})
+	v, err := NewJWKSVerifier(testConfig(url))
 	if err != nil {
 		t.Fatalf("failed to create verifier: %v", err)
 	}

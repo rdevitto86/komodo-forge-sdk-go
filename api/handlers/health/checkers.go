@@ -13,28 +13,28 @@ import (
 
 const httpCheckTimeout = 2 * time.Second
 
-// DynamoDBChecker reports whether the named table is reachable via DescribeTable.
+// Reports whether the named table is reachable via DescribeTable.
 func DynamoDBChecker(name string, client dynamodb.API, table string) Checker {
 	return CheckerFunc(name, func(ctx context.Context) error {
 		return client.DescribeTable(ctx, table)
 	})
 }
 
-// RedisChecker reports whether the Redis server responds to a Ping.
+// Reports whether the Redis server responds to a Ping.
 func RedisChecker(name string, client redis.API) Checker {
 	return CheckerFunc(name, func(ctx context.Context) error {
 		return client.Ping(ctx)
 	})
 }
 
-// S3Checker reports whether the named bucket is reachable via HeadBucket.
+// Reports whether the named bucket is reachable via HeadBucket.
 func S3Checker(name string, client s3.API, bucket string) Checker {
 	return CheckerFunc(name, func(ctx context.Context) error {
 		return client.HeadBucket(ctx, bucket)
 	})
 }
 
-// HTTPChecker reports whether a GET against url returns a 2xx status within 2s.
+// Reports whether a GET against url returns a 2xx status within 2s.
 func HTTPChecker(name, url string) Checker {
 	return CheckerFunc(name, func(ctx context.Context) error {
 		ctx, cancel := context.WithTimeout(ctx, httpCheckTimeout)

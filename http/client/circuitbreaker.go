@@ -35,7 +35,7 @@ type BreakerConfig struct {
 	SuccessThreshold    int                                     // consecutive HalfOpen successes needed to close; recommended default 2
 	OpenTimeout         time.Duration                           // time Open before moving to HalfOpen; recommended default 60s
 	MaxHalfOpenRequests int                                     // max concurrent requests allowed through in HalfOpen; recommended default 1
-	MaxHosts            int                                     // caps tracked hosts; new hosts fail open past the cap; 0 means unlimited
+	MaxHosts            int                                     // caps tracked hosts; new hosts fail open past the cap; 0 applies DefaultMaxHosts, negative means unlimited
 	OnStateChange       func(key string, from, to BreakerState) // called on a key's state transition; nil means no-op
 }
 
@@ -60,7 +60,15 @@ type breaker struct {
 	hostMu    sync.Mutex
 }
 
+// DefaultMaxHosts bounds the per-host breaker map when BreakerConfig.MaxHosts is left at
+// zero, so a client fanning out to many hosts cannot grow the map without limit. Set
+// MaxHosts negative to opt back into unlimited tracking.
+const DefaultMaxHosts = 1024
+
 func newBreaker(cfg BreakerConfig) *breaker {
+	if cfg.MaxHosts == 0 {
+		cfg.MaxHosts = DefaultMaxHosts
+	}
 	return &breaker{cfg: cfg}
 }
 

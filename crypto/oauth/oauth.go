@@ -1,3 +1,6 @@
+// Package oauth is a deprecated re-export shim for security/oauth.
+//
+// Deprecated: import github.com/rdevitto86/komodo-forge-sdk-go/security/oauth directly.
 package oauth
 
 import o "github.com/rdevitto86/komodo-forge-sdk-go/security/oauth"

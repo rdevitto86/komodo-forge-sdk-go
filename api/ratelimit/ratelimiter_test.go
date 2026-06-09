@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-// resetState resets all package-level rate limiter state between tests.
 func resetState() {
 	ResetForTesting()
 }

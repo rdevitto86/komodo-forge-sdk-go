@@ -12,7 +12,6 @@ import (
 	"github.com/rdevitto86/komodo-forge-sdk-go/db/redis"
 )
 
-// fakeDynamoDB embeds the API interface (nil) so it only needs to implement DescribeTable for these tests.
 type fakeDynamoDB struct {
 	dynamodb.API
 	table string

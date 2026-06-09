@@ -1,6 +1,3 @@
-// LocalStack community does not support Connect / Contact Lens. Tests are
-// component-only via SDK interface mocking. Integration coverage requires a
-// real AWS Connect instance.
 package contactlens
 
 import (
@@ -13,10 +10,8 @@ import (
 	clstypes "github.com/aws/aws-sdk-go-v2/service/connectcontactlens/types"
 )
 
-// ── Fake ──────────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-// fakeContactLensAPI is an in-process implementation of contactLensAPI that
-// records the last received input and returns canned outputs or errors.
 type fakeContactLensAPI struct {
 	capturedIn *connectcontactlens.ListRealtimeContactAnalysisSegmentsInput
 	out        *connectcontactlens.ListRealtimeContactAnalysisSegmentsOutput
@@ -28,7 +23,7 @@ func (f *fakeContactLensAPI) ListRealtimeContactAnalysisSegments(_ context.Conte
 	return f.out, f.err
 }
 
-// ── Unit Tests ────────────────────────────────────────────────────────────────
+// ── Unit Tests ───────────────────────────────────────────────────────────────
 
 func TestNew_MissingRegion(t *testing.T) {
 	_, err := New(context.Background(), Config{})

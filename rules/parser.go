@@ -44,7 +44,7 @@ func LoadConfig(path ...string) bool {
 		}
 
 		if err != nil || data == nil {
-			logger.Error("failed to load validation rules from"+source, err)
+			logger.Error("failed to load validation rules", err, logger.Attr("source", source))
 			configLoaded = false
 			return
 		}
@@ -60,7 +60,7 @@ func LoadConfig(path ...string) bool {
 		patternRoutes = patterns
 		configLoaded = true
 
-		logger.Info("successfully loaded validation rules from: " + source)
+		logger.Info("loaded validation rules", logger.Attr("source", source))
 	})
 	return configLoaded
 }
@@ -168,7 +168,7 @@ func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePa
 			reStr, keys := templateToRegex(tpl)
 			re, err := regexp.Compile("^" + reStr + "$")
 			if err != nil {
-				logger.Error("invalid route pattern "+tpl, err)
+				logger.Error("invalid route pattern", err, logger.Attr("pattern", tpl))
 				return nil, nil, fmt.Errorf("invalid route pattern %s: %w", tpl, err)
 			}
 
@@ -206,56 +206,40 @@ func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePa
 	return cfg, patterns, nil
 }
 
-// Helper that pre-compiles all non-empty Pattern fields at load time so eval hot paths skip regexp.Compile.
+// Helper that pre-compiles all non-empty Pattern fields at load time so eval hot paths skip
+// regexp.Compile. An individual invalid pattern is logged and left uncompiled rather than
+// failing the whole load; eval then rejects values for that field (see matchesPattern),
+// so one misconfigured pattern cannot silently load and disable validation everywhere.
 func compileRulePatterns(cfg RuleConfig) error {
-	compile := func(pattern string) (*regexp.Regexp, error) {
+	compile := func(kind, name, pattern string) *regexp.Regexp {
 		if pattern == "" {
-			return nil, nil
+			return nil
 		}
 		re, err := regexp.Compile(pattern)
 		if err != nil {
-			return nil, fmt.Errorf("invalid pattern %q: %w", pattern, err)
+			logger.Warn("ignoring invalid rule pattern; field will fail validation",
+				logger.Attr("kind", kind), logger.Attr("field", name), logger.Attr("pattern", pattern))
+			return nil
 		}
-		return re, nil
+		return re
 	}
 
 	for _, methods := range cfg {
-		// Methods
 		for method, rule := range methods {
-			// Headers
 			for name, spec := range rule.Headers {
-				re, err := compile(spec.Pattern)
-				if err != nil {
-					return fmt.Errorf("failed to compile header %q pattern: %w", name, err)
-				}
-				spec.compiled = re
+				spec.compiled = compile("header", name, spec.Pattern)
 				rule.Headers[name] = spec
 			}
-			// Path params
 			for name, spec := range rule.PathParams {
-				re, err := compile(spec.Pattern)
-				if err != nil {
-					return fmt.Errorf("failed to compile path param %q pattern: %w", name, err)
-				}
-				spec.compiled = re
+				spec.compiled = compile("path param", name, spec.Pattern)
 				rule.PathParams[name] = spec
 			}
-			// Query params
 			for name, spec := range rule.QueryParams {
-				re, err := compile(spec.Pattern)
-				if err != nil {
-					return fmt.Errorf("failed to compile query param %q pattern: %w", name, err)
-				}
-				spec.compiled = re
+				spec.compiled = compile("query param", name, spec.Pattern)
 				rule.QueryParams[name] = spec
 			}
-			// Body
 			for name, spec := range rule.Body {
-				re, err := compile(spec.Pattern)
-				if err != nil {
-					return fmt.Errorf("failed to compile body field %q pattern: %w", name, err)
-				}
-				spec.compiled = re
+				spec.compiled = compile("body field", name, spec.Pattern)
 				rule.Body[name] = spec
 			}
 

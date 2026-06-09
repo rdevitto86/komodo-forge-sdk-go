@@ -2,14 +2,12 @@ package opensearch
 
 import "context"
 
-// Defines the OpenSearch operations provided by this package.
 type API interface {
 	Index(ctx context.Context, index, id string, doc any) error
 	Search(ctx context.Context, index string, query any) ([]map[string]any, error)
 	Delete(ctx context.Context, index, id string) error
 }
 
-// Holds connection parameters for an OpenSearch client.
 type Config struct {
 	Endpoint string
 	Username string
@@ -17,12 +15,12 @@ type Config struct {
 	Region   string
 }
 
-// Wraps an OpenSearch REST client.
 type Client struct{}
 
-// Creates an OpenSearch Client from the provided Config.
+// Returns ErrNotImplemented until a real opensearch-go client is wired in. Fails fast at
+// construction rather than handing back a client whose methods panic at first call.
 func New(config Config) (*Client, error) {
-	return &Client{}, nil
+	return nil, ErrNotImplemented
 }
 
 func (c *Client) Index(ctx context.Context, index, id string, doc any) error {

@@ -23,8 +23,6 @@ func localstackConfig() Config {
 	return Config{Region: "us-east-1", AccessKey: "test", SecretKey: "test", Endpoint: ep}
 }
 
-// skipIfNoLocalStack skips the test when LOCALSTACK_ENDPOINT is unset and
-// localhost:4566 is unreachable within 5 seconds.
 func skipIfNoLocalStack(t *testing.T) {
 	t.Helper()
 	if os.Getenv("LOCALSTACK_ENDPOINT") != "" {
@@ -37,7 +35,6 @@ func skipIfNoLocalStack(t *testing.T) {
 	conn.Close()
 }
 
-// fakeSESAPI captures the most recent SendEmailInput for assertion in tests.
 type fakeSESAPI struct {
 	captured *sesv2.SendEmailInput
 	msgID    string
@@ -56,7 +53,7 @@ func (f *fakeSESAPI) SendEmail(_ context.Context, in *sesv2.SendEmailInput, _ ..
 	return &sesv2.SendEmailOutput{MessageId: aws.String(id)}, nil
 }
 
-// ── Unit Tests ────────────────────────────────────────────────────────────────
+// ── Unit Tests ───────────────────────────────────────────────────────────────
 
 func TestNew_MissingRegion(t *testing.T) {
 	_, err := New(context.Background(), Config{})
@@ -206,7 +203,7 @@ func containsStr(s, sub string) bool {
 	return false
 }
 
-// ── Component Tests (LocalStack) ──────────────────────────────────────────────
+// ── Integration Tests ────────────────────────────────────────────────────────
 
 func TestLocalStack_SendEmail_Simple(t *testing.T) {
 	if testing.Short() {
@@ -309,9 +306,6 @@ func TestLocalStack_SendEmail_WithAttachment(t *testing.T) {
 	t.Logf("LocalStack SES has %d stored message(s)", len(sesMessages))
 }
 
-// fetchLocalStackSESMessages calls the LocalStack-specific SES message store
-// endpoint and returns the raw parsed message list. It is best-effort; failures
-// are logged rather than fatal so tests pass on LocalStack Community edition.
 func fetchLocalStackSESMessages(t *testing.T, endpoint string) []map[string]any {
 	t.Helper()
 	url := fmt.Sprintf("%s/_aws/ses", endpoint)

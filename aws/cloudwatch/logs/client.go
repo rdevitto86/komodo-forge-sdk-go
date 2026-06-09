@@ -13,19 +13,15 @@ import (
 )
 
 const (
-	// maxEventsPerCall is the CloudWatch Logs limit for PutLogEvents.
-	maxEventsPerCall = 10000
-	// maxBatchBytes is the approximate max aggregate message size per PutLogEvents call.
-	maxBatchBytes = 1 * 1024 * 1024 // 1 MB
+	maxEventsPerCall = 10000           // CloudWatch Logs limit for PutLogEvents
+	maxBatchBytes    = 1 * 1024 * 1024 // 1 MB; approx max aggregate message size per PutLogEvents call
 )
 
-// Represents a single log entry to be written to CloudWatch Logs.
 type LogEvent struct {
 	Timestamp time.Time
 	Message   string
 }
 
-// Carries parameters for a FilterLogEvents request.
 type FilterLogEventsInput struct {
 	GroupName     string
 	FilterPattern string
@@ -34,7 +30,6 @@ type FilterLogEventsInput struct {
 	Limit         int32
 }
 
-// Represents a single log event returned by FilterLogEvents.
 type FilteredLogEvent struct {
 	Timestamp  time.Time
 	Message    string
@@ -46,20 +41,15 @@ type Config struct {
 	Region    string
 	AccessKey string
 	SecretKey string
-	// Endpoint overrides the default CloudWatch Logs endpoint; used for LocalStack.
-	Endpoint string
+	Endpoint  string // overrides the default CloudWatch Logs endpoint; used for LocalStack
 }
 
-// Wraps the AWS CloudWatch Logs SDK client.
 type Client struct {
 	cwl *cloudwatchlogs.Client
 }
 
 // Creates a CloudWatch Logs Client; returns an error if Region is empty, not a known AWS region, or AWS config loading fails.
 func New(ctx context.Context, config Config) (*Client, error) {
-	if config.Region == "" {
-		return nil, fmt.Errorf("missing region")
-	}
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
 	}
@@ -103,7 +93,6 @@ func (c *Client) PutLogEvents(ctx context.Context, groupName, streamName string,
 		return nil
 	}
 
-	// Partition into batches respecting count and size limits.
 	batches := partitionLogEvents(events)
 
 	for _, batch := range batches {
@@ -173,7 +162,7 @@ func (c *Client) FilterLogEvents(ctx context.Context, input FilterLogEventsInput
 	return result, nil
 }
 
-// Helper that splits events into batches respecting the per-call count and byte limits.
+// Splits events into batches respecting the per-call count and byte limits.
 func partitionLogEvents(events []LogEvent) [][]LogEvent {
 	var batches [][]LogEvent
 	var current []LogEvent
@@ -181,7 +170,7 @@ func partitionLogEvents(events []LogEvent) [][]LogEvent {
 
 	for _, e := range events {
 		msgLen := len(e.Message)
-		// Start a new batch if count or size limit would be exceeded.
+		// start a new batch if count or size limit would be exceeded
 		if len(current) >= maxEventsPerCall || (currentBytes+msgLen > maxBatchBytes && len(current) > 0) {
 			batches = append(batches, current)
 			current = nil

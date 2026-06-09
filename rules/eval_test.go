@@ -9,13 +9,11 @@ import (
 	"testing"
 )
 
-// errReader is a ReadCloser that returns an error on Read, used to test body-read failure paths.
 type errReader struct{}
 
 func (e errReader) Read(p []byte) (int, error) { return 0, fmt.Errorf("simulated read error") }
 func (e errReader) Close() error               { return nil }
 
-// comprehensiveYAML is used to test various eval paths.
 const comprehensiveYAML = `
 rules:
   /test:

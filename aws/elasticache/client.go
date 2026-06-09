@@ -10,7 +10,7 @@ import (
 	awselasticache "github.com/aws/aws-sdk-go-v2/service/elasticache"
 )
 
-// Flattened view of an ElastiCache replication group.
+// Flattens an ElastiCache replication group.
 type ReplicationGroup struct {
 	ID            string
 	Status        string
@@ -19,7 +19,7 @@ type ReplicationGroup struct {
 	Endpoint      string
 }
 
-// Flattened view of an ElastiCache cache cluster.
+// Flattens an ElastiCache cache cluster.
 type CacheCluster struct {
 	ID            string
 	Status        string
@@ -29,13 +29,11 @@ type CacheCluster struct {
 	NumCacheNodes int32
 }
 
-// Exposes the ElastiCache control-plane operations provided by this package.
 type API interface {
 	DescribeReplicationGroups(ctx context.Context) ([]ReplicationGroup, error)
 	DescribeCacheClusters(ctx context.Context) ([]CacheCluster, error)
 }
 
-// Holds credentials and endpoint configuration for the ElastiCache control-plane client.
 type Config struct {
 	Region    string
 	AccessKey string
@@ -43,7 +41,6 @@ type Config struct {
 	Endpoint  string // optional; set to LocalStack URL in non-prod environments
 }
 
-// Wraps the AWS ElastiCache control-plane SDK client.
 type Client struct {
 	ec *awselasticache.Client
 }

@@ -118,7 +118,6 @@ func TestNormalizationMiddleware_UppercasesMethod(t *testing.T) {
 	}
 }
 
-// TestNormalizationMiddleware_TrimsUserAgent covers the User-Agent normalizeHeaders branch.
 func TestNormalizationMiddleware_TrimsUserAgent(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("User-Agent", "  Mozilla/5.0  ")
@@ -130,7 +129,6 @@ func TestNormalizationMiddleware_TrimsUserAgent(t *testing.T) {
 	}
 }
 
-// TestNormalizationMiddleware_NilURLSkipsURLNormalization covers the nil URL guard in normalizeURL.
 func TestNormalizationMiddleware_NilURLSkipsURLNormalization(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/items/", nil)
 	// Setting URL to nil exercises the nil-guard early-return branches in
@@ -150,7 +148,6 @@ func TestNormalizationMiddleware_NilURLSkipsURLNormalization(t *testing.T) {
 	}
 }
 
-// TestNormalizationMiddleware_NormalizesSortQueryParam covers "Sort"/"SORT"/"sort" cases.
 func TestNormalizationMiddleware_NormalizesSortQueryParam(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api?a=SORT&b=Sort&c=sort", nil)
 
@@ -164,7 +161,6 @@ func TestNormalizationMiddleware_NormalizesSortQueryParam(t *testing.T) {
 	}
 }
 
-// TestNormalizationMiddleware_DefaultQueryParamPassesThrough covers the default case.
 func TestNormalizationMiddleware_DefaultQueryParamPassesThrough(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api?name=alice", nil)
 

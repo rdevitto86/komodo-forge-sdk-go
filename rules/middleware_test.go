@@ -7,9 +7,6 @@ import (
 	"testing"
 )
 
-// testConfig defines a minimal rule set for the test binary.
-// Level "strict" with requiredVersion:1 means the URL must contain /v1 and
-// X-Required-Header must be present.
 var testConfig = []byte(`
 rules:
   /items:
@@ -30,6 +27,18 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// loadItemsConfig re-establishes the /items test rules. The eval tests reset global rule
+// state via ResetForTesting, so each middleware test must reload its own config to remain
+// independent of execution order.
+func loadItemsConfig(t *testing.T) {
+	t.Helper()
+	ResetForTesting()
+	LoadConfigWithData(testConfig)
+	if !IsConfigLoaded() {
+		t.Fatal("failed to load middleware test rules")
+	}
+}
+
 func okHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -37,6 +46,7 @@ func okHandler() http.Handler {
 }
 
 func TestRuleValidationMiddleware_ValidRequest(t *testing.T) {
+	loadItemsConfig(t)
 	// GET /v1/items with required header → passes
 	req := httptest.NewRequest(http.MethodGet, "/v1/items", nil)
 	req.Header.Set("X-Required-Header", "present")
@@ -59,6 +69,7 @@ func TestRuleValidationMiddleware_ValidRequest(t *testing.T) {
 }
 
 func TestRuleValidationMiddleware_MissingRequiredHeader(t *testing.T) {
+	loadItemsConfig(t)
 	// GET /v1/items without X-Required-Header → 400
 	req := httptest.NewRequest(http.MethodGet, "/v1/items", nil)
 	rec := httptest.NewRecorder()
@@ -79,6 +90,7 @@ func TestRuleValidationMiddleware_MissingRequiredHeader(t *testing.T) {
 }
 
 func TestRuleValidationMiddleware_NoMatchingRule(t *testing.T) {
+	loadItemsConfig(t)
 	// /v1/unknown has no rule configured → 400
 	req := httptest.NewRequest(http.MethodGet, "/v1/unknown", nil)
 	rec := httptest.NewRecorder()
@@ -99,6 +111,7 @@ func TestRuleValidationMiddleware_NoMatchingRule(t *testing.T) {
 }
 
 func TestRuleValidationMiddleware_LenientLevelPassesWithoutVersion(t *testing.T) {
+	loadItemsConfig(t)
 	// POST /items (lenient level, no requiredVersion) — no version prefix needed
 	req := httptest.NewRequest(http.MethodPost, "/items", nil)
 	rec := httptest.NewRecorder()
@@ -116,9 +129,6 @@ func TestRuleValidationMiddleware_LenientLevelPassesWithoutVersion(t *testing.T)
 	}
 }
 
-// TestRuleValidationMiddleware_LoadConfigReturnsFalse covers the branch where
-// rules.LoadConfig() returns false (config not loaded). The middleware logs an
-// error but continues; requests with no matching rule still get a 400.
 func TestRuleValidationMiddleware_LoadConfigReturnsFalse(t *testing.T) {
 	// Reset the rules package state so LoadConfig() will return false (no path,
 	// no EVAL_RULES_PATH env var, no embedded data).

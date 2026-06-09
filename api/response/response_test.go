@@ -9,7 +9,6 @@ import (
 	"testing"
 )
 
-// marshalErrBody implements io.ReadCloser and json.Marshaler, returning an error on marshal.
 type marshalErrBody struct{}
 
 func (m marshalErrBody) Read(p []byte) (int, error) { return 0, io.EOF }

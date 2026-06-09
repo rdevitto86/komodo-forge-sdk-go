@@ -45,12 +45,10 @@ func redactHeaders(header http.Header) http.Header {
 
 	out := make(http.Header, len(header))
 	for k, val := range header {
-		// if header name matches sensitive pattern, redact values
 		if sensitiveHeaderRE.MatchString(k) {
 			out[k] = []string{"REDACTED"}
 			continue
 		}
-		// otherwise copy values but scrub if any value looks like a bearer token or long secret
 		newVals := make([]string, 0, len(val))
 		for _, v := range val {
 			if looksLikeToken(v) {

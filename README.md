@@ -2,11 +2,11 @@
 
 Internal Go SDK for all Komodo services. Provides AWS clients, HTTP middleware, JWT/OAuth crypto, structured logging, concurrency utilities, and a universal server entry point.
 
-Module: `komodo-forge-sdk-go`
+Module: `github.com/rdevitto86/komodo-forge-sdk-go`
 
-All services reference this SDK via a local `replace` directive in their `go.mod`:
+Services consume this SDK as a versioned Git dependency — no local `replace` directive:
 ```
-replace komodo-forge-sdk-go => ../komodo-forge-sdk-go
+go get github.com/rdevitto86/komodo-forge-sdk-go@vX.Y.Z
 ```
 
 ---
@@ -14,17 +14,23 @@ replace komodo-forge-sdk-go => ../komodo-forge-sdk-go
 ## Packages
 
 ### `auth`
-JWT Bearer token verification and HTTP middleware. Provides a `Verifier` interface for dependency-injected token validation and a `JWKSVerifier` that fetches RS256 public keys from a JWKS endpoint.
+JWT Bearer token verification and HTTP middleware. **This is the canonical token-verification path for every service.** Tokens are issued centrally by the Auth API (the sole holder of the private signing key); services verify-only via `JWKSVerifier` (RS256 public keys fetched from the JWKS endpoint) and never mint their own tokens.
 
 ```go
 // Construct a verifier backed by the auth-api JWKS endpoint.
+// ExpectedAudience and ExpectedIssuer are required — tokens for another audience are rejected.
 v, err := auth.NewJWKSVerifier(auth.Config{
-    JWKSURL:  "https://auth.internal/.well-known/jwks.json",
-    CacheTTL: 5 * time.Minute,          // default; keys cached by kid
+    JWKSURL:          "https://auth.internal/.well-known/jwks.json",
+    ExpectedAudience: "order-api",          // this service's identity
+    ExpectedIssuer:   "https://auth.internal",
+    CacheTTL:         5 * time.Minute,      // default; keys cached by kid
 })
 
 // Use the injected-Verifier middleware (preferred — testable).
 router.Use(auth.Middleware(v))
+
+// Restrict an internal route to service-to-service callers (svc:<name> scope).
+router.Use(auth.RequireServiceScope)
 
 // Sentinel errors for branching on failure mode.
 claims, err := v.Verify(ctx, tokenString)
@@ -37,6 +43,10 @@ case errors.Is(err, auth.ErrInvalidToken):     // malformed / unknown kid
 // Deprecated: use Middleware(v) instead.
 auth.AuthMiddleware(next http.Handler) http.Handler
 ```
+
+To **call** another internal service, obtain a service token from the Auth API with the
+`client_credentials` grant and attach it automatically — no private key required (see
+`http/client.WithServiceAuth` below).
 
 ### `config`
 Well-known environment variable key constants shared across all services.
@@ -287,6 +297,24 @@ client.GetJSON[T](c, ctx, url)                        // returns (*T, error)
 client.PostJSON[T](c, ctx, url, body)                 // returns (*T, error)
 ```
 
+**Service-to-service auth** (`WithServiceAuth`) — obtain a short-lived service token from the
+Auth API via the OAuth2 `client_credentials` grant and attach it to every outbound request. The
+token is cached and proactively refreshed; no private signing key is involved.
+
+```go
+src, err := client.NewClientCredentialsTokenSource(client.ServiceAuthConfig{
+    TokenURL:     "https://auth.internal/v1/oauth/token",
+    ClientID:     os.Getenv("SERVICE_CLIENT_ID"),
+    ClientSecret: os.Getenv("SERVICE_CLIENT_SECRET"),
+    Scope:        "svc:order-api",
+})
+
+// Compose into a Client (or any generated client's transport).
+c := client.NewClient(client.ClientConfig{
+    Transport: client.WithServiceAuth(nil, src),       // nil base = DefaultTransport
+})
+```
+
 ### `http/context`
 Context key definitions and context enrichment middleware.
 
@@ -387,18 +415,27 @@ websocket.RouteHandler(w, r)  // upgrades the connection
 ## Crypto / Security
 
 ### `security/jwt`
-RS256 JWT signing and validation. Also importable at `crypto/jwt` (re-export shim).
+RS256 JWT issuance and validation.
+
+> **Issuance is Auth-API-only.** `InitializeKeys` (which loads the private signing key) and
+> `SignToken` are intended for the central Auth API — the single service that holds the private
+> key and runs the OAuth token endpoint. **Application services must not mint tokens:** verify
+> inbound tokens via the [`auth`](#auth) package and obtain service tokens via
+> [`http/client.WithServiceAuth`](#httpclient). The `crypto/jwt` re-export shim is **deprecated**.
 
 ```go
+// Auth API only:
 jwt.InitializeKeys()
 jwt.SignToken(issuer, subject, audience, ttl, scopes)
+
+// Verification helpers (static-key path; services should prefer auth.JWKSVerifier):
 jwt.ValidateToken(tokenString)
 jwt.ParseClaims(tokenString)
 jwt.ExtractTokenFromRequest(req)
 ```
 
 ### `security/oauth`
-OAuth 2.0 scope and grant type validation. Also importable at `crypto/oauth` (re-export shim).
+OAuth 2.0 scope and grant type validation. The `crypto/oauth` re-export shim is **deprecated**.
 
 ```go
 oauth.IsValidScope(scope)

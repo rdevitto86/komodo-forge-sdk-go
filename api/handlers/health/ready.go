@@ -15,7 +15,7 @@ const (
 	defaultCheckTimeout = 3 * time.Second
 )
 
-// Checker probes a single downstream dependency and reports whether it is reachable.
+// Probes a single downstream dependency and reports whether it is reachable.
 type Checker interface {
 	Name() string
 	Check(ctx context.Context) error
@@ -29,7 +29,7 @@ type checkerFunc struct {
 func (c checkerFunc) Name() string                    { return c.name }
 func (c checkerFunc) Check(ctx context.Context) error { return c.fn(ctx) }
 
-// CheckerFunc adapts a plain probe function into a Checker under the given dependency name.
+// Adapts a plain probe function into a Checker under the given dependency name.
 func CheckerFunc(name string, fn func(ctx context.Context) error) Checker {
 	return checkerFunc{name: name, fn: fn}
 }
@@ -39,15 +39,15 @@ type cacheEntry struct {
 	expiresAt time.Time
 }
 
-// Option configures a readiness handler returned by NewReadyHandler.
+// Configures a readiness handler returned by NewReadyHandler.
 type Option func(*readyHandler)
 
-// WithCacheTTL overrides how long a checker's result is reused before it is probed again. Defaults to 10s.
+// Overrides how long a checker's result is reused before it is probed again. Defaults to 10s.
 func WithCacheTTL(d time.Duration) Option {
 	return func(h *readyHandler) { h.cacheTTL = d }
 }
 
-// WithCheckTimeout overrides the per-checker context deadline applied when no deadline is already set on the request context. Defaults to 3s.
+// Overrides the per-checker context deadline applied when no deadline is already set on the request context. Defaults to 3s.
 func WithCheckTimeout(d time.Duration) Option {
 	return func(h *readyHandler) { h.checkTimeout = d }
 }
@@ -67,9 +67,9 @@ type readyHandler struct {
 	sf    singleflight.Group
 }
 
-// NewReadyHandler builds a GET /health/ready handler that probes every registered Checker, caches each
-// result for CacheTTL (default 10s) to absorb probe spam from load balancers, and responds 200 when all
-// dependencies are reachable or 503 with the full list of failing dependencies otherwise.
+// Builds a GET /health/ready handler that probes every registered Checker, caching each result for
+// CacheTTL (default 10s) to absorb load-balancer probe spam. Responds 200 when all dependencies are
+// reachable, or 503 with the list of failing dependencies.
 func NewReadyHandler(checkers []Checker, opts ...Option) http.HandlerFunc {
 	h := &readyHandler{
 		checkers:     checkers,
@@ -114,7 +114,7 @@ func (h *readyHandler) serveHTTP(wtr http.ResponseWriter, req *http.Request) {
 	json.NewEncoder(wtr).Encode(map[string][]failingDep{"failing": failing})
 }
 
-// run returns the cached result for the checker if it is still fresh, otherwise probes the dependency
+// Returns the cached result for the checker if it is still fresh, otherwise probes the dependency
 // (deduping concurrent probes of the same dependency via singleflight) and caches the outcome.
 func (h *readyHandler) run(ctx context.Context, c Checker) error {
 	if cached, ok := h.cached(c.Name()); ok {

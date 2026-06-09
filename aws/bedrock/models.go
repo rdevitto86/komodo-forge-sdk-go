@@ -19,7 +19,7 @@ const (
 	ModelMistralLarge     Model = "mistral.mistral-large-2402-v1:0"
 )
 
-// ErrUnknownModel is returned when a model identifier is not in the supported set.
+// Returned when a model identifier is not in the supported set.
 var ErrUnknownModel = errors.New("unknown bedrock model")
 
 var validModels = map[Model]struct{}{
@@ -48,7 +48,6 @@ func (m Model) IsValid() bool {
 	return ok
 }
 
-// Returns the raw model identifier string.
 func (m Model) String() string {
 	return string(m)
 }

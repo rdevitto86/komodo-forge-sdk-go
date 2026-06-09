@@ -12,7 +12,6 @@ var (
 	ErrInvalidToken     = errors.New("invalid token")
 )
 
-// Claims holds the verified payload extracted from a JWT.
 type Claims struct {
 	Subject   string
 	Audience  []string
@@ -24,7 +23,7 @@ type Claims struct {
 	Issuer    string
 }
 
-// Verifier validates a raw JWT string and returns its verified claims.
+// Validates a raw JWT string and returns its verified claims.
 // Implementations must return ErrExpired, ErrInvalidSignature, or ErrInvalidToken
 // for the respective failure modes so callers can distinguish them.
 type Verifier interface {

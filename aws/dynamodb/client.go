@@ -34,7 +34,7 @@ type API interface {
 	DescribeTable(ctx context.Context, table string) error
 }
 
-// mirrors the *dynamodb.Client surface so tests can inject a fake without a live endpoint
+// Mirrors the *dynamodb.Client surface so tests can inject a fake without a live endpoint.
 type dynamoDBAPI interface {
 	GetItem(ctx context.Context, input *dynamodb.GetItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error)
 	PutItem(ctx context.Context, input *dynamodb.PutItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error)
@@ -48,10 +48,10 @@ type dynamoDBAPI interface {
 }
 
 type Config struct {
-	Region    string
-	AccessKey string
-	SecretKey string
-	Endpoint  string
+	Region               string
+	AccessKey            string
+	SecretKey            string
+	Endpoint             string
 	MaxConcurrentBatches int
 }
 
@@ -60,7 +60,7 @@ type Client struct {
 	maxParallel int // semaphore cap for batch operations
 }
 
-// test-only constructor that bypasses AWS config loading to inject a fake API
+// Constructs a Client with an injected fake API, bypassing AWS config loading; test-only.
 func newWithAPI(api dynamoDBAPI, maxParallel int) *Client {
 	if maxParallel <= 0 {
 		maxParallel = 5
@@ -69,9 +69,6 @@ func newWithAPI(api dynamoDBAPI, maxParallel int) *Client {
 }
 
 func New(ctx context.Context, config Config) (*Client, error) {
-	if config.Region == "" {
-		return nil, fmt.Errorf("missing region")
-	}
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
 	}

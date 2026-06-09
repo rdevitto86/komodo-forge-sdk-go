@@ -1,8 +1,11 @@
 package ipaccess
 
 import (
+	"fmt"
 	"net"
 	"strings"
+
+	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 )
 
 type Lists struct {
@@ -44,12 +47,11 @@ func ipInList(ip net.IP, ips []net.IP, nets []*net.IPNet) bool {
 	return false
 }
 
-// Parses a comma-separated list of IPs or CIDR ranges into separate slices; invalid entries are silently ignored.
-func ParseList(raw string) (ips []net.IP, nets []*net.IPNet) {
-	if strings.TrimSpace(raw) == "" {
-		return nil, nil
-	}
-
+// Parses a comma-separated list of IPs or CIDR ranges into separate slices, returning an
+// error that names every entry it could not parse so a malformed allowlist/denylist fails
+// loudly at config time instead of silently dropping rules (which can fail open).
+func ParseListStrict(raw string) (ips []net.IP, nets []*net.IPNet, err error) {
+	var invalid []string
 	for p := range strings.SplitSeq(raw, ",") {
 		p = strings.TrimSpace(p)
 		if p == "" {
@@ -57,7 +59,7 @@ func ParseList(raw string) (ips []net.IP, nets []*net.IPNet) {
 		}
 
 		if strings.Contains(p, "/") {
-			if _, network, err := net.ParseCIDR(p); err == nil {
+			if _, network, e := net.ParseCIDR(p); e == nil {
 				nets = append(nets, network)
 				continue
 			}
@@ -66,13 +68,31 @@ func ParseList(raw string) (ips []net.IP, nets []*net.IPNet) {
 			ips = append(ips, ip)
 			continue
 		}
+		invalid = append(invalid, p)
 	}
+	if len(invalid) > 0 {
+		return ips, nets, fmt.Errorf("ignored %d invalid entries: %s", len(invalid), strings.Join(invalid, ", "))
+	}
+	return ips, nets, nil
+}
+
+// Parses a comma-separated list of IPs or CIDR ranges into separate slices; invalid entries
+// are silently ignored. Prefer ParseListStrict when a malformed entry must not pass unnoticed.
+func ParseList(raw string) (ips []net.IP, nets []*net.IPNet) {
+	ips, nets, _ = ParseListStrict(raw)
 	return ips, nets
 }
 
-// Parses both whitelist and blacklist raw strings and returns a fully populated Lists struct.
+// Parses both whitelist and blacklist raw strings and returns a fully populated Lists struct,
+// logging a warning for any invalid entries rather than dropping them silently.
 func ParseLists(whitelistRaw, blacklistRaw string) *Lists {
-	wlIPs, wlNets := ParseList(whitelistRaw)
-	blIPs, blNets := ParseList(blacklistRaw)
+	wlIPs, wlNets, wlErr := ParseListStrict(whitelistRaw)
+	if wlErr != nil {
+		logger.Warn("ip whitelist has invalid entries", "error", wlErr.Error())
+	}
+	blIPs, blNets, blErr := ParseListStrict(blacklistRaw)
+	if blErr != nil {
+		logger.Warn("ip blacklist has invalid entries", "error", blErr.Error())
+	}
 	return &Lists{WhitelistIPs: wlIPs, WhitelistNets: wlNets, BlacklistIPs: blIPs, BlacklistNets: blNets}
 }

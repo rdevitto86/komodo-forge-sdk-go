@@ -16,8 +16,6 @@ func localstackConfig() Config {
 	return Config{Region: "us-east-1", AccessKey: "test", SecretKey: "test", Endpoint: ep}
 }
 
-// skipIfNoLocalStack skips the test when LOCALSTACK_ENDPOINT is unset and
-// localhost:4566 is unreachable within 5 seconds.
 func skipIfNoLocalStack(t *testing.T) {
 	t.Helper()
 	if os.Getenv("LOCALSTACK_ENDPOINT") != "" {
@@ -30,7 +28,7 @@ func skipIfNoLocalStack(t *testing.T) {
 	conn.Close()
 }
 
-// ── Unit Tests ────────────────────────────────────────────────────────────────
+// ── Unit Tests ───────────────────────────────────────────────────────────────
 
 func TestNew_MissingRegion(t *testing.T) {
 	_, err := New(context.Background(), Config{})
@@ -56,10 +54,8 @@ func TestNew_ValidConfig(t *testing.T) {
 	}
 }
 
-// ── Component Tests (LocalStack) ──────────────────────────────────────────────
+// ── Integration Tests ────────────────────────────────────────────────────────
 
-// TestLocalStack_DescribeReplicationGroups verifies that the control-plane client
-// reaches LocalStack and returns an empty slice when no groups are configured.
 func TestLocalStack_DescribeReplicationGroups(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping component test in short mode")
@@ -78,8 +74,6 @@ func TestLocalStack_DescribeReplicationGroups(t *testing.T) {
 	t.Logf("found %d replication group(s)", len(groups))
 }
 
-// TestLocalStack_DescribeCacheClusters verifies that the control-plane client
-// reaches LocalStack and returns an empty slice when no clusters are configured.
 func TestLocalStack_DescribeCacheClusters(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping component test in short mode")

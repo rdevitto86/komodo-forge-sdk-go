@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/connect"
 )
 
-// Exposes the Connect operations provided by this package.
 type API interface {
 	StartOutboundVoiceContact(ctx context.Context, input OutboundVoiceContactInput) (string, error)
 	GetContactAttributes(ctx context.Context, instanceID, contactID string) (map[string]string, error)
@@ -18,7 +17,7 @@ type API interface {
 	ListContactFlows(ctx context.Context, instanceID string) ([]ContactFlow, error)
 }
 
-// connectAPI is the interface seam over the AWS SDK client; allows test injection without a real endpoint.
+// Interface seam over the AWS SDK client; allows test injection without a real endpoint.
 type connectAPI interface {
 	StartOutboundVoiceContact(ctx context.Context, in *connect.StartOutboundVoiceContactInput, opts ...func(*connect.Options)) (*connect.StartOutboundVoiceContactOutput, error)
 	GetContactAttributes(ctx context.Context, in *connect.GetContactAttributesInput, opts ...func(*connect.Options)) (*connect.GetContactAttributesOutput, error)
@@ -26,7 +25,6 @@ type connectAPI interface {
 	ListContactFlows(ctx context.Context, in *connect.ListContactFlowsInput, opts ...func(*connect.Options)) (*connect.ListContactFlowsOutput, error)
 }
 
-// Carries all parameters for a StartOutboundVoiceContact call.
 type OutboundVoiceContactInput struct {
 	InstanceID       string
 	ContactFlowID    string
@@ -35,7 +33,7 @@ type OutboundVoiceContactInput struct {
 	Attributes       map[string]string
 }
 
-// Flattened view of the Connect ContactFlowSummary type; only ID, ARN, Name, and Type are populated.
+// Flattens the Connect ContactFlowSummary type; only ID, ARN, Name, and Type are populated.
 type ContactFlow struct {
 	ID   string
 	ARN  string
@@ -43,7 +41,6 @@ type ContactFlow struct {
 	Type string
 }
 
-// Holds AWS configuration for constructing a Connect client.
 type Config struct {
 	Region    string
 	AccessKey string
@@ -51,7 +48,6 @@ type Config struct {
 	Endpoint  string
 }
 
-// Wraps the AWS Connect SDK client behind the connectAPI interface.
 type Client struct {
 	api connectAPI
 }
@@ -89,7 +85,7 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{api: connect.NewFromConfig(cfg, opts...)}, nil
 }
 
-// newWithAPI constructs a Client backed by a supplied fake; used in tests only.
+// Constructs a Client backed by a supplied fake; used in tests only.
 func newWithAPI(api connectAPI) *Client {
 	return &Client{api: api}
 }

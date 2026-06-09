@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 )
 
-// ── Fakes ─────────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 type fakeSecretsAPI struct {
 	getSecretValueFunc func(ctx context.Context, input *secretsmanager.GetSecretValueInput, opts ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error)
@@ -27,7 +27,7 @@ func (f *fakeSecretsAPI) GetSecretValue(ctx context.Context, input *secretsmanag
 	return nil, errors.New("GetSecretValue not configured on fake")
 }
 
-// ── Unit Tests ─────────────────────────────────────────────────────────────────
+// ── Unit Tests ───────────────────────────────────────────────────────────────
 
 func TestNew_MissingRegion(t *testing.T) {
 	_, err := New(context.Background(), Config{})
@@ -63,7 +63,7 @@ func TestGetSecrets_EmptySecretPath(t *testing.T) {
 	}
 }
 
-// ── Component Tests ─────────────────────────────────────────────────────────
+// ── Component Tests ──────────────────────────────────────────────────────────
 
 func TestGetSecret_Success(t *testing.T) {
 	testutil.Component(t)
@@ -308,7 +308,7 @@ func mustJSON(v map[string]string) []byte {
 	return b
 }
 
-// ── Integration Tests ──────────────────────────────────────────────────────────
+// ── Integration Tests ────────────────────────────────────────────────────────
 
 func TestNew_ValidRegion(t *testing.T) {
 	testutil.Integration(t)

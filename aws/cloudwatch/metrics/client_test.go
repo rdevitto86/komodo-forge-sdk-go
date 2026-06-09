@@ -16,7 +16,6 @@ func localstackConfig() Config {
 	return Config{Region: "us-east-1", AccessKey: "test", SecretKey: "test", Endpoint: ep}
 }
 
-// checkLocalstack skips the test if running in short mode or if LocalStack is unreachable.
 func checkLocalstack(t *testing.T) {
 	t.Helper()
 	if testing.Short() {
@@ -29,7 +28,7 @@ func checkLocalstack(t *testing.T) {
 	conn.Close()
 }
 
-// ── Unit Tests ─────────────────────────────────────────────────────────────────
+// ── Unit Tests ───────────────────────────────────────────────────────────────
 
 func TestNew_MissingRegion(t *testing.T) {
 	_, err := New(context.Background(), Config{})
@@ -62,7 +61,7 @@ func TestGetMetricStatistics_EmptyNamespace(t *testing.T) {
 	}
 }
 
-// ── Component Tests (LocalStack) ───────────────────────────────────────────────
+// ── Integration Tests ────────────────────────────────────────────────────────
 
 func TestPutAndGetMetricStatistics_LocalStack(t *testing.T) {
 	checkLocalstack(t)

@@ -6,6 +6,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.17.1]
+
+### Added
+
+- **`security/os/host` — new package for process-level defense-in-depth.** `DisableCoreDumps()` sets `RLIMIT_CORE` to zero (via `syscall.Setrlimit`) so a crash cannot spill in-memory secrets — notably an RSA signing key — to disk. Build-tagged: the guard applies on the Linux container that ships and is a no-op on non-Linux dev hosts (macOS/Windows), so callers can invoke it unconditionally at startup. Lifted out of `komodo-auth-api`, which previously hand-rolled the same guard locally.
+
+---
+
 ## [0.17.0]
 
 > **Auth architecture: central issuance, verify-only SDK.** Token issuance is owned by the Auth API (the sole holder of the private signing key); every other service verifies tokens via the `auth` package and obtains its own service tokens via the OAuth2 `client_credentials` grant. This release adds the keyless service-token client, fences off issuance in the universal SDK surface, and deprecates the `crypto/*` minting shims. Issuance hardening (KMS-backed keys, key rotation, `jti`/revocation) is tracked in `komodo-auth-api`.

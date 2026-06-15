@@ -20,6 +20,8 @@ const (
 
 const COOKIE_CSRF_TOKEN = "csrf_token"
 
+const DEFAULT_MAX_CONTENT_LENGTH int64 = 4096
+
 const (
 	REQUESTED_BY_API_INT            = "API_INTERNAL"
 	REQUESTED_BY_API_EXT            = "API_EXTERNAL"

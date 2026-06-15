@@ -302,3 +302,56 @@ func TestRequireServiceScope_OnlyServiceScope(t *testing.T) {
 		t.Errorf("expected 200 for svc: only scope, got %d", rec.Code)
 	}
 }
+
+func TestRequireAnyScope_NoScopesConfigured_Panics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic when constructed with no scopes")
+		}
+	}()
+	RequireAnyScope()
+}
+
+func TestRequireAnyScope_NoScopesInContext_Returns403(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	RequireAnyScope("otp:verified")(okHandler()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 when no scopes in context, got %d", rec.Code)
+	}
+}
+
+func TestRequireAnyScope_MissingRequiredScope_Returns403(t *testing.T) {
+	req := requestWithScopes([]string{"read:items"})
+	rec := httptest.NewRecorder()
+
+	RequireAnyScope("otp:verified", "passkey:verified")(okHandler()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("expected 403 when required scope absent, got %d", rec.Code)
+	}
+}
+
+func TestRequireAnyScope_OneOfMany_CallsNext(t *testing.T) {
+	for _, present := range []string{"otp:verified", "passkey:verified"} {
+		req := requestWithScopes([]string{"read:items", present})
+		rec := httptest.NewRecorder()
+		called := false
+
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			w.WriteHeader(http.StatusOK)
+		})
+
+		RequireAnyScope("otp:verified", "passkey:verified")(next).ServeHTTP(rec, req)
+
+		if !called {
+			t.Errorf("expected next to be called when %q present", present)
+		}
+		if rec.Code != http.StatusOK {
+			t.Errorf("expected 200 when %q present, got %d", present, rec.Code)
+		}
+	}
+}

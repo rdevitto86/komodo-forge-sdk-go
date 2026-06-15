@@ -20,24 +20,24 @@ import (
 var (
 	Chain = mwchain.Chain
 
-	// --- handlers ---
-
-	AuthMiddleware            = auth.AuthMiddleware
-	Middleware                = auth.Middleware
-	ClientSourceMiddleware    = mwrequest.ClientSourceMiddleware
-	ClientTypeMiddleware      = mwrequest.ClientSourceMiddleware
-	CORSMiddleware            = mwcors.CORSMiddleware
-	CSRFMiddleware            = mwcsrf.CSRFMiddleware
-	IdempotencyMiddleware     = mwidempotency.IdempotencyMiddleware
-	IPAccessMiddleware        = mwipaccess.IPAccessMiddleware
-	NormalizationMiddleware   = mwnorm.NormalizationMiddleware
-	RateLimiterMiddleware     = mwratelimit.RateLimiterMiddleware
-	RedactionMiddleware       = mwredaction.RedactionMiddleware
-	RequestIDMiddleware       = mwrequest.RequestIDMiddleware
-	RequireServiceScope       = auth.RequireServiceScope
-	RuleValidationMiddleware  = mwrules.RuleValidationMiddleware
-	SanitizationMiddleware    = mwsanitize.SanitizationMiddleware
-	ScopeMiddleware           = auth.RequireServiceScope
-	SecurityHeadersMiddleware = mwheaders.SecurityHeadersMiddleware
-	TelemetryMiddleware       = mwtelemetry.TelemetryMiddleware
+	AuthMiddleware             = auth.AuthMiddleware
+	Middleware                 = auth.Middleware
+	ClientSourceMiddleware     = mwrequest.ClientSourceMiddleware
+	ClientTypeMiddleware       = mwrequest.ClientSourceMiddleware
+	CORSMiddleware             = mwcors.CORSMiddleware
+	CSRFMiddleware             = mwcsrf.CSRFMiddleware
+	IdempotencyMiddleware      = mwidempotency.IdempotencyMiddleware
+	IPAccessMiddleware         = mwipaccess.IPAccessMiddleware
+	MaxContentLengthMiddleware = mwheaders.MaxContentLengthMiddleware
+	NormalizationMiddleware    = mwnorm.NormalizationMiddleware
+	RateLimiterMiddleware      = mwratelimit.RateLimiterMiddleware
+	RedactionMiddleware        = mwredaction.RedactionMiddleware
+	RequestIDMiddleware        = mwrequest.RequestIDMiddleware
+	RequireAnyScope            = auth.RequireAnyScope
+	RequireServiceScope        = auth.RequireServiceScope
+	RuleValidationMiddleware   = mwrules.RuleValidationMiddleware
+	SanitizationMiddleware     = mwsanitize.SanitizationMiddleware
+	ScopeMiddleware            = auth.RequireServiceScope
+	SecurityHeadersMiddleware  = mwheaders.SecurityHeadersMiddleware
+	TelemetryMiddleware        = mwtelemetry.TelemetryMiddleware
 )

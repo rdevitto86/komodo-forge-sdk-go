@@ -134,3 +134,30 @@ func RequireServiceScope(next http.Handler) http.Handler {
 		httpErr.SendError(wtr, req, httpErr.Auth.InsufficientScope)
 	})
 }
+
+func RequireAnyScope(scopes ...string) func(http.Handler) http.Handler {
+	if len(scopes) == 0 {
+		panic("at least one scope is required")
+	}
+
+	want := make(map[string]struct{}, len(scopes))
+	for _, s := range scopes {
+		want[s] = struct{}{}
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
+			for _, have := range ctxKeys.GetScopes(req.Context()) {
+				if _, ok := want[have]; ok {
+					next.ServeHTTP(wtr, req)
+					return
+				}
+			}
+
+			httpErr.SendError(
+				wtr, req, httpErr.Auth.InsufficientScope,
+				httpErr.WithDetail("requires "+strings.Join(scopes, " or ")),
+			)
+		})
+	}
+}

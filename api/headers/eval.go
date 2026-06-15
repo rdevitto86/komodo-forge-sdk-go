@@ -18,7 +18,7 @@ var (
 	idempotencyKeyRE = regexp.MustCompile(`^[A-Za-z0-9_\-]{8,64}$`)
 )
 
-// Runs lightweight validation for known header names.
+// Validates header values against known patterns and security rules.
 func ValidateHeaderValue(hdr string, req *http.Request) (bool, error) {
 	val := req.Header.Get(hdr)
 	switch strings.ToLower(hdr) {
@@ -72,7 +72,7 @@ func isValidContentLength(s string) bool {
 		val := os.Getenv("MAX_CONTENT_LENGTH")
 		num, err := strconv.Atoi(val)
 		if val == "" || err != nil {
-			return 4096
+			return int(DEFAULT_MAX_CONTENT_LENGTH)
 		}
 		return num
 	})()

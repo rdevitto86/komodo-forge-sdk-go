@@ -6,6 +6,19 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.17.2]
+
+### Added
+
+- **`api/headers` — `MaxContentLengthMiddleware(maxBytes int64)`.** Enforces a request body-size cap and is re-exported as `middleware.MaxContentLengthMiddleware`. Rejects an oversized declared `Content-Length` with `413 Request Entity Too Large` and wraps the body in `http.MaxBytesReader` for defense-in-depth against an absent or understated `Content-Length` (chunked/streamed bodies). When `maxBytes <= 0` the limit resolves from the `MAX_CONTENT_LENGTH` env var, falling back to the new `headers.DEFAULT_MAX_CONTENT_LENGTH` constant (4096). This closes the enforcement gap left by the existing `content-length` header *rule* check (`isValidContentLength`), which validates the declared header value but neither enforces the body stream nor returns a 413. Lifted out of `komodo-auth-api`, which hand-rolled the same middleware locally.
+- **`auth` — `RequireAnyScope(scopes ...string)`.** A general scope guard re-exported as `middleware.RequireAnyScope`: passes the request when the token carries *any* of the listed exact scopes, otherwise returns `403` (`InsufficientScope`) with a `requires <a> or <b>` detail; panics at construction if no scopes are given. Complements `RequireServiceScope` (which matches the `svc:` *prefix* for machine identity) with arbitrary user/permission-scope gating. Lifted out of `komodo-auth-api`, which hand-rolled it as `RequireUserScope`.
+
+### Changed
+
+- **`api/headers` — single-sourced the content-length default.** `isValidContentLength`'s inline `4096` default now references `headers.DEFAULT_MAX_CONTENT_LENGTH`, shared with the new middleware. No behavioral change.
+
+---
+
 ## [0.17.1]
 
 ### Added

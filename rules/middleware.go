@@ -8,9 +8,7 @@ import (
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 )
 
-// Enforces request validation rules based on predefined configurations.
 func RuleValidationMiddleware(next http.Handler) http.Handler {
-	// Ensure config is loaded
 	if !LoadConfig() {
 		logger.Error("validation rules failed to load", fmt.Errorf("failed to load validation rules"))
 	}

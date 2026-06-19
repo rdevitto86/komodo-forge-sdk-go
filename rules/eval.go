@@ -4,20 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	headers "github.com/rdevitto86/komodo-forge-sdk-go/api/headers"
-	httpReq "github.com/rdevitto86/komodo-forge-sdk-go/api/request"
-	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 	"io"
 	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
+
+	headers "github.com/rdevitto86/komodo-forge-sdk-go/api/headers"
+	httpReq "github.com/rdevitto86/komodo-forge-sdk-go/api/request"
+	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 )
 
-// Reports whether val satisfies the configured pattern. An empty pattern always matches.
-// A pattern that is set but has no pre-compiled regex falls back to compiling on demand;
-// if it still fails to compile, the value is rejected rather than silently accepted, so a
-// misconfigured pattern can never disable validation.
 func matchesPattern(pattern string, compiled *regexp.Regexp, val string) bool {
 	if pattern == "" {
 		return true
@@ -32,7 +29,6 @@ func matchesPattern(pattern string, compiled *regexp.Regexp, val string) bool {
 	return re.MatchString(val)
 }
 
-// Checks if the request complies with all aspects of the provided EvalRule.
 func IsRuleValid(req *http.Request, rule *EvalRule) bool {
 	if req == nil || rule == nil {
 		logger.Error("api request or eval rule is nil", fmt.Errorf("request or rule is nil"))
@@ -68,9 +64,7 @@ func IsRuleValid(req *http.Request, rule *EvalRule) bool {
 	return true
 }
 
-// Checks if the request version matches the required version in the rule.
 func isValidVersion(req *http.Request, rule *EvalRule) bool {
-	// Lenient mode: version validation is optional
 	if rule.Level == LevelLenient {
 		versionStr := httpReq.GetAPIVersion(req)
 		if versionStr == "" {
@@ -92,7 +86,6 @@ func isValidVersion(req *http.Request, rule *EvalRule) bool {
 		return true
 	}
 
-	// Strict mode: version is mandatory
 	if rule.RequiredVersion <= 0 {
 		logger.Error(
 			"rule configuration error: requiredVersion must be >= 1 for strict validation",
@@ -110,7 +103,6 @@ func isValidVersion(req *http.Request, rule *EvalRule) bool {
 		return false
 	}
 
-	// Parse version number (e.g., "/v1" -> 1)
 	versionStr = strings.TrimPrefix(versionStr, "/v")
 	version, err := strconv.Atoi(versionStr)
 	if err != nil {
@@ -133,12 +125,10 @@ func isValidVersion(req *http.Request, rule *EvalRule) bool {
 	return true
 }
 
-// Checks if the request headers comply with the provided EvalRule.
 func areValidHeaders(req *http.Request, rule *EvalRule) bool {
 	for hName, spec := range rule.Headers {
 		val := req.Header.Get(hName)
 
-		// Check if required and missing
 		if spec.Required && val == "" {
 			logger.Error(
 				fmt.Sprintf("header %q is required but missing", hName),
@@ -150,9 +140,7 @@ func areValidHeaders(req *http.Request, rule *EvalRule) bool {
 			continue
 		}
 
-		// Check exact value match if specified
 		if valStr, _ := spec.Value.(string); valStr != "" {
-			// Support wildcard matching for "Bearer *" etc
 			if valStr[len(valStr)-1] == '*' {
 				prefix := valStr[:len(valStr)-1]
 				if !strings.HasPrefix(val, prefix) {
@@ -171,8 +159,6 @@ func areValidHeaders(req *http.Request, rule *EvalRule) bool {
 			}
 		}
 
-		// Use pre-compiled pattern (compiled at config load time); a configured pattern
-		// that failed to compile rejects the value rather than skipping the check.
 		if !matchesPattern(spec.Pattern, spec.compiled, val) {
 			logger.Error(
 				fmt.Sprintf("header %q value %q does not match pattern %q", hName, val, spec.Pattern),
@@ -181,7 +167,6 @@ func areValidHeaders(req *http.Request, rule *EvalRule) bool {
 			return false
 		}
 
-		// enum check
 		if len(spec.Enum) > 0 {
 			ok := false
 			for _, e := range spec.Enum {
@@ -199,7 +184,6 @@ func areValidHeaders(req *http.Request, rule *EvalRule) bool {
 			}
 		}
 
-		// length checks
 		if spec.MinLen > 0 && len(val) < spec.MinLen {
 			logger.Error(
 				fmt.Sprintf("header %q value length %d is less than minLen %d", hName, len(val), spec.MinLen),
@@ -214,7 +198,6 @@ func areValidHeaders(req *http.Request, rule *EvalRule) bool {
 			)
 			return false
 		}
-		// header-specific validation (optional - comment out if causing issues)
 		if ok, err := headers.ValidateHeaderValue(hName, req); !ok || err != nil {
 			logger.Error(
 				fmt.Sprintf("header %q failed ValidateHeaderValue check", hName),
@@ -227,15 +210,11 @@ func areValidHeaders(req *http.Request, rule *EvalRule) bool {
 	return true
 }
 
-// Checks if the request path parameters comply with the provided EvalRule.
 func areValidPathParams(req *http.Request, rule *EvalRule) bool {
-	// find matching pattern and extract params
 	_, params := matchRouteAndExtractParams(req.URL.Path)
 	if params == nil {
-		// no dynamic params in path; ensure rule does not require any
 		for k, spec := range rule.PathParams {
 			if spec.Required {
-				// required param missing
 				_ = k
 				logger.Error(
 					fmt.Sprintf("path param %q is required but missing", k),
@@ -247,7 +226,6 @@ func areValidPathParams(req *http.Request, rule *EvalRule) bool {
 		return true
 	}
 
-	// validate each rule-specified param
 	for name, spec := range rule.PathParams {
 		val, ok := params[name]
 		if !ok || val == "" {
@@ -261,8 +239,6 @@ func areValidPathParams(req *http.Request, rule *EvalRule) bool {
 			continue
 		}
 
-		// Use pre-compiled pattern (compiled at config load time); a configured pattern
-		// that failed to compile rejects the value rather than skipping the check.
 		if !matchesPattern(spec.Pattern, spec.compiled, val) {
 			logger.Error(
 				fmt.Sprintf("path param %q value %q does not match pattern %q", name, val, spec.Pattern),
@@ -289,7 +265,6 @@ func areValidPathParams(req *http.Request, rule *EvalRule) bool {
 			}
 		}
 
-		// length checks
 		if spec.MinLen > 0 && len(val) < spec.MinLen {
 			logger.Error(
 				fmt.Sprintf("path param %q value length %d is less than minLen %d", name, len(val), spec.MinLen),
@@ -305,10 +280,8 @@ func areValidPathParams(req *http.Request, rule *EvalRule) bool {
 			return false
 		}
 
-		// simple type validation for common scalar types
 		switch spec.Type {
 		case "", "string":
-			// already a string
 		case "int":
 			if _, err := strconv.Atoi(val); err != nil {
 				logger.Error(
@@ -326,13 +299,11 @@ func areValidPathParams(req *http.Request, rule *EvalRule) bool {
 				return false
 			}
 		default:
-			// unknown types are treated as pass-through for now
 		}
 	}
 	return true
 }
 
-// Checks if the request query parameters comply with the provided EvalRule.
 func areValidQueryParams(req *http.Request, rule *EvalRule) bool {
 	params := httpReq.GetQueryParams(req)
 
@@ -349,8 +320,6 @@ func areValidQueryParams(req *http.Request, rule *EvalRule) bool {
 			continue
 		}
 
-		// Use pre-compiled pattern (compiled at config load time); a configured pattern
-		// that failed to compile rejects the value rather than skipping the check.
 		if !matchesPattern(spec.Pattern, spec.compiled, val) {
 			logger.Error(
 				fmt.Sprintf("query param %q value %q does not match pattern %q", name, val, spec.Pattern),
@@ -394,14 +363,12 @@ func areValidQueryParams(req *http.Request, rule *EvalRule) bool {
 	return true
 }
 
-// Checks if the request body complies with the provided EvalRule.
 func isValidBody(req *http.Request, rule *EvalRule) bool {
 	switch req.Method {
 	case http.MethodGet, http.MethodHead, http.MethodOptions:
 		return true
 	}
 
-	// Read the body (it can only be read once)
 	const maxBody = 1 << 20 // 1 MiB
 	bodyBytes, err := io.ReadAll(io.LimitReader(req.Body, maxBody))
 	if err != nil {
@@ -409,16 +376,13 @@ func isValidBody(req *http.Request, rule *EvalRule) bool {
 		return false
 	}
 
-	// Restore the original body for downstream handlers
 	req.Body.Close()
 	req.Body = io.NopCloser(bytes.NewReader(bodyBytes))
 
-	// If body is empty, that's valid for some requests
 	if len(bodyBytes) == 0 {
 		return true
 	}
 
-	// Parse JSON
 	var bodyMap map[string]any
 	dec := json.NewDecoder(bytes.NewReader(bodyBytes))
 	dec.DisallowUnknownFields()
@@ -428,7 +392,6 @@ func isValidBody(req *http.Request, rule *EvalRule) bool {
 		return false
 	}
 
-	// Validate body fields against rule
 	for name, spec := range rule.Body {
 		v, ok := bodyMap[name]
 		if !ok {
@@ -442,7 +405,6 @@ func isValidBody(req *http.Request, rule *EvalRule) bool {
 			continue
 		}
 
-		// basic type checks
 		switch spec.Type {
 		case "", "string":
 			if _, ok := v.(string); !ok {
@@ -453,7 +415,6 @@ func isValidBody(req *http.Request, rule *EvalRule) bool {
 				return false
 			}
 		case "int":
-			// JSON numbers are float64 by default
 			if _, ok := v.(float64); !ok {
 				logger.Error(
 					fmt.Sprintf("body field %q is not a number", name),

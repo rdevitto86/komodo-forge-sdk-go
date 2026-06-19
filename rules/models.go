@@ -8,7 +8,6 @@ const (
 	LevelStrict  = "strict"
 )
 
-// Describes validation rules for a single header, path param, query param, or body field.
 type FieldSpec struct {
 	Type     string   `yaml:"type,omitempty"`
 	Required bool     `yaml:"required,omitempty"`

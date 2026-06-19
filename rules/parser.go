@@ -15,7 +15,7 @@ import (
 
 var (
 	ruleMap       map[string]map[string]EvalRule
-	patternRoutes []routePattern // patternRoutes is a list of compiled route patterns for templates (/:id or /{id})
+	patternRoutes []routePattern
 	loadOnce      sync.Once
 	configLoaded  bool
 )
@@ -27,14 +27,12 @@ type routePattern struct {
 	paramKeys []string
 }
 
-// Loads validation rules from a file path or from the EVAL_RULES_PATH env var; returns false on any error.
 func LoadConfig(path ...string) bool {
 	loadOnce.Do(func() {
 		var data []byte
 		var err error
 		var source string
 
-		// Try explicit path or env var
 		if len(path) > 0 && path[0] != "" {
 			data, err = os.ReadFile(path[0])
 			source = path[0]
@@ -65,7 +63,6 @@ func LoadConfig(path ...string) bool {
 	return configLoaded
 }
 
-// Loads validation rules from byte data, suitable for go:embed use in client services.
 func LoadConfigWithData(data []byte) {
 	loadOnce.Do(func() {
 		rt, patterns, err := parseConfigFromData(data)
@@ -85,7 +82,6 @@ func LoadConfigWithData(data []byte) {
 
 func IsConfigLoaded() bool { return configLoaded && ruleMap != nil }
 
-// Resets all package-level state so LoadConfig and LoadConfigWithData can be called again; test binaries only.
 func ResetForTesting() {
 	loadOnce = sync.Once{}
 	configLoaded = false
@@ -100,7 +96,6 @@ func GetRule(pKey string, method string) *EvalRule {
 
 	np := normalizePath(pKey)
 
-	// Direct match
 	if rules, ok := ruleMap[np]; ok {
 		if rule, exists := rules[method]; exists {
 			return &rule
@@ -141,7 +136,6 @@ func validateAndNormalizeConfig(cfg RuleConfig) error {
 	return nil
 }
 
-// Helper that parses YAML data and returns the rule map plus compiled route templates.
 func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePattern, error) {
 	var root struct {
 		Rules RuleConfig `yaml:"rules"`
@@ -154,7 +148,6 @@ func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePa
 
 	cfg := root.Rules
 
-	// Validate and normalize the configuration
 	if err := validateAndNormalizeConfig(cfg); err != nil {
 		logger.Error("validation rules configuration is invalid", err)
 		return nil, nil, err
@@ -162,7 +155,6 @@ func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePa
 
 	patterns := make([]routePattern, 0)
 
-	// Build patterns for templates with dynamic segments
 	for tpl, methods := range cfg {
 		if strings.Contains(tpl, ":") || strings.Contains(tpl, "{") || strings.Contains(tpl, "*") {
 			reStr, keys := templateToRegex(tpl)
@@ -181,7 +173,6 @@ func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePa
 		}
 	}
 
-	// Sort patterns by specificity — more literal segments rank higher.
 	specificityScore := func(tpl string) int {
 		parts := strings.Split(strings.TrimPrefix(tpl, "/"), "/")
 		literal, wild := 0, 0
@@ -206,10 +197,6 @@ func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePa
 	return cfg, patterns, nil
 }
 
-// Helper that pre-compiles all non-empty Pattern fields at load time so eval hot paths skip
-// regexp.Compile. An individual invalid pattern is logged and left uncompiled rather than
-// failing the whole load; eval then rejects values for that field (see matchesPattern),
-// so one misconfigured pattern cannot silently load and disable validation everywhere.
 func compileRulePatterns(cfg RuleConfig) error {
 	compile := func(kind, name, pattern string) *regexp.Regexp {
 		if pattern == "" {
@@ -249,13 +236,10 @@ func compileRulePatterns(cfg RuleConfig) error {
 	return nil
 }
 
-// Converts a route template (e.g., "/items/:id") into a regex string and a list of captured param names.
 func templateToRegex(tpl string) (string, []string) {
-	// ensure we only operate on path part (strip query if present)
 	if idx := strings.Index(tpl, "?"); idx != -1 {
 		tpl = tpl[:idx]
 	}
-	// trim trailing slash handling
 	tpl = strings.TrimSuffix(tpl, "/")
 
 	parts := strings.Split(strings.TrimPrefix(tpl, "/"), "/")
@@ -267,7 +251,6 @@ func templateToRegex(tpl string) (string, []string) {
 			regexParts = append(regexParts, ".*")
 			continue
 		}
-		// :param or {param}
 		if key, ok := strings.CutPrefix(p, ":"); ok {
 			keys = append(keys, key)
 			regexParts = append(regexParts, `(?P<`+key+`>[^/]+)`)
@@ -285,13 +268,11 @@ func templateToRegex(tpl string) (string, []string) {
 	return "/" + strings.Join(regexParts, "/"), keys
 }
 
-// Strips version prefixes (e.g., /v1) and ensures a canonical leading slash.
 func normalizePath(p string) string {
 	if p == "" {
 		return p
 	}
 
-	// drop query
 	if idx := strings.Index(p, "?"); idx != -1 {
 		p = p[:idx]
 	}
@@ -300,12 +281,10 @@ func normalizePath(p string) string {
 		return "/"
 	}
 
-	// remove trailing slash (but keep root)
 	if len(p) > 1 && strings.HasSuffix(p, "/") {
 		p = strings.TrimSuffix(p, "/")
 	}
 
-	// strip version prefix like /v1 or /v1.2
 	trimmed := strings.TrimPrefix(p, "/")
 	segs := strings.Split(trimmed, "/")
 
@@ -319,7 +298,6 @@ func normalizePath(p string) string {
 	return p
 }
 
-// Finds the first compiled route pattern that matches path and extracts named params.
 func matchRouteAndExtractParams(path string) (*routePattern, map[string]string) {
 	np := normalizePath(path)
 

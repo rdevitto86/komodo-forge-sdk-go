@@ -6,6 +6,14 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.18.1]
+
+### Added
+
+- **`logging/otel` — standalone OpenTelemetry logger.** Instance-based `Logger` struct (not a singleton) with `New(Config) (*Logger, error)` constructor. Built on the official OTEL Go SDK (`go.opentelemetry.io/otel/sdk/log` v0.20.0). Supports both OTLP/HTTP and OTLP/gRPC transports via a `Transport` enum on `Config`, plus simple file output (JSON lines, append mode, no rotation) via a custom `fileExporter` implementing `sdklog.Exporter`. Resource attributes (`service.name`, `service.version`, `deployment.environment`) are auto-attached from `Config` fields with env-var fallbacks (`OTEL_SERVICE_NAME`, `OTEL_SERVICE_VERSION`, `OTEL_DEPLOYMENT_ENVIRONMENT`). Public API: `Trace`, `Debug`, `Info`, `Warn`, `Error`, `Fatal` (severity-level convenience methods), `Publish` (raw `log.Record` emission), `WithAttributes` (child logger with additional base attributes), `Enabled` (level check), `Shutdown`, `ForceFlush`. Level filtering is enforced at the `Logger` layer — methods below the configured severity are no-ops. Attribute helpers (`String`, `Int`, `Int64`, `Float64`, `Bool`, `Bytes`) re-export `log.KeyValue` constructors for ergonomic call-site use.
+
+---
+
 ## [0.18.0]
 
 > **Logger rewrite + redaction relocation.** `logging/runtime` is redesigned for async I/O, mandatory redaction-by-default, and remote sink fanout. `Init(Config)` is the sole entry point — new `Config` struct with `Level`, `Format`, `Redact`, and `Sinks` fields. Redaction core relocated from `api/redaction/` to `security/redaction/` for cross-cutting reuse; the HTTP middleware is rewritten to import the shared core, closing a security gap where the middleware and logger used different sensitive-key lists.

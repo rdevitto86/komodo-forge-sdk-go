@@ -132,13 +132,6 @@ func TestRules_Parser_LoadConfigWithData(t *testing.T) {
 	})
 
 	t.Run("YAML with invalid route pattern regex fails", func(t *testing.T) {
-		// The template /:id[invalid uses an invalid regex character class
-		// Note: templateToRegex wraps params in named groups so [invalid won't come from params
-		// We need a wildcard template that creates a bad regex
-		// Actually, the literal segment is escaped with regexp.QuoteMeta, so can't fail there
-		// Use a YAML with a template that contains special regex chars in the braces form
-		// The issue: /{[invalid]} - braces are recognized, key=[invalid], then wrapped as (?P<[invalid]>[^/]+)
-		// [invalid is a bad regex
 		badRegexYAML := `
 rules:
   /{[invalid}:
@@ -147,9 +140,7 @@ rules:
 `
 		ResetForTesting()
 		LoadConfigWithData([]byte(badRegexYAML))
-		// Should fail to compile the regex pattern
-		// configLoaded would be false
-		_ = IsConfigLoaded() // may or may not fail depending on regex validity
+		_ = IsConfigLoaded()
 	})
 
 	t.Run("multiple patterns sorted by specificity", func(t *testing.T) {
@@ -175,10 +166,8 @@ rules:
 	t.Run("once loaded, second call is no-op", func(t *testing.T) {
 		ResetForTesting()
 		LoadConfigWithData([]byte(testYAML))
-		// Second call - should be no-op due to sync.Once
 		LoadConfigWithData([]byte(`rules: {}`))
 		rules := GetRules()
-		// Should still have the first loaded rules
 		if _, ok := rules["/users"]; !ok {
 			t.Error("expected /users rule to still be present from first load")
 		}
@@ -306,8 +295,8 @@ func TestNormalizePath(t *testing.T) {
 		{"/v1", "/"},
 		{"/users?foo=bar", "/users"},
 		{"users", "/users"},
-		{"?query=only", "/"}, // query-only path becomes empty → returns "/"
-		{"  ?query  ", "/"},  // whitespace around query-only
+		{"?query=only", "/"},
+		{"  ?query  ", "/"},
 	}
 
 	for _, tc := range tests {
@@ -331,7 +320,7 @@ func TestTemplateToRegex(t *testing.T) {
 		{"/wildcard/*", nil},
 		{"/plain/path", nil},
 		{"/path?query=ignored", nil},
-		{"/path/", nil}, // trailing slash stripped
+		{"/path/", nil},
 	}
 
 	for _, tc := range tests {

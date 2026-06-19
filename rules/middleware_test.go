@@ -27,9 +27,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// loadItemsConfig re-establishes the /items test rules. The eval tests reset global rule
-// state via ResetForTesting, so each middleware test must reload its own config to remain
-// independent of execution order.
 func loadItemsConfig(t *testing.T) {
 	t.Helper()
 	ResetForTesting()
@@ -47,7 +44,6 @@ func okHandler() http.Handler {
 
 func TestRuleValidationMiddleware_ValidRequest(t *testing.T) {
 	loadItemsConfig(t)
-	// GET /v1/items with required header → passes
 	req := httptest.NewRequest(http.MethodGet, "/v1/items", nil)
 	req.Header.Set("X-Required-Header", "present")
 	rec := httptest.NewRecorder()
@@ -91,7 +87,6 @@ func TestRuleValidationMiddleware_MissingRequiredHeader(t *testing.T) {
 
 func TestRuleValidationMiddleware_NoMatchingRule(t *testing.T) {
 	loadItemsConfig(t)
-	// /v1/unknown has no rule configured → 400
 	req := httptest.NewRequest(http.MethodGet, "/v1/unknown", nil)
 	rec := httptest.NewRecorder()
 	called := false
@@ -112,7 +107,6 @@ func TestRuleValidationMiddleware_NoMatchingRule(t *testing.T) {
 
 func TestRuleValidationMiddleware_LenientLevelPassesWithoutVersion(t *testing.T) {
 	loadItemsConfig(t)
-	// POST /items (lenient level, no requiredVersion) — no version prefix needed
 	req := httptest.NewRequest(http.MethodPost, "/items", nil)
 	rec := httptest.NewRecorder()
 	called := false
@@ -130,11 +124,8 @@ func TestRuleValidationMiddleware_LenientLevelPassesWithoutVersion(t *testing.T)
 }
 
 func TestRuleValidationMiddleware_LoadConfigReturnsFalse(t *testing.T) {
-	// Reset the rules package state so LoadConfig() will return false (no path,
-	// no EVAL_RULES_PATH env var, no embedded data).
 	ResetForTesting()
 	defer func() {
-		// Restore the test config for subsequent tests.
 		ResetForTesting()
 		LoadConfigWithData(testConfig)
 	}()
@@ -143,11 +134,9 @@ func TestRuleValidationMiddleware_LoadConfigReturnsFalse(t *testing.T) {
 	req.Header.Set("X-Required-Header", "present")
 	rec := httptest.NewRecorder()
 
-	// Building the middleware triggers LoadConfig() → false (no config).
 	handler := RuleValidationMiddleware(okHandler())
 	handler.ServeHTTP(rec, req)
 
-	// With no config loaded, GetRule returns nil → 400.
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400 when config not loaded, got %d", rec.Code)
 	}

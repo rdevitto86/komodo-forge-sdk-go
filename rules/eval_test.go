@@ -164,13 +164,9 @@ func TestEval_Version_Lenient(t *testing.T) {
 	t.Run("lenient: no version provided - passes", func(t *testing.T) {
 		rule := GetRule("/test", "PATCH")
 		req := httptest.NewRequest("PATCH", "/test", nil)
-		// No version header or URL version
-		// Note: areValidQueryParams and areValidPathParams/Body will also run
-		// PATCH with empty body is valid
 		req.Body = http.NoBody
 		result := IsRuleValid(req, rule)
-		// With lenient level and no headers required, should pass
-		_ = result // lenient with no version passes that check; other checks may fail
+		_ = result
 	})
 
 	t.Run("lenient: with valid version - passes", func(t *testing.T) {
@@ -187,7 +183,7 @@ func TestEval_Version_Lenient(t *testing.T) {
 		rule := GetRule("/test", "PATCH")
 		req := httptest.NewRequest("PATCH", "/v1abc/test", nil)
 		result := isValidVersion(req, rule)
-		_ = result // vXXX format isn't matched as valid version; passes lenient
+		_ = result
 	})
 
 	t.Run("lenient: version mismatch - still passes", func(t *testing.T) {
@@ -223,7 +219,6 @@ func TestEval_Version_Strict(t *testing.T) {
 
 	t.Run("strict: no version fails", func(t *testing.T) {
 		rule := GetRule("/versioned", "GET")
-		// Use a path that doesn't start with 'v' to ensure GetAPIVersion returns ""
 		req := httptest.NewRequest("GET", "/api/resource", nil)
 		result := isValidVersion(req, rule)
 		if result {
@@ -233,7 +228,6 @@ func TestEval_Version_Strict(t *testing.T) {
 
 	t.Run("strict: invalid version format fails", func(t *testing.T) {
 		rule := GetRule("/versioned", "GET")
-		// Use a URL path with v-prefix and letters after (not a number)
 		req := httptest.NewRequest("GET", "/", nil)
 		req.Header.Set("Accept", "application/json;v=abc")
 		result := isValidVersion(req, rule)
@@ -258,7 +252,6 @@ func TestEval_Headers(t *testing.T) {
 	t.Run("required header missing - fails", func(t *testing.T) {
 		rule := GetRule("/test", "POST")
 		req := makeReqWithVersion("POST", "/v1/test", "1")
-		// No Content-Type header
 		req.Body = io.NopCloser(strings.NewReader(`{"name":"alice"}`))
 		result := areValidHeaders(req, rule)
 		if result {
@@ -301,7 +294,7 @@ func TestEval_Headers(t *testing.T) {
 	t.Run("exact value mismatch - fails", func(t *testing.T) {
 		rule := GetRule("/test", "POST")
 		req := makeReqWithVersion("POST", "/v1/test", "1")
-		req.Header.Set("Content-Type", "text/plain") // wrong value
+		req.Header.Set("Content-Type", "text/plain")
 		result := areValidHeaders(req, rule)
 		if result {
 			t.Error("expected false with exact value mismatch")
@@ -345,7 +338,7 @@ func TestEval_Headers(t *testing.T) {
 		rule := GetRule("/test", "POST")
 		req := makeReqWithVersion("POST", "/v1/test", "1")
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-Pattern-Header", "abc123") // lowercase doesn't match ^[A-Z]+$
+		req.Header.Set("X-Pattern-Header", "abc123")
 		result := areValidHeaders(req, rule)
 		if result {
 			t.Error("expected false with invalid pattern")
@@ -356,7 +349,7 @@ func TestEval_Headers(t *testing.T) {
 		rule := GetRule("/test", "POST")
 		req := makeReqWithVersion("POST", "/v1/test", "1")
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-MinMax-Header", "ab") // too short (< 3)
+		req.Header.Set("X-MinMax-Header", "ab")
 		result := areValidHeaders(req, rule)
 		if result {
 			t.Error("expected false when header is shorter than min_len")
@@ -367,7 +360,7 @@ func TestEval_Headers(t *testing.T) {
 		rule := GetRule("/test", "POST")
 		req := makeReqWithVersion("POST", "/v1/test", "1")
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-MinMax-Header", "this-is-way-too-long-value") // > 10
+		req.Header.Set("X-MinMax-Header", "this-is-way-too-long-value")
 		result := areValidHeaders(req, rule)
 		if result {
 			t.Error("expected false when header exceeds max_len")
@@ -375,7 +368,6 @@ func TestEval_Headers(t *testing.T) {
 	})
 
 	t.Run("header fails ValidateHeaderValue check", func(t *testing.T) {
-		// Content-Length: 0 fails isValidContentLength (not > 0)
 		rule := &EvalRule{
 			Level: LevelLenient,
 			Headers: Headers{
@@ -428,7 +420,7 @@ func TestEval_QueryParams(t *testing.T) {
 
 	t.Run("query param pattern fails", func(t *testing.T) {
 		rule := GetRule("/queried", "GET")
-		req := httptest.NewRequest("GET", "/queried?filter=ACTIVE", nil) // uppercase fails ^[a-z]+$
+		req := httptest.NewRequest("GET", "/queried?filter=ACTIVE", nil)
 		result := areValidQueryParams(req, rule)
 		if result {
 			t.Error("expected false with uppercase filter (pattern fails)")
@@ -446,7 +438,7 @@ func TestEval_QueryParams(t *testing.T) {
 
 	t.Run("query param min length fails", func(t *testing.T) {
 		rule := GetRule("/queried", "GET")
-		req := httptest.NewRequest("GET", "/queried?filter=ab", nil) // too short
+		req := httptest.NewRequest("GET", "/queried?filter=ab", nil)
 		result := areValidQueryParams(req, rule)
 		if result {
 			t.Error("expected false when query param is shorter than min_len")
@@ -455,7 +447,6 @@ func TestEval_QueryParams(t *testing.T) {
 
 	t.Run("query param max length fails", func(t *testing.T) {
 		rule := GetRule("/queried", "GET")
-		// 'filter' max is 20, use a too-long value that also fails enum
 		req := httptest.NewRequest("GET", "/queried?filter=activetoolongvalue", nil)
 		result := areValidQueryParams(req, rule)
 		if result {
@@ -508,7 +499,6 @@ func TestEval_PathParams(t *testing.T) {
 	})
 
 	t.Run("valid pattern route - invalid int param fails", func(t *testing.T) {
-		// POST /params/:id expects type bool
 		rule := GetRule("/params/abc", "POST")
 		if rule == nil {
 			t.Skip("rule not found")
@@ -557,15 +547,12 @@ func TestEval_PathParams(t *testing.T) {
 	})
 
 	t.Run("path param required but missing from pattern match", func(t *testing.T) {
-		// A rule with a required param that's not in the URL
 		rule := &EvalRule{
 			Level: LevelLenient,
 			PathParams: PathParams{
 				"missing": {Required: true},
 			},
 		}
-		// Load a comprehensiveYAML with :id pattern - even though it matches :id,
-		// the rule being evaluated has "missing" not "id"
 		req := httptest.NewRequest("GET", "/params/123", nil)
 		result := areValidPathParams(req, rule)
 		if result {
@@ -574,7 +561,6 @@ func TestEval_PathParams(t *testing.T) {
 	})
 
 	t.Run("optional path param not in matched params - continues", func(t *testing.T) {
-		// Rule has an optional param "other" which won't be in params (only "id" is)
 		rule := &EvalRule{
 			Level: LevelLenient,
 			PathParams: PathParams{
@@ -589,8 +575,6 @@ func TestEval_PathParams(t *testing.T) {
 	})
 
 	t.Run("path param min length fails", func(t *testing.T) {
-		// Rule with min_len on :id param, but the value is too short
-		// We need to override the rule to have min_len > len("123")
 		rule := &EvalRule{
 			Level: LevelLenient,
 			PathParams: PathParams{
@@ -687,7 +671,6 @@ func TestEval_Body(t *testing.T) {
 
 	t.Run("wrong type for string field fails", func(t *testing.T) {
 		rule := GetRule("/test", "POST")
-		// 'name' should be string but we pass a number
 		req := httptest.NewRequest("POST", "/test", strings.NewReader(`{"name":42}`))
 		result := isValidBody(req, rule)
 		if result {
@@ -697,7 +680,6 @@ func TestEval_Body(t *testing.T) {
 
 	t.Run("wrong type for int field fails", func(t *testing.T) {
 		rule := GetRule("/test", "POST")
-		// 'count' should be int (float64 in JSON) but we pass a string
 		req := httptest.NewRequest("POST", "/test", strings.NewReader(`{"name":"alice","count":"five"}`))
 		result := isValidBody(req, rule)
 		if result {
@@ -707,7 +689,6 @@ func TestEval_Body(t *testing.T) {
 
 	t.Run("wrong type for bool field fails", func(t *testing.T) {
 		rule := GetRule("/test", "POST")
-		// 'active' should be bool but we pass a string
 		req := httptest.NewRequest("POST", "/test", strings.NewReader(`{"name":"alice","active":"yes"}`))
 		result := isValidBody(req, rule)
 		if result {
@@ -742,7 +723,6 @@ func TestIsRuleValid_Integration(t *testing.T) {
 	t.Run("strict POST with missing required header fails at header check", func(t *testing.T) {
 		rule := GetRule("/test", "PUT")
 		req := makeReqWithVersion("PUT", "/v1/test", "1")
-		// No X-Missing header
 		req.Body = io.NopCloser(strings.NewReader(""))
 		result := IsRuleValid(req, rule)
 		if result {
@@ -771,15 +751,13 @@ func TestIsRuleValid_Integration(t *testing.T) {
 	})
 
 	t.Run("fails at path param check via IsRuleValid", func(t *testing.T) {
-		// Use a rule with required path param
 		rule := &EvalRule{
 			Level:           LevelLenient,
-			RequiredVersion: 0, // lenient: version optional
+			RequiredVersion: 0,
 			PathParams: PathParams{
 				"needed": {Required: true},
 			},
 		}
-		// /static/path won't match any pattern route, so params will be nil
 		req := httptest.NewRequest("POST", "/static/path", nil)
 		req.Body = io.NopCloser(strings.NewReader(""))
 		result := IsRuleValid(req, rule)
@@ -807,14 +785,12 @@ func TestIsRuleValid_Integration(t *testing.T) {
 
 func TestEval_PathParams_IntType_InvalidValue_Failure(t *testing.T) {
 	setupComprehensive(t)
-	// Custom rule: type int but no pattern that would reject non-ints first.
 	rule := &EvalRule{
 		Level: LevelLenient,
 		PathParams: PathParams{
 			"id": {Required: true, Type: "int"},
 		},
 	}
-	// /params/notanumber matches the /params/:id pattern → id="notanumber"
 	req := httptest.NewRequest("GET", "/params/notanumber", nil)
 	result := areValidPathParams(req, rule)
 	if result {
@@ -824,7 +800,6 @@ func TestEval_PathParams_IntType_InvalidValue_Failure(t *testing.T) {
 
 func TestEval_PathParams_StringType_Success(t *testing.T) {
 	setupComprehensive(t)
-	// Verify that type=string (and empty type) is a pass-through.
 	rule := &EvalRule{
 		Level: LevelLenient,
 		PathParams: PathParams{
@@ -840,7 +815,6 @@ func TestEval_PathParams_StringType_Success(t *testing.T) {
 
 func TestEval_PathParams_InvalidRegex_Failure(t *testing.T) {
 	setupComprehensive(t)
-	// The DELETE rule in comprehensiveYAML has pattern "^INVALID[[$" which is an invalid regex.
 	rule := GetRule("/params/abc", "DELETE")
 	if rule == nil {
 		t.Skip("DELETE rule not found for /params/:id")

@@ -6,6 +6,47 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.18.0]
+
+> **Logger rewrite + redaction relocation.** `logging/runtime` is redesigned for async I/O, mandatory redaction-by-default, and remote sink fanout. `Init(Config)` is the sole entry point — new `Config` struct with `Level`, `Format`, `Redact`, and `Sinks` fields. Redaction core relocated from `api/redaction/` to `security/redaction/` for cross-cutting reuse; the HTTP middleware is rewritten to import the shared core, closing a security gap where the middleware and logger used different sensitive-key lists.
+
+### Changed
+
+- **`logging/runtime` — full rewrite around `Init(Config) error`.** `Config` carries four fields: `Level string` (default `"info"`), `Format` (`FormatJSON` zero-value default, `FormatText` for local CLI), `Redact` (`RedactStrict` zero-value default, `RedactKeysOnly`, `RedactOff`), and `Sinks []Sink` for optional remote log destinations. `Init` returns an error when misconfigured (e.g. `FormatText` with remote sinks). The global logger is an `atomic.Pointer[slog.Logger]` — race-free, lock-free reads. All log output goes through a bounded async writer (`asyncWriter`: 4096-slot channel, pooled buffers, single drain goroutine) so callers never block on I/O. `Sync()` flushes the async buffer synchronously; `Close()` drains and tears down all writers. `Fatal` calls `Sync()` before `os.Exit(1)` to guarantee the fatal message is flushed. Stdout is always on (non-negotiable); `Config.Sinks` adds remote destinations additively via `httpSink` (batched to 64KB, flushed every 1s, 3x retry with backoff, drop-on-full so a slow remote never blocks the request path). `FormatText` produces the fixed layout `2025-10-15T12:34:56Z [INFO] request_id | message | key=value`; `FormatJSON` uses `slog.JSONHandler` with `ReplaceAttr` for inline redaction. `LevelFatal = slog.LevelError + 4` is a real custom level, mapped to `"FATAL"` in both formats.
+
+- **`security/redaction` — relocated from `api/redaction/`.** Core redaction functions (`IsSensitiveKey`, `RedactString`, `RedactPair`, `RedactValue`) moved to `security/redaction/` for cross-cutting reuse by both the logger and the HTTP middleware. The sensitive-key list is unified: the middleware's `access_token`, `refresh_token`, `client_secret`, `credit_card`, `creditcard`, `card_number` entries and the core's `x-amz-signature`, `bearer`, `cvv`, `private_key` entries are merged into a single canonical set. Detection uses substring matching instead of exact map lookup, catching variants like `X-Api-Key` and `x_api_key` in one pass.
+
+- **`api/redaction/middleware.go` — rewritten to import shared core.** Duplicate `containsSensitiveKey` (exact-match map), `redactInterface` (deep map/slice redaction), and the per-package sensitive-key list are deleted. Middleware now calls `redact.IsSensitiveKey` and `redact.RedactValue` from `security/redaction/`. HTTP-specific logic (`bearerRE`, `longTokenRE`, `looksLikeToken`, `redactBody`) remains in the middleware. This closes a live security gap where the middleware redacted keys the logger did not, and vice versa.
+
+- **`logging/runtime` — redaction is inline, not a wrapper.** The `redactingHandler` wrapper type is deleted. JSON redaction runs via `slog.HandlerOptions.ReplaceAttr`; text redaction runs inline in the `textHandler.Handle` method. Both call the same `redactAttr(mode, attr)` function, which delegates to `security/redaction` for key detection and value scrubbing.
+
+### Added
+
+- **`logging/runtime` — `Sink` type and remote log shipping.** `Sink{URL string, Headers map[string]string}` in `Config.Sinks` declares a remote log destination (Splunk HEC, New Relic, Grafana Loki, etc.). Each sink runs its own goroutine with batching, retry, and backoff. Newline-delimited JSON is POSTed; custom headers (e.g. `Api-Key`) are forwarded.
+
+- **`logging/runtime` — `Sync()` and `Close()` lifecycle.** `Sync()` flushes the async stdout buffer (blocking). `Close()` drains and tears down the async writer and all remote sinks. Services should `defer logger.Close()` in `main`.
+
+- **`logging/runtime` — `LevelFatal` and `Fatal(msg, err, args...)`.** Custom level at `slog.LevelError + 4`. `Fatal` logs at this level, flushes, and exits. Both text (`[FATAL]`) and JSON (`"level":"FATAL"`) handlers render the label.
+
+- **`logging/runtime` — `RedactMode` enum.** `RedactStrict` (zero value, default): redacts sensitive keys and scans all string values for PII (emails, SSNs, card numbers, Bearer tokens). `RedactKeysOnly`: redacts sensitive keys only, leaves values untouched. `RedactOff`: no redaction. Deep recursive redaction covers groups, `map[string]any`, `[]any`, and string attrs.
+
+### Removed
+
+- **`logging/runtime` — `SetOutput`.** Deleted. Output is configured at `Init` via stdout (always) and `Config.Sinks` (optional remotes). No runtime writer swapping.
+- **`logging/runtime` — `Config.Name`, `Config.Version`, `Config.Env`, `Config.Output`, `Config.Handler`.** All removed. `Name`/`Version` are consumer concerns (add as attrs if needed). `Env` is removed entirely — no env-based level floor. `Output` and `Handler` are replaced by the stdout-always + sinks model.
+- **`logging/runtime` — ANSI color support.** Deleted. CloudWatch and log aggregators do not interpret ANSI escape codes. Text format is plain.
+- **`logging/runtime` — `RedactingLogger` type.** Replaced by inline `redactAttr` called from both handlers. No wrapper handler, no separate logger type.
+- **`logging/runtime` — env-based debug-level floor.** The `effectiveLevel` guard that raised `debug` to `info` outside local environments is removed. Level is caller-controlled via `Config.Level` and `SetLevel`.
+
+---
+
+## [0.17.3]
+
+### Added
+
+- **`db/redis` — `(*Client).GetDel` and `(*Client).MGet`.** `GetDel(ctx, key)` is an atomic get-and-delete (Redis `GETDEL`) for single-use-where-read-*is*-redemption — e.g. an `authorization_code` exchange, where the code itself is the secret. `MGet(ctx, keys...)` is a one-round-trip bulk read returning a positional `[]string` with `""` for misses. Both are added as concrete `*Client` methods and deliberately **not** added to the exported `redis.API` interface, so existing interface implementations and mocks across consumers are unaffected (non-breaking). Consumed by `komodo-auth-api`: `GETDEL` for the `authorization_code` exchange, an `MGET` one-RTT saving on OTP-verify. Note: `GetDel` is **not** a substitute for the `SetNX` single-use claim on OTP/passkey redemption — it deletes before any correctness check, so a wrong guess would consume a victim's live code.
+---
+
 ## [0.17.2]
 
 ### Added

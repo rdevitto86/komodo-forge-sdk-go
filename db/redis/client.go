@@ -120,6 +120,42 @@ func (c *Client) Get(ctx context.Context, key string) (string, error) {
 	return val, nil
 }
 
+func (c *Client) GetDel(ctx context.Context, key string) (string, error) {
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
+	val, err := c.rc.GetDel(ctx, key).Result()
+	if err == goredis.Nil {
+		return "", nil
+	}
+	if err != nil {
+		logger.Error("failed to get-and-delete redis key", err)
+		return "", err
+	}
+	return val, nil
+}
+
+func (c *Client) MGet(ctx context.Context, keys ...string) ([]string, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
+	vals, err := c.rc.MGet(ctx, keys...).Result()
+	if err != nil {
+		logger.Error("failed to multi-get redis keys", err)
+		return nil, err
+	}
+	out := make([]string, len(vals))
+	for i, v := range vals {
+		if s, ok := v.(string); ok {
+			out[i] = s
+		}
+	}
+	return out, nil
+}
+
 // Stores a value with the given TTL in seconds. Use ttl=0 for no expiration.
 func (c *Client) Set(ctx context.Context, key string, value string, ttl int64) error {
 	ctx, cancel := c.withTimeout(ctx)

@@ -13,67 +13,35 @@ import (
 	"time"
 )
 
-const (
-	ansiReset   = "\033[0m"
-	ansiGray    = "\033[90m"
-	ansiCyan    = "\033[36m"
-	ansiYellow  = "\033[33m"
-	ansiRed     = "\033[31m"
-	ansiBoldRed = "\033[1;31m"
-)
-
-var skippedBaseFields = map[string]bool{
-	"service": true,
-	"env":     true,
-	"version": true,
-}
-
-var (
-	plainFatal = "[FATAL]"
-	plainError = "[ERROR]"
-	plainWarn  = "[WARN]"
-	plainInfo  = "[INFO]"
-	plainDebug = "[DEBUG]"
-	colorFatal = ansiBoldRed + "[FATAL]" + ansiReset
-	colorError = ansiRed + "[ERROR]" + ansiReset
-	colorWarn  = ansiYellow + "[WARN]" + ansiReset
-	colorInfo  = ansiCyan + "[INFO]" + ansiReset
-	colorDebug = ansiGray + "[DEBUG]" + ansiReset
-)
-
 var bufPool = sync.Pool{New: func() any { return new(bytes.Buffer) }}
 
-type KomodoTextHandler struct {
+type textHandler struct {
 	mu       sync.Mutex
 	w        io.Writer
-	color    bool
 	level    slog.Leveler
-	preAttrs []slog.Attr // attrs set via .With() (e.g., service, env, version)
+	mode     RedactMode
+	preAttrs []slog.Attr
 }
 
-func NewKomodoTextHandler(w io.Writer, color bool, level slog.Leveler) *KomodoTextHandler {
-	return &KomodoTextHandler{w: w, color: color, level: level}
+func newTextHandler(w io.Writer, level slog.Leveler, mode RedactMode) *textHandler {
+	return &textHandler{w: w, level: level, mode: mode}
 }
 
-func (h *KomodoTextHandler) Enabled(_ context.Context, level slog.Level) bool {
+func (h *textHandler) Enabled(_ context.Context, level slog.Level) bool {
 	return level >= h.level.Level()
 }
 
-func (h *KomodoTextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	h2 := &KomodoTextHandler{
-		w:     h.w,
-		color: h.color,
-		level: h.level,
-	}
+func (h *textHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	h2 := &textHandler{w: h.w, level: h.level, mode: h.mode}
 	h2.preAttrs = make([]slog.Attr, len(h.preAttrs)+len(attrs))
 	copy(h2.preAttrs, h.preAttrs)
 	copy(h2.preAttrs[len(h.preAttrs):], attrs)
 	return h2
 }
 
-func (h *KomodoTextHandler) WithGroup(name string) slog.Handler { return h }
+func (h *textHandler) WithGroup(_ string) slog.Handler { return h }
 
-func (h *KomodoTextHandler) Handle(_ context.Context, rec slog.Record) error {
+func (h *textHandler) Handle(_ context.Context, rec slog.Record) error {
 	buf := bufPool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer bufPool.Put(buf)
@@ -82,15 +50,13 @@ func (h *KomodoTextHandler) Handle(_ context.Context, rec slog.Record) error {
 	var attrs strings.Builder
 	first := true
 
-	collectAttr := func(attr slog.Attr) {
-		if skippedBaseFields[attr.Key] {
+	collect := func(a slog.Attr) {
+		if a.Key == "request_id" {
+			requestID = a.Value.String()
 			return
 		}
-		if attr.Key == "request_id" {
-			requestID = attr.Value.String()
-			return
-		}
-		if s := formatAttr(attr); s != "" {
+		a = redactAttr(h.mode, a)
+		if s := formatAttr(a); s != "" {
 			if !first {
 				attrs.WriteByte(' ')
 			}
@@ -100,52 +66,27 @@ func (h *KomodoTextHandler) Handle(_ context.Context, rec slog.Record) error {
 	}
 
 	for _, a := range h.preAttrs {
-		collectAttr(a)
+		collect(a)
 	}
 	rec.Attrs(func(a slog.Attr) bool {
-		collectAttr(a)
+		collect(a)
 		return true
 	})
 
-	// timestamp
-	if h.color {
-		buf.WriteString(ansiGray)
-	}
-	buf.WriteString(rec.Time.UTC().Format(time.RFC3339))
-	if h.color {
-		buf.WriteString(ansiReset)
-	}
-	buf.WriteByte(' ')
+	// Format: timestamp [LEVEL] request_id | message | attributes
 
-	// [LEVEL]
-	buf.WriteString(h.coloredLevel(rec.Level))
+	buf.WriteString(rec.Time.UTC().Format(time.RFC3339)) // timestamp
 	buf.WriteByte(' ')
-
-	// requestId
-	if h.color {
-		buf.WriteString(ansiGray)
-	}
-	buf.WriteString(requestID)
-	if h.color {
-		buf.WriteString(ansiReset)
-	}
+	buf.WriteString(levelLabel(rec.Level)) // [LEVEL]
+	buf.WriteByte(' ')
+	buf.WriteString(requestID) // request_id
 	buf.WriteString(" | ")
+	buf.WriteString(rec.Message) // message
 
-	// message
-	buf.WriteString(rec.Message)
-
-	// details as logfmt
 	if attrs.Len() > 0 {
 		buf.WriteString(" | ")
-		if h.color {
-			buf.WriteString(ansiGray)
-		}
-		buf.WriteString(attrs.String())
-		if h.color {
-			buf.WriteString(ansiReset)
-		}
+		buf.WriteString(attrs.String()) // attributes
 	}
-
 	buf.WriteByte('\n')
 
 	h.mu.Lock()
@@ -154,37 +95,21 @@ func (h *KomodoTextHandler) Handle(_ context.Context, rec slog.Record) error {
 	return err
 }
 
-func (h *KomodoTextHandler) coloredLevel(level slog.Level) string {
+func levelLabel(level slog.Level) string {
 	switch {
-	case level > slog.LevelError:
-		if h.color {
-			return colorFatal
-		}
-		return plainFatal
+	case level >= LevelFatal:
+		return "[FATAL]"
 	case level >= slog.LevelError:
-		if h.color {
-			return colorError
-		}
-		return plainError
+		return "[ERROR]"
 	case level >= slog.LevelWarn:
-		if h.color {
-			return colorWarn
-		}
-		return plainWarn
+		return "[WARN]"
 	case level >= slog.LevelInfo:
-		if h.color {
-			return colorInfo
-		}
-		return plainInfo
+		return "[INFO]"
 	default:
-		if h.color {
-			return colorDebug
-		}
-		return plainDebug
+		return "[DEBUG]"
 	}
 }
 
-// Renders a slog.Attr as a logfmt key=value pair; complex values are JSON-encoded and truncated at 200 chars.
 func formatAttr(attr slog.Attr) string {
 	k := attr.Key
 	v := attr.Value.Resolve()

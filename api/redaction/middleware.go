@@ -8,12 +8,12 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+
+	redact "github.com/rdevitto86/komodo-forge-sdk-go/security/redaction"
 )
 
-// Redacts sensitive headers, query params, and JSON body fields from the request before passing it downstream.
 func RedactionMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
-		// shallow copy of request
 		r2 := new(http.Request)
 		*r2 = *req
 
@@ -45,7 +45,7 @@ func redactHeaders(header http.Header) http.Header {
 
 	out := make(http.Header, len(header))
 	for k, val := range header {
-		if sensitiveHeaderRE.MatchString(k) {
+		if redact.IsSensitiveKey(k) {
 			out[k] = []string{"REDACTED"}
 			continue
 		}
@@ -63,10 +63,9 @@ func redactHeaders(header http.Header) http.Header {
 }
 
 var (
-	sensitiveHeaderRE = regexp.MustCompile(`(?i)authorization|cookie|set-cookie|x-api-key|x-amz-signature`)
-	bearerRE          = regexp.MustCompile(`(?i)^\s*bearer\s+[A-Za-z0-9\-\._~\+/]+=*$`)
+	bearerRE    = regexp.MustCompile(`(?i)^\s*bearer\s+[A-Za-z0-9\-\._~\+/]+=*$`)
+	longTokenRE = regexp.MustCompile(`[A-Za-z0-9\-\._~\+/]{20,}`)
 )
-var longTokenRE = regexp.MustCompile(`[A-Za-z0-9\-\._~\+/]{20,}`)
 
 func looksLikeToken(s string) bool {
 	if s == "" {
@@ -88,8 +87,7 @@ func redactQuery(vals url.Values) url.Values {
 
 	out := url.Values{}
 	for k, v := range vals {
-		lowK := strings.ToLower(k)
-		if containsSensitiveKey(lowK) {
+		if redact.IsSensitiveKey(k) {
 			out[k] = []string{"REDACTED"}
 			continue
 		}
@@ -107,67 +105,23 @@ func redactQuery(vals url.Values) url.Values {
 	return out
 }
 
-func containsSensitiveKey(key string) bool {
-	sensitiveKeys := []string{
-		"password",
-		"passwd",
-		"secret",
-		"credit_card",
-		"creditcard",
-		"card_number",
-		"ssn",
-		"token",
-		"access_token",
-		"refresh_token",
-		"client_secret",
-	}
-
-	for _, s := range sensitiveKeys {
-		if key == s || strings.Contains(key, s) {
-			return true
-		}
-	}
-	return false
-}
-
 func redactBody(b []byte, contentType string) []byte {
 	if len(b) == 0 {
 		return b
 	}
 
-	// only attempt JSON redaction; for others, do a simple token mask
 	if strings.Contains(strings.ToLower(contentType), "application/json") {
 		var v any
 		if err := json.Unmarshal(b, &v); err == nil {
-			redactInterface(v)
+			v = redact.RedactValue(v)
 			if out, err := json.Marshal(v); err == nil {
 				return out
 			}
 		}
 	}
 
-	// fallback: mask bearer tokens and long tokens
 	rb := bearerRE.ReplaceAllStringFunc(string(b), func(_ string) string { return "REDACTED" })
 	rb = longTokenRE.ReplaceAllString(rb, "REDACTED")
 
 	return []byte(rb)
-}
-
-func redactInterface(val any) {
-	switch t := val.(type) {
-	case map[string]any:
-		for k, v := range t {
-			if containsSensitiveKey(strings.ToLower(k)) {
-				t[k] = "REDACTED"
-				continue
-			}
-			redactInterface(v)
-		}
-	case []any:
-		for i := range t {
-			redactInterface(t[i])
-		}
-	case string:
-		// do nothing
-	}
 }

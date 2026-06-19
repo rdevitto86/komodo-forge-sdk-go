@@ -1,76 +1,145 @@
 package logger
 
 import (
+	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
 	"strings"
+	"sync/atomic"
 )
 
-var (
-	slogger   *slog.Logger   = slog.New(slog.NewJSONHandler(io.Discard, nil))
-	logLevel  *slog.LevelVar = &slog.LevelVar{}
-	osExit    func(int)      = os.Exit
-	loggerEnv string
+type Format int
+
+const (
+	FormatJSON Format = iota
+	FormatText
 )
 
-func Init(name string, lvl string, env string, version string) {
-	ver := version
-	if ver == "" {
-		ver = "unknown"
-	}
+type RedactMode int
 
-	loggerEnv = env
-	logLevel.Set(effectiveLevel(lvl, env))
+const (
+	RedactStrict RedactMode = iota
+	RedactKeysOnly
+	RedactOff
+)
 
-	var handler slog.Handler
-	if isLocalEnv(env) {
-		handler = NewKomodoTextHandler(os.Stdout, true, logLevel)
-	} else {
-		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})
-	}
+const LevelFatal = slog.LevelError + 4
 
-	slogger = slog.New(&RedactingLogger{Handler: handler}).With(
-		slog.String("service", name),
-		slog.String("env", env),
-		slog.String("version", ver),
-	)
-	slog.SetDefault(slogger)
+type Sink struct {
+	URL     string
+	Headers map[string]string
 }
 
-func Debug(msg string, args ...any) { slogger.Debug(msg, args...) }
-func Info(msg string, args ...any)  { slogger.Info(msg, args...) }
-func Warn(msg string, args ...any)  { slogger.Warn(msg, args...) }
+type Config struct {
+	Level  string
+	Format Format
+	Redact RedactMode
+	Sinks  []Sink
+}
+
+type runtimeState struct {
+	aw    *asyncWriter
+	sinks []*httpSink
+}
+
+func (s *runtimeState) close() {
+	s.aw.Close()
+	for _, k := range s.sinks {
+		k.Close()
+	}
+}
+
+var (
+	slogger   atomic.Pointer[slog.Logger]
+	state     atomic.Pointer[runtimeState]
+	logLevel  = &slog.LevelVar{}
+	osExit    = os.Exit
+	stdoutDst io.Writer = os.Stdout
+)
+
+func init() {
+	slogger.Store(slog.New(slog.NewJSONHandler(io.Discard, nil)))
+}
+
+func Init(cfg Config) error {
+	if cfg.Format == FormatText && len(cfg.Sinks) > 0 {
+		return errors.New("refusing to ship text-formatted logs to remote sinks; use FormatJSON")
+	}
+
+	logLevel.Set(parseLevel(cfg.Level))
+
+	aw := newAsyncWriter(stdoutDst, asyncQueueSize)
+	writers := []io.Writer{aw}
+	sinks := make([]*httpSink, 0, len(cfg.Sinks))
+	for _, s := range cfg.Sinks {
+		hs := newHTTPSink(s)
+		sinks = append(sinks, hs)
+		writers = append(writers, hs)
+	}
+
+	var out io.Writer = aw
+	if len(writers) > 1 {
+		out = &fanout{writers: writers}
+	}
+
+	var handler slog.Handler
+	if cfg.Format == FormatText {
+		handler = newTextHandler(out, logLevel, cfg.Redact)
+	} else {
+		handler = slog.NewJSONHandler(out, &slog.HandlerOptions{
+			Level:       logLevel,
+			ReplaceAttr: jsonReplaceAttr(cfg.Redact),
+		})
+	}
+
+	lg := slog.New(handler)
+	slogger.Store(lg)
+	slog.SetDefault(lg)
+
+	if old := state.Swap(&runtimeState{aw: aw, sinks: sinks}); old != nil {
+		old.close()
+	}
+	return nil
+}
+
+func Debug(msg string, args ...any) { slogger.Load().Debug(msg, args...) }
+func Info(msg string, args ...any)  { slogger.Load().Info(msg, args...) }
+func Warn(msg string, args ...any)  { slogger.Load().Warn(msg, args...) }
 
 func Error(msg string, err error, args ...any) {
 	if err != nil {
 		args = append(args, AttrError(err))
 	}
-	slogger.Error(msg, args...)
+	slogger.Load().Error(msg, args...)
 }
 
 func Fatal(msg string, err error, args ...any) {
-	Error(msg, err, args...)
+	if err != nil {
+		args = append(args, AttrError(err))
+	}
+	slogger.Load().Log(context.Background(), LevelFatal, msg, args...)
+	Sync()
 	osExit(1)
 }
 
-func SetLevel(level string) { logLevel.Set(effectiveLevel(level, loggerEnv)) }
+func SetLevel(level string) { logLevel.Set(parseLevel(level)) }
 
 func Enabled(level string) bool { return parseLevel(level) >= logLevel.Level() }
 
 func DebugEnabled() bool { return slog.LevelDebug >= logLevel.Level() }
 
-func isLocalEnv(env string) bool {
-	e := strings.ToLower(env)
-	return e == "local" || e == "dev" || e == "development"
+func Sync() {
+	if s := state.Load(); s != nil {
+		s.aw.Flush()
+	}
 }
 
-func effectiveLevel(lvl, env string) slog.Level {
-	level := parseLevel(lvl)
-	if level < slog.LevelInfo && !isLocalEnv(env) {
-		return slog.LevelInfo
+func Close() {
+	if s := state.Swap(nil); s != nil {
+		s.close()
 	}
-	return level
 }
 
 func parseLevel(lvl string) slog.Level {

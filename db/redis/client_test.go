@@ -6,6 +6,17 @@ import (
 	"time"
 )
 
+func TestMGet_EmptyKeys_ReturnsNil(t *testing.T) {
+	c := &Client{}
+	vals, err := c.MGet(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vals != nil {
+		t.Fatalf("expected nil for empty keys, got %v", vals)
+	}
+}
+
 func TestNew_MissingAddr(t *testing.T) {
 	_, err := New(Config{})
 	if err == nil {

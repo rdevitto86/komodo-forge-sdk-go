@@ -16,7 +16,7 @@ import (
 var (
 	ruleMap       map[string]map[string]EvalRule
 	patternRoutes []routePattern
-	loadOnce      sync.Once
+	mu            sync.Mutex
 	configLoaded  bool
 )
 
@@ -28,88 +28,112 @@ type routePattern struct {
 }
 
 func LoadConfig(path ...string) bool {
-	loadOnce.Do(func() {
-		var data []byte
-		var err error
-		var source string
+	mu.Lock()
+	defer mu.Unlock()
 
-		if len(path) > 0 && path[0] != "" {
-			data, err = os.ReadFile(path[0])
-			source = path[0]
-		} else if envPath := os.Getenv("EVAL_RULES_PATH"); envPath != "" {
-			data, err = os.ReadFile(envPath)
-			source = envPath
-		}
+	if configLoaded {
+		return true
+	}
 
-		if err != nil || data == nil {
-			logger.Error("failed to load validation rules", err, logger.Attr("source", source))
-			configLoaded = false
-			return
-		}
+	var data []byte
+	var err error
+	var source string
 
-		rt, patterns, parseErr := parseConfigFromData(data)
-		if parseErr != nil {
-			logger.Error("failed to parse validation rules", parseErr)
-			configLoaded = false
-			return
-		}
+	if len(path) > 0 && path[0] != "" {
+		data, err = os.ReadFile(path[0])
+		source = path[0]
+	} else if envPath := os.Getenv("EVAL_RULES_PATH"); envPath != "" {
+		data, err = os.ReadFile(envPath)
+		source = envPath
+	}
 
-		ruleMap = rt
-		patternRoutes = patterns
-		configLoaded = true
+	if err != nil || data == nil {
+		logger.Error("failed to load validation rules", err, logger.Attr("source", source))
+		return false
+	}
 
-		logger.Info("loaded validation rules", logger.Attr("source", source))
-	})
-	return configLoaded
+	rt, patterns, parseErr := parseConfigFromData(data)
+	if parseErr != nil {
+		logger.Error("failed to parse validation rules", parseErr)
+		return false
+	}
+
+	ruleMap = rt
+	patternRoutes = patterns
+	configLoaded = true
+
+	logger.Info("loaded validation rules", logger.Attr("source", source))
+	return true
 }
 
-func LoadConfigWithData(data []byte) {
-	loadOnce.Do(func() {
-		rt, patterns, err := parseConfigFromData(data)
-		if err != nil {
-			logger.Error("failed to parse validation rules from embedded config", err)
-			configLoaded = false
-			return
-		}
+func LoadConfigWithData(data []byte) bool {
+	mu.Lock()
+	defer mu.Unlock()
 
-		ruleMap = rt
-		patternRoutes = patterns
-		configLoaded = true
+	if configLoaded {
+		return true
+	}
 
-		logger.Info("successfully loaded validation rules from embedded config")
-	})
+	rt, patterns, err := parseConfigFromData(data)
+	if err != nil {
+		logger.Error("failed to parse validation rules from embedded config", err)
+		return false
+	}
+
+	ruleMap = rt
+	patternRoutes = patterns
+	configLoaded = true
+
+	logger.Info("loaded validation rules from embedded config")
+	return true
 }
 
-func IsConfigLoaded() bool { return configLoaded && ruleMap != nil }
+func IsConfigLoaded() bool {
+	mu.Lock()
+	defer mu.Unlock()
+	return configLoaded && ruleMap != nil
+}
 
 func ResetForTesting() {
-	loadOnce = sync.Once{}
+	mu.Lock()
+	defer mu.Unlock()
 	configLoaded = false
 	ruleMap = nil
 	patternRoutes = nil
 }
 
-func GetRule(pKey string, method string) *EvalRule {
+func GetRule(pKey string, method string) (*EvalRule, map[string]string) {
 	if pKey == "" || method == "" || ruleMap == nil {
-		return nil
+		return nil, nil
 	}
 
 	np := normalizePath(pKey)
 
 	if rules, ok := ruleMap[np]; ok {
 		if rule, exists := rules[method]; exists {
-			return &rule
+			return &rule, nil
 		}
 	}
 
 	for _, rp := range patternRoutes {
-		if rp.re.MatchString(np) {
-			if rule, exists := rp.methods[method]; exists {
-				return &rule
+		matches := rp.re.FindStringSubmatch(np)
+		if matches == nil {
+			continue
+		}
+		rule, exists := rp.methods[method]
+		if !exists {
+			continue
+		}
+		names := rp.re.SubexpNames()
+		params := make(map[string]string, len(rp.paramKeys))
+		for i, name := range names {
+			if i != 0 && name != "" && i < len(matches) {
+				params[name] = matches[i]
 			}
 		}
+		return &rule, params
 	}
-	return nil
+	return nil, nil
 }
 
 func GetRules() RuleConfig { return ruleMap }
@@ -142,14 +166,12 @@ func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePa
 	}
 
 	if err := yaml.Unmarshal(data, &root); err != nil {
-		logger.Error("failed to parse validation rules from embedded config", err)
 		return nil, nil, fmt.Errorf("invalid yaml: %w", err)
 	}
 
 	cfg := root.Rules
 
 	if err := validateAndNormalizeConfig(cfg); err != nil {
-		logger.Error("validation rules configuration is invalid", err)
 		return nil, nil, err
 	}
 
@@ -160,7 +182,6 @@ func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePa
 			reStr, keys := templateToRegex(tpl)
 			re, err := regexp.Compile("^" + reStr + "$")
 			if err != nil {
-				logger.Error("invalid route pattern", err, logger.Attr("pattern", tpl))
 				return nil, nil, fmt.Errorf("invalid route pattern %s: %w", tpl, err)
 			}
 
@@ -190,43 +211,55 @@ func parseConfigFromData(data []byte) (map[string]map[string]EvalRule, []routePa
 		return specificityScore(patterns[i].template) > specificityScore(patterns[j].template)
 	})
 
-	if err := compileRulePatterns(cfg); err != nil {
+	if err := prepareFieldSpecs(cfg); err != nil {
 		return nil, nil, err
 	}
 
 	return cfg, patterns, nil
 }
 
-func compileRulePatterns(cfg RuleConfig) error {
-	compile := func(kind, name, pattern string) *regexp.Regexp {
-		if pattern == "" {
-			return nil
+func prepareFieldSpecs(cfg RuleConfig) error {
+	prepare := func(kind, name string, spec *FieldSpec) error {
+		if spec.Pattern != "" {
+			re, err := regexp.Compile(spec.Pattern)
+			if err != nil {
+				return fmt.Errorf("invalid %s pattern for %q: %w", kind, name, err)
+			}
+			spec.compiled = re
 		}
-		re, err := regexp.Compile(pattern)
-		if err != nil {
-			logger.Warn("ignoring invalid rule pattern; field will fail validation",
-				logger.Attr("kind", kind), logger.Attr("field", name), logger.Attr("pattern", pattern))
-			return nil
+		if len(spec.Enum) > 0 {
+			spec.enumSet = make(map[string]struct{}, len(spec.Enum))
+			for _, v := range spec.Enum {
+				spec.enumSet[v] = struct{}{}
+			}
 		}
-		return re
+		return nil
 	}
 
 	for _, methods := range cfg {
 		for method, rule := range methods {
 			for name, spec := range rule.Headers {
-				spec.compiled = compile("header", name, spec.Pattern)
+				if err := prepare("header", name, &spec); err != nil {
+					return err
+				}
 				rule.Headers[name] = spec
 			}
 			for name, spec := range rule.PathParams {
-				spec.compiled = compile("path param", name, spec.Pattern)
+				if err := prepare("path param", name, &spec); err != nil {
+					return err
+				}
 				rule.PathParams[name] = spec
 			}
 			for name, spec := range rule.QueryParams {
-				spec.compiled = compile("query param", name, spec.Pattern)
+				if err := prepare("query param", name, &spec); err != nil {
+					return err
+				}
 				rule.QueryParams[name] = spec
 			}
 			for name, spec := range rule.Body {
-				spec.compiled = compile("body field", name, spec.Pattern)
+				if err := prepare("body field", name, &spec); err != nil {
+					return err
+				}
 				rule.Body[name] = spec
 			}
 
@@ -262,7 +295,6 @@ func templateToRegex(tpl string) (string, []string) {
 			regexParts = append(regexParts, `(?P<`+key+`>[^/]+)`)
 			continue
 		}
-		// literal segment - escape regexp metacharacters
 		regexParts = append(regexParts, regexp.QuoteMeta(p))
 	}
 	return "/" + strings.Join(regexParts, "/"), keys
@@ -296,26 +328,4 @@ func normalizePath(p string) string {
 		p = "/" + p
 	}
 	return p
-}
-
-func matchRouteAndExtractParams(path string) (*routePattern, map[string]string) {
-	np := normalizePath(path)
-
-	for _, rp := range patternRoutes {
-		if !rp.re.MatchString(np) {
-			continue
-		}
-
-		matches := rp.re.FindStringSubmatch(np)
-		names := rp.re.SubexpNames()
-		params := make(map[string]string)
-
-		for i, name := range names {
-			if i != 0 && name != "" && i < len(matches) {
-				params[name] = matches[i]
-			}
-		}
-		return &rp, params
-	}
-	return nil, nil
 }

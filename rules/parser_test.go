@@ -112,6 +112,29 @@ func TestRules_Parser_LoadConfig(t *testing.T) {
 			t.Error("expected false for nonexistent file")
 		}
 	})
+
+	t.Run("retry on failure succeeds", func(t *testing.T) {
+		ResetForTesting()
+		os.Unsetenv("EVAL_RULES_PATH")
+
+		result := LoadConfig("/nonexistent/path/rules.yaml")
+		if result {
+			t.Error("expected false for nonexistent file")
+		}
+
+		f, err := os.CreateTemp("", "rules*.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer os.Remove(f.Name())
+		f.WriteString(testYAML)
+		f.Close()
+
+		result = LoadConfig(f.Name())
+		if !result {
+			t.Error("expected true on retry with valid file")
+		}
+	})
 }
 
 func TestRules_Parser_LoadConfigWithData(t *testing.T) {
@@ -139,8 +162,27 @@ rules:
       level: lenient
 `
 		ResetForTesting()
-		LoadConfigWithData([]byte(badRegexYAML))
-		_ = IsConfigLoaded()
+		result := LoadConfigWithData([]byte(badRegexYAML))
+		if result {
+			t.Error("expected false for invalid route pattern regex")
+		}
+	})
+
+	t.Run("YAML with invalid field pattern regex fails load", func(t *testing.T) {
+		badFieldRegexYAML := `
+rules:
+  /test:
+    GET:
+      level: lenient
+      headers:
+        X-Bad:
+          pattern: "^INVALID[[$"
+`
+		ResetForTesting()
+		result := LoadConfigWithData([]byte(badFieldRegexYAML))
+		if result {
+			t.Error("expected false for invalid field pattern regex")
+		}
 	})
 
 	t.Run("multiple patterns sorted by specificity", func(t *testing.T) {
@@ -179,7 +221,7 @@ func TestRules_Parser_GetRule(t *testing.T) {
 	LoadConfigWithData([]byte(testYAML))
 
 	t.Run("known path and method", func(t *testing.T) {
-		rule := GetRule("/users", "GET")
+		rule, _ := GetRule("/users", "GET")
 		if rule == nil {
 			t.Error("expected non-nil rule for /users GET")
 		}
@@ -189,28 +231,28 @@ func TestRules_Parser_GetRule(t *testing.T) {
 	})
 
 	t.Run("known path unknown method", func(t *testing.T) {
-		rule := GetRule("/users", "DELETE")
+		rule, _ := GetRule("/users", "DELETE")
 		if rule != nil {
 			t.Error("expected nil rule for unknown method")
 		}
 	})
 
 	t.Run("unknown path", func(t *testing.T) {
-		rule := GetRule("/unknown", "GET")
+		rule, _ := GetRule("/unknown", "GET")
 		if rule != nil {
 			t.Error("expected nil rule for unknown path")
 		}
 	})
 
 	t.Run("empty path", func(t *testing.T) {
-		rule := GetRule("", "GET")
+		rule, _ := GetRule("", "GET")
 		if rule != nil {
 			t.Error("expected nil rule for empty path")
 		}
 	})
 
 	t.Run("empty method", func(t *testing.T) {
-		rule := GetRule("/users", "")
+		rule, _ := GetRule("/users", "")
 		if rule != nil {
 			t.Error("expected nil rule for empty method")
 		}
@@ -218,36 +260,54 @@ func TestRules_Parser_GetRule(t *testing.T) {
 
 	t.Run("nil ruleMap (before load)", func(t *testing.T) {
 		ResetForTesting()
-		rule := GetRule("/users", "GET")
+		rule, _ := GetRule("/users", "GET")
 		if rule != nil {
 			t.Error("expected nil rule when ruleMap is nil")
 		}
 	})
 
-	t.Run("pattern route :id param", func(t *testing.T) {
+	t.Run("pattern route :id param returns params", func(t *testing.T) {
 		ResetForTesting()
 		LoadConfigWithData([]byte(testYAML))
-		rule := GetRule("/users/123", "GET")
+		rule, params := GetRule("/users/123", "GET")
 		if rule == nil {
 			t.Error("expected non-nil rule for pattern route /users/:id GET")
 		}
+		if params == nil || params["id"] != "123" {
+			t.Errorf("expected params[id]=123, got %v", params)
+		}
 	})
 
-	t.Run("pattern route {itemId} param", func(t *testing.T) {
+	t.Run("pattern route {itemId} param returns params", func(t *testing.T) {
 		ResetForTesting()
 		LoadConfigWithData([]byte(testYAML))
-		rule := GetRule("/items/item-abc", "DELETE")
+		rule, params := GetRule("/items/item-abc", "DELETE")
 		if rule == nil {
 			t.Error("expected non-nil rule for pattern route /items/{itemId} DELETE")
+		}
+		if params == nil || params["itemId"] != "item-abc" {
+			t.Errorf("expected params[itemId]=item-abc, got %v", params)
 		}
 	})
 
 	t.Run("versioned path normalized", func(t *testing.T) {
 		ResetForTesting()
 		LoadConfigWithData([]byte(testYAML))
-		rule := GetRule("/v1/users", "GET")
+		rule, _ := GetRule("/v1/users", "GET")
 		if rule == nil {
 			t.Error("expected non-nil rule for /v1/users (normalized to /users)")
+		}
+	})
+
+	t.Run("exact match returns nil params", func(t *testing.T) {
+		ResetForTesting()
+		LoadConfigWithData([]byte(testYAML))
+		rule, params := GetRule("/users", "GET")
+		if rule == nil {
+			t.Error("expected non-nil rule for exact match")
+		}
+		if params != nil {
+			t.Error("expected nil params for exact match")
 		}
 	})
 }
@@ -331,26 +391,4 @@ func TestTemplateToRegex(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestMatchRouteAndExtractParams(t *testing.T) {
-	ResetForTesting()
-	LoadConfigWithData([]byte(testYAML))
-
-	t.Run("matching route extracts params", func(t *testing.T) {
-		rp, params := matchRouteAndExtractParams("/users/42")
-		if rp == nil {
-			t.Fatal("expected matching route pattern")
-		}
-		if params["id"] != "42" {
-			t.Errorf("id = %q, want 42", params["id"])
-		}
-	})
-
-	t.Run("non-matching route returns nil", func(t *testing.T) {
-		rp, params := matchRouteAndExtractParams("/no/match/here/extra")
-		if rp != nil || params != nil {
-			t.Error("expected nil for non-matching path")
-		}
-	})
 }

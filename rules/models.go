@@ -17,6 +17,7 @@ type FieldSpec struct {
 	MinLen   int      `yaml:"min_len,omitempty"`
 	MaxLen   int      `yaml:"max_len,omitempty"`
 	compiled *regexp.Regexp
+	enumSet  map[string]struct{}
 }
 
 type Headers map[string]FieldSpec
@@ -25,9 +26,7 @@ type QueryParams map[string]FieldSpec
 type Body map[string]FieldSpec
 
 type EvalRule struct {
-	Toggle          bool        `yaml:"toggle,omitempty"`
 	Level           string      `yaml:"level,omitempty"`
-	OriginTypes     []string    `yaml:"originTypes,omitempty"`
 	Headers         Headers     `yaml:"headers,omitempty"`
 	PathParams      PathParams  `yaml:"params,omitempty"`
 	QueryParams     QueryParams `yaml:"query,omitempty"`

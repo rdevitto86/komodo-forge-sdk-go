@@ -6,6 +6,32 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.18.2]
+
+### Changed
+
+- **`rules` — fixed empty body bypassing required-field checks.** A POST/PUT/PATCH with an empty body now correctly fails when the rule declares `required: true` body fields. Previously returned `true` unconditionally on empty body.
+- **`rules` — removed `DisallowUnknownFields` from body JSON decoding.** Unknown fields in the request body are now accepted. Previously, any body field not declared in the YAML config caused a 400 — breaking forward-compatible APIs.
+- **`rules` — body fields now enforce `pattern`, `enum`, `min_len`, `max_len` constraints.** These were silently skipped for body fields despite being supported in the YAML schema and enforced on headers, path params, and query params.
+- **`rules` — invalid regex in config now fails the entire load.** Previously, a bad `pattern` regex was swallowed as a warning at startup, then silently rejected every matching request forever. Now `LoadConfig` / `LoadConfigWithData` return `false` and the config is not loaded.
+- **`rules` — removed dead `Toggle` and `OriginTypes` fields from `EvalRule`.** Neither was checked anywhere.
+- **`rules` — extracted common field validation into `validateFieldValue`.** Pattern, enum, min/max length, and type checks are now a single function called by headers, path params, query params, and body validation — eliminating ~120 lines of duplicated logic.
+- **`rules` — route matching now happens once per request.** `GetRule` returns both the matched rule and extracted path params, eliminating the redundant second regex pass that `areValidPathParams` previously performed via `matchRouteAndExtractParams`.
+- **`rules` — body read/parse skipped when rule has no body constraints.** Avoids unnecessary `io.ReadAll` + JSON decode on POST/PUT/PATCH when the rule's `Body` map is empty.
+- **`rules` — enum checks use pre-built `map[string]struct{}` for O(1) lookup.** Enum sets are constructed once at config load instead of linearly scanned per request.
+- **`rules` — `LoadConfig` / `LoadConfigWithData` now retry on failure.** Replaced `sync.Once` with `sync.Mutex` + bool guard. A failed load no longer permanently consumes the once-gate; subsequent calls can retry until one succeeds.
+
+### Added
+
+- **`api/validation` — new package for the rule validation middleware.** Moved from `rules/middleware.go`. `Middleware(cfg ...Config)` returns a configurable middleware constructor; `Config.RejectUnmapped` controls whether unmapped routes receive a 400 (default: passthrough). `RuleValidationMiddleware` is a backward-compatible convenience that preserves the old reject-on-no-rule behavior.
+- **`api/middleware` — `ValidationMiddleware` export.** Re-exports `api/validation.Middleware` alongside the existing `RuleValidationMiddleware`.
+
+### Removed
+
+- **`rules/middleware.go`** — moved to `api/validation/middleware.go`.
+
+---
+
 ## [0.18.1]
 
 ### Added

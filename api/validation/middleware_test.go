@@ -1,10 +1,11 @@
-package rules
+package validation
 
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
+
+	"github.com/rdevitto86/komodo-forge-sdk-go/rules"
 )
 
 var testConfig = []byte(`
@@ -22,24 +23,13 @@ rules:
       level: lenient
 `)
 
-func TestMain(m *testing.M) {
-	LoadConfigWithData(testConfig)
-	os.Exit(m.Run())
-}
-
 func loadItemsConfig(t *testing.T) {
 	t.Helper()
-	ResetForTesting()
-	LoadConfigWithData(testConfig)
-	if !IsConfigLoaded() {
+	rules.ResetForTesting()
+	rules.LoadConfigWithData(testConfig)
+	if !rules.IsConfigLoaded() {
 		t.Fatal("failed to load middleware test rules")
 	}
-}
-
-func okHandler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
 }
 
 func TestRuleValidationMiddleware_ValidRequest(t *testing.T) {
@@ -66,7 +56,6 @@ func TestRuleValidationMiddleware_ValidRequest(t *testing.T) {
 
 func TestRuleValidationMiddleware_MissingRequiredHeader(t *testing.T) {
 	loadItemsConfig(t)
-	// GET /v1/items without X-Required-Header → 400
 	req := httptest.NewRequest(http.MethodGet, "/v1/items", nil)
 	rec := httptest.NewRecorder()
 	called := false
@@ -85,7 +74,7 @@ func TestRuleValidationMiddleware_MissingRequiredHeader(t *testing.T) {
 	}
 }
 
-func TestRuleValidationMiddleware_NoMatchingRule(t *testing.T) {
+func TestRuleValidationMiddleware_NoMatchingRule_RejectUnmapped(t *testing.T) {
 	loadItemsConfig(t)
 	req := httptest.NewRequest(http.MethodGet, "/v1/unknown", nil)
 	rec := httptest.NewRecorder()
@@ -98,7 +87,48 @@ func TestRuleValidationMiddleware_NoMatchingRule(t *testing.T) {
 	RuleValidationMiddleware(next).ServeHTTP(rec, req)
 
 	if called {
-		t.Error("expected next NOT to be called for unmatched route")
+		t.Error("expected next NOT to be called for unmatched route with RejectUnmapped")
+	}
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestMiddleware_Passthrough_UnmappedRoute(t *testing.T) {
+	loadItemsConfig(t)
+	req := httptest.NewRequest(http.MethodGet, "/v1/unknown", nil)
+	rec := httptest.NewRecorder()
+	called := false
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	Middleware()(next).ServeHTTP(rec, req)
+
+	if !called {
+		t.Error("expected next to be called for unmatched route with default passthrough")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestMiddleware_RejectUnmapped_True(t *testing.T) {
+	loadItemsConfig(t)
+	req := httptest.NewRequest(http.MethodGet, "/v1/unknown", nil)
+	rec := httptest.NewRecorder()
+	called := false
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+	})
+
+	Middleware(Config{RejectUnmapped: true})(next).ServeHTTP(rec, req)
+
+	if called {
+		t.Error("expected next NOT to be called for unmatched route with RejectUnmapped")
 	}
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", rec.Code)
@@ -124,17 +154,19 @@ func TestRuleValidationMiddleware_LenientLevelPassesWithoutVersion(t *testing.T)
 }
 
 func TestRuleValidationMiddleware_LoadConfigReturnsFalse(t *testing.T) {
-	ResetForTesting()
+	rules.ResetForTesting()
 	defer func() {
-		ResetForTesting()
-		LoadConfigWithData(testConfig)
+		rules.ResetForTesting()
+		rules.LoadConfigWithData(testConfig)
 	}()
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/items", nil)
 	req.Header.Set("X-Required-Header", "present")
 	rec := httptest.NewRecorder()
 
-	handler := RuleValidationMiddleware(okHandler())
+	handler := RuleValidationMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {

@@ -14,7 +14,7 @@ import (
 	mwsanitize "github.com/rdevitto86/komodo-forge-sdk-go/api/sanitization"
 	mwtelemetry "github.com/rdevitto86/komodo-forge-sdk-go/api/telemetry"
 	"github.com/rdevitto86/komodo-forge-sdk-go/auth"
-	mwrules "github.com/rdevitto86/komodo-forge-sdk-go/rules"
+	mwvalidation "github.com/rdevitto86/komodo-forge-sdk-go/api/validation"
 )
 
 var (
@@ -35,7 +35,8 @@ var (
 	RequestIDMiddleware        = mwrequest.RequestIDMiddleware
 	RequireAnyScope            = auth.RequireAnyScope
 	RequireServiceScope        = auth.RequireServiceScope
-	RuleValidationMiddleware   = mwrules.RuleValidationMiddleware
+	RuleValidationMiddleware   = mwvalidation.RuleValidationMiddleware
+	ValidationMiddleware       = mwvalidation.Middleware
 	SanitizationMiddleware     = mwsanitize.SanitizationMiddleware
 	ScopeMiddleware            = auth.RequireServiceScope
 	SecurityHeadersMiddleware  = mwheaders.SecurityHeadersMiddleware

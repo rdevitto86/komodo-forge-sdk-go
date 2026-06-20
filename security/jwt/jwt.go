@@ -1,35 +1,22 @@
-// Package jwt provides RS256 token issuance and verification primitives.
-//
-// Token issuance (InitializeKeys, SignToken) is intended for the Auth API only — the single
-// service that holds the private signing key and runs the OAuth token endpoint. Application
-// services must NOT call SignToken: verify inbound tokens via the auth package
-// (auth.JWKSVerifier, the canonical verify path) and obtain their own service tokens via
-// http/client.WithServiceAuth (the OAuth2 client_credentials grant against the Auth API).
 package jwt
 
 import (
+	"context"
 	"crypto/rsa"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
-var (
-	cachedPrivateKey *rsa.PrivateKey
-	cachedPublicKey  *rsa.PublicKey
-	kid              string
-	iss              string
-	aud              string
-	keyMutex         sync.RWMutex
-	keysInitialized  atomic.Bool
-)
+const defaultLeeway = 30 * time.Second
+
+type SecretsProvider interface {
+	GetSecret(ctx context.Context, name string) (string, error)
+}
 
 type CustomClaims struct {
 	Scopes  []string `json:"scp,omitempty"`
@@ -37,200 +24,160 @@ type CustomClaims struct {
 	jwt.RegisteredClaims
 }
 
-// Loads RSA signing and verification keys from environment variables and assigns a KID for rotation support.
-//
-// Auth-API-only: this loads the private signing key (JWT_PRIVATE_KEY). Application services
-// must not configure a private key; they verify via auth.JWKSVerifier instead.
-func InitializeKeys() error {
-	if keysInitialized.Load() {
-		return nil
-	}
-
-	keyMutex.Lock()
-	defer keyMutex.Unlock()
-
-	// Re-check under the write lock: a concurrent first caller may have loaded the
-	// keys between the unlocked Load above and acquiring the lock here.
-	if keysInitialized.Load() {
-		return nil
-	}
-
-	kid = os.Getenv("JWT_KID")
-	iss = os.Getenv("JWT_ISSUER")
-	aud = os.Getenv("JWT_AUDIENCE")
-	privKey := os.Getenv("JWT_PRIVATE_KEY")
-	pubKey := os.Getenv("JWT_PUBLIC_KEY")
-
-	if privKey == "" || pubKey == "" {
-		return fmt.Errorf("JWT keys not fully configured in environment")
-	}
-
-	var err error
-	cachedPrivateKey, err = jwt.ParseRSAPrivateKeyFromPEM([]byte(privKey))
-	if err != nil {
-		return fmt.Errorf("failed to parse private key: %w", err)
-	}
-
-	cachedPublicKey, err = jwt.ParseRSAPublicKeyFromPEM([]byte(pubKey))
-	if err != nil {
-		return fmt.Errorf("failed to parse public key: %w", err)
-	}
-
-	keysInitialized.Store(true)
-	return nil
+type Config struct {
+	PrivateKeyPEM  string
+	PublicKeyPEM   string
+	KID            string
+	Issuer         string
+	Audience       string
+	Leeway         time.Duration
+	Secrets        SecretsProvider
+	PrivateKeyName string
 }
 
-// Mints a signed JWT with the given claims and a KID header for key rotation.
-//
-// Auth-API-only: token issuance must originate from the central Auth API. Application services
-// must not call SignToken — obtain service tokens via http/client.WithServiceAuth instead.
-func SignToken(issuer string, subject string, audience string, ttl int64, scopes []string) (string, error) {
-	if !keysInitialized.Load() {
-		return "", fmt.Errorf("failed to sign token: jwt keys not initialized")
+type Client struct {
+	privateKey *rsa.PrivateKey
+	publicKey  *rsa.PublicKey
+	kid        string
+	iss        string
+	aud        string
+	leeway     time.Duration
+}
+
+func New(ctx context.Context, cfg Config) (*Client, error) {
+	if cfg.PublicKeyPEM == "" {
+		return nil, fmt.Errorf("missing public key")
+	}
+	if cfg.Issuer == "" {
+		return nil, fmt.Errorf("missing issuer")
+	}
+	if cfg.Audience == "" {
+		return nil, fmt.Errorf("missing audience")
 	}
 
-	keyMutex.RLock()
-	defer keyMutex.RUnlock()
+	pub, err := jwt.ParseRSAPublicKeyFromPEM([]byte(cfg.PublicKeyPEM))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse public key: %w", err)
+	}
 
+	privPEM := cfg.PrivateKeyPEM
+	if privPEM == "" && cfg.Secrets != nil && cfg.PrivateKeyName != "" {
+		privPEM, err = cfg.Secrets.GetSecret(ctx, cfg.PrivateKeyName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load private key from secrets: %w", err)
+		}
+	}
+
+	var priv *rsa.PrivateKey
+	if privPEM != "" {
+		priv, err = jwt.ParseRSAPrivateKeyFromPEM([]byte(privPEM))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse private key: %w", err)
+		}
+		if !priv.PublicKey.Equal(pub) {
+			return nil, fmt.Errorf("private and public keys do not match")
+		}
+	}
+
+	leeway := cfg.Leeway
+	if leeway == 0 {
+		leeway = defaultLeeway
+	}
+
+	return &Client{
+		privateKey: priv,
+		publicKey:  pub,
+		kid:        cfg.KID,
+		iss:        cfg.Issuer,
+		aud:        cfg.Audience,
+		leeway:     leeway,
+	}, nil
+}
+
+func (c *Client) SignToken(issuer string, subject string, audience string, ttl int64, scopes []string) (string, error) {
+	if c.privateKey == nil {
+		return "", fmt.Errorf("failed to sign token: no private key configured")
+	}
+	if ttl <= 0 {
+		return "", fmt.Errorf("failed to sign token: ttl must be positive")
+	}
+
+	now := time.Now()
 	claims := CustomClaims{
 		Scopes: scopes,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   subject,
 			Issuer:    issuer,
 			Audience:  jwt.ClaimStrings{audience},
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(ttl) * time.Second)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			NotBefore: jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Duration(ttl) * time.Second)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
 			ID:        uuid.NewString(),
 		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
-	token.Header["kid"] = kid
-	return token.SignedString(cachedPrivateKey)
+	token.Header["kid"] = c.kid
+	return token.SignedString(c.privateKey)
 }
 
-// Validates a token's signature, expiration, issuer, and audience against env-configured values.
-func ValidateToken(tokenString string) (bool, error) {
-	if !keysInitialized.Load() {
-		return false, fmt.Errorf("failed to validate token: jwt keys not initialized")
-	}
-
-	keyMutex.RLock()
-	pub := cachedPublicKey
-	keyMutex.RUnlock()
-
-	if iss == "" {
-		return false, fmt.Errorf("missing jwt issuer")
-	}
-	if aud == "" {
-		return false, fmt.Errorf("missing jwt audience")
-	}
-
-	token, err := jwt.ParseWithClaims(
-		tokenString,
-		&CustomClaims{},
-		func(t *jwt.Token) (any, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-			}
-			return pub, nil
-		},
-		jwt.WithIssuer(iss),
-		jwt.WithAudience(aud),
-		jwt.WithValidMethods([]string{"RS256"}),
-	)
-
+func (c *Client) ValidateToken(tokenString string) (bool, error) {
+	token, _, err := c.parse(tokenString, true)
 	if err != nil {
-		return false, fmt.Errorf("verification failed: %w", err)
+		return false, err
 	}
-	if !token.Valid {
-		return false, fmt.Errorf("invalid token")
-	}
-
-	return true, nil
+	return token.Valid, nil
 }
 
-// Validates the token and returns its embedded claims in a single parse; prefer over ValidateToken + ParseClaims.
-func ValidateAndParseClaims(tokenString string) (*CustomClaims, error) {
-	if !keysInitialized.Load() {
-		return nil, fmt.Errorf("failed to validate token: jwt keys not initialized")
-	}
-
-	keyMutex.RLock()
-	pub := cachedPublicKey
-	keyMutex.RUnlock()
-
-	if iss == "" {
-		return nil, fmt.Errorf("missing jwt issuer")
-	}
-	if aud == "" {
-		return nil, fmt.Errorf("missing jwt audience")
-	}
-
-	token, err := jwt.ParseWithClaims(
-		tokenString,
-		&CustomClaims{},
-		func(t *jwt.Token) (any, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-			}
-			return pub, nil
-		},
-		jwt.WithIssuer(iss),
-		jwt.WithAudience(aud),
-		jwt.WithValidMethods([]string{"RS256"}),
-	)
+func (c *Client) ValidateAndParseClaims(tokenString string) (*CustomClaims, error) {
+	_, claims, err := c.parse(tokenString, true)
 	if err != nil {
-		return nil, fmt.Errorf("verification failed: %w", err)
-	}
-	if !token.Valid {
-		return nil, fmt.Errorf("invalid token")
-	}
-
-	claims, ok := token.Claims.(*CustomClaims)
-	if !ok {
-		return nil, fmt.Errorf("invalid claims type")
+		return nil, err
 	}
 	return claims, nil
 }
 
-// Parses and returns the embedded claims from a token string without re-validating issuer or audience.
-func ParseClaims(tokenString string) (*CustomClaims, error) {
-	if !keysInitialized.Load() {
-		return nil, fmt.Errorf("failed to parse claims: jwt keys not initialized")
-	}
-
-	keyMutex.RLock()
-	pub := cachedPublicKey
-	keyMutex.RUnlock()
-
-	token, err := jwt.ParseWithClaims(
-		tokenString,
-		&CustomClaims{},
-		func(t *jwt.Token) (any, error) {
-			if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
-				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
-			}
-			return pub, nil
-		},
-	)
+func (c *Client) ParseClaims(tokenString string) (*CustomClaims, error) {
+	_, claims, err := c.parse(tokenString, false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse token: %w", err)
-	}
-
-	claims, ok := token.Claims.(*CustomClaims)
-	if !ok {
-		return nil, fmt.Errorf("invalid claims type")
+		return nil, err
 	}
 	return claims, nil
 }
 
-// Extracts the Bearer token string from the Authorization header.
+func (c *Client) parse(tokenString string, checkIssAud bool) (*jwt.Token, *CustomClaims, error) {
+	opts := []jwt.ParserOption{
+		jwt.WithValidMethods([]string{"RS256"}),
+		jwt.WithLeeway(c.leeway),
+	}
+	if checkIssAud {
+		opts = append(opts, jwt.WithIssuer(c.iss), jwt.WithAudience(c.aud))
+	}
+
+	token, err := jwt.ParseWithClaims(tokenString, &CustomClaims{}, c.keyFunc, opts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to verify token: %w", err)
+	}
+
+	claims, ok := token.Claims.(*CustomClaims)
+	if !ok {
+		return nil, nil, fmt.Errorf("failed to parse claims: unexpected claims type")
+	}
+	return token, claims, nil
+}
+
+func (c *Client) keyFunc(t *jwt.Token) (any, error) {
+	if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
+		return nil, fmt.Errorf("unexpected signing method %v", t.Header["alg"])
+	}
+	return c.publicKey, nil
+}
+
 func ExtractTokenFromRequest(req *http.Request) (string, error) {
-	auth := req.Header.Get("Authorization")
-	if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
+	const prefix = "bearer "
+	auth := strings.TrimSpace(req.Header.Get("Authorization"))
+	if len(auth) < len(prefix) || !strings.EqualFold(auth[:len(prefix)], prefix) {
 		return "", fmt.Errorf("missing or invalid authorization header")
 	}
-	return strings.TrimPrefix(auth, "Bearer "), nil
+	return strings.TrimSpace(auth[len(prefix):]), nil
 }

@@ -23,7 +23,10 @@ func okHandler() http.Handler {
 	})
 }
 
-var testRSAKey *rsa.PrivateKey
+var (
+	testRSAKey    *rsa.PrivateKey
+	testJWTClient *jwt.Client
+)
 
 func TestMain(m *testing.M) {
 	var err error
@@ -41,14 +44,15 @@ func TestMain(m *testing.M) {
 	}
 	pubPEM := string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}))
 
-	os.Setenv("JWT_PRIVATE_KEY", privPEM)
-	os.Setenv("JWT_PUBLIC_KEY", pubPEM)
-	os.Setenv("JWT_ISSUER", "test-issuer")
-	os.Setenv("JWT_AUDIENCE", "test-audience")
-	os.Setenv("JWT_KID", "test-kid")
-
-	if err := jwt.InitializeKeys(); err != nil {
-		panic("failed to initialize JWT keys: " + err.Error())
+	testJWTClient, err = jwt.New(context.Background(), jwt.Config{
+		PrivateKeyPEM: privPEM,
+		PublicKeyPEM:  pubPEM,
+		KID:           "test-kid",
+		Issuer:        "test-issuer",
+		Audience:      "test-audience",
+	})
+	if err != nil {
+		panic("failed to build jwt client: " + err.Error())
 	}
 
 	os.Exit(m.Run())
@@ -66,7 +70,7 @@ func signCustomToken(t *testing.T, claims gojwt.Claims) string {
 }
 
 func TestAuthMiddleware_Success(t *testing.T) {
-	tokenStr, err := jwt.SignToken("test-issuer", "user-123", "test-audience", 3600, nil)
+	tokenStr, err := testJWTClient.SignToken("test-issuer", "user-123", "test-audience", 3600, nil)
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
@@ -85,7 +89,7 @@ func TestAuthMiddleware_Success(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	AuthMiddleware(next).ServeHTTP(rec, req)
+	AuthMiddleware(testJWTClient)(next).ServeHTTP(rec, req)
 
 	if !called {
 		t.Error("expected next to be called with valid token")
@@ -96,7 +100,7 @@ func TestAuthMiddleware_Success(t *testing.T) {
 }
 
 func TestAuthMiddleware_SetsSubjectAndSessionID(t *testing.T) {
-	tokenStr, err := jwt.SignToken("test-issuer", "subject-abc", "test-audience", 3600, nil)
+	tokenStr, err := testJWTClient.SignToken("test-issuer", "subject-abc", "test-audience", 3600, nil)
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
@@ -111,7 +115,7 @@ func TestAuthMiddleware_SetsSubjectAndSessionID(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	AuthMiddleware(next).ServeHTTP(httptest.NewRecorder(), req)
+	AuthMiddleware(testJWTClient)(next).ServeHTTP(httptest.NewRecorder(), req)
 
 	if userID != "subject-abc" {
 		t.Errorf("expected USER_ID_KEY='subject-abc', got %q", userID)
@@ -122,7 +126,7 @@ func TestAuthMiddleware_SetsSubjectAndSessionID(t *testing.T) {
 }
 
 func TestAuthMiddleware_WithAPIScopes(t *testing.T) {
-	tokenStr, err := jwt.SignToken("test-issuer", "user-api", "test-audience", 3600, []string{"read:items", "write:items"})
+	tokenStr, err := testJWTClient.SignToken("test-issuer", "user-api", "test-audience", 3600, []string{"read:items", "write:items"})
 	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
@@ -138,7 +142,7 @@ func TestAuthMiddleware_WithAPIScopes(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	AuthMiddleware(next).ServeHTTP(httptest.NewRecorder(), req)
+	AuthMiddleware(testJWTClient)(next).ServeHTTP(httptest.NewRecorder(), req)
 
 	if reqType != "api" {
 		t.Errorf("expected REQUEST_TYPE_KEY='api', got %q", reqType)
@@ -180,7 +184,7 @@ func TestAuthMiddleware_WithIsAdminClaim(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	AuthMiddleware(next).ServeHTTP(httptest.NewRecorder(), req)
+	AuthMiddleware(testJWTClient)(next).ServeHTTP(httptest.NewRecorder(), req)
 
 	if !isAdmin {
 		t.Error("expected IS_ADMIN_KEY to be true")
@@ -190,14 +194,11 @@ func TestAuthMiddleware_WithIsAdminClaim(t *testing.T) {
 	}
 }
 
-// Auth middleware requires JWT keys to be initialized; without them any
-// token extraction succeeds but validation fails with a 401.
-
 func TestAuthMiddleware_MissingAuthorizationHeader(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 
-	AuthMiddleware(okHandler()).ServeHTTP(rec, req)
+	AuthMiddleware(testJWTClient)(okHandler()).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", rec.Code)
@@ -209,21 +210,19 @@ func TestAuthMiddleware_NonBearerAuthorization(t *testing.T) {
 	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
 	rec := httptest.NewRecorder()
 
-	AuthMiddleware(okHandler()).ServeHTTP(rec, req)
+	AuthMiddleware(testJWTClient)(okHandler()).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", rec.Code)
 	}
 }
 
-func TestAuthMiddleware_BearerTokenKeysNotInitialized(t *testing.T) {
-	// JWT keys are not initialized in test env; token extraction succeeds
-	// but ValidateToken returns (false, err) → 401.
+func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer some.jwt.token")
 	rec := httptest.NewRecorder()
 
-	AuthMiddleware(okHandler()).ServeHTTP(rec, req)
+	AuthMiddleware(testJWTClient)(okHandler()).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", rec.Code)

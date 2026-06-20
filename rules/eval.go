@@ -238,7 +238,7 @@ func isValidBody(req *http.Request, rule *EvalRule) bool {
 		return true
 	}
 
-	const maxBody = 1 << 20
+	const maxBody = 1 << 20 // 1MB
 	bodyBytes, err := io.ReadAll(io.LimitReader(req.Body, maxBody))
 	if err != nil {
 		logger.Error("failed to read request body", err)

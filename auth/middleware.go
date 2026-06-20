@@ -14,47 +14,49 @@ import (
 
 // Validates the Bearer JWT, injects auth claims into the request context, and rejects invalid tokens.
 // Deprecated: use Middleware with an injected Verifier for testability.
-func AuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
-		tokenString, err := jwt.ExtractTokenFromRequest(req)
-		if err != nil {
-			logger.Error("failed to extract token", err)
-			httpErr.SendError(wtr, req, httpErr.Auth.InvalidToken, httpErr.WithDetail("missing or malformed authorization header"))
-			return
-		}
+func AuthMiddleware(c *jwt.Client) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(wtr http.ResponseWriter, req *http.Request) {
+			tokenString, err := jwt.ExtractTokenFromRequest(req)
+			if err != nil {
+				logger.Error("failed to extract token", err)
+				httpErr.SendError(wtr, req, httpErr.Auth.InvalidToken, httpErr.WithDetail("missing or malformed authorization header"))
+				return
+			}
 
-		claims, err := jwt.ValidateAndParseClaims(tokenString)
-		if err != nil {
-			logger.Error("token validation failed", err)
-			httpErr.SendError(wtr, req, httpErr.Auth.InvalidToken, httpErr.WithDetail("token validation failed"))
-			return
-		}
+			claims, err := c.ValidateAndParseClaims(tokenString)
+			if err != nil {
+				logger.Error("token validation failed", err)
+				httpErr.SendError(wtr, req, httpErr.Auth.InvalidToken, httpErr.WithDetail("token validation failed"))
+				return
+			}
 
-		ctx := context.WithValue(req.Context(), ctxKeys.AUTH_VALID_KEY, true)
+			ctx := context.WithValue(req.Context(), ctxKeys.AUTH_VALID_KEY, true)
 
-		if claims.Subject != "" {
-			ctx = context.WithValue(ctx, ctxKeys.USER_ID_KEY, claims.Subject)
-		}
-		if claims.ID != "" {
-			ctx = context.WithValue(ctx, ctxKeys.SESSION_ID_KEY, claims.ID)
-		}
+			if claims.Subject != "" {
+				ctx = context.WithValue(ctx, ctxKeys.USER_ID_KEY, claims.Subject)
+			}
+			if claims.ID != "" {
+				ctx = context.WithValue(ctx, ctxKeys.SESSION_ID_KEY, claims.ID)
+			}
 
-		isUIRequest := len(claims.Scopes) == 0 || claims.IsAdmin
-		isAPIRequest := len(claims.Scopes) > 0
+			isUIRequest := len(claims.Scopes) == 0 || claims.IsAdmin
+			isAPIRequest := len(claims.Scopes) > 0
 
-		if isUIRequest {
-			ctx = context.WithValue(ctx, ctxKeys.REQUEST_TYPE_KEY, "ui")
-		}
-		if isAPIRequest {
-			ctx = context.WithValue(ctx, ctxKeys.REQUEST_TYPE_KEY, "api")
-			ctx = context.WithValue(ctx, ctxKeys.SCOPES_KEY, claims.Scopes)
-		}
-		if claims.IsAdmin {
-			ctx = context.WithValue(ctx, ctxKeys.IS_ADMIN_KEY, true)
-		}
+			if isUIRequest {
+				ctx = context.WithValue(ctx, ctxKeys.REQUEST_TYPE_KEY, "ui")
+			}
+			if isAPIRequest {
+				ctx = context.WithValue(ctx, ctxKeys.REQUEST_TYPE_KEY, "api")
+				ctx = context.WithValue(ctx, ctxKeys.SCOPES_KEY, claims.Scopes)
+			}
+			if claims.IsAdmin {
+				ctx = context.WithValue(ctx, ctxKeys.IS_ADMIN_KEY, true)
+			}
 
-		next.ServeHTTP(wtr, req.WithContext(ctx))
-	})
+			next.ServeHTTP(wtr, req.WithContext(ctx))
+		})
+	}
 }
 
 // Validates the Bearer JWT using v and injects verified claims into the request context.

@@ -11,7 +11,6 @@ import (
 	"github.com/rdevitto86/komodo-forge-sdk-go/aws/dynamodb"
 )
 
-// embeds dynamodb.API so only BuildKey and GetItemAs need implementing
 type fakeDynamoDB struct {
 	dynamodb.API
 	rec *record
@@ -125,5 +124,88 @@ func TestNew_RequiresTableNameAndClient(t *testing.T) {
 	}
 	if _, err := New(Config{TableName: "banned-customers"}); err == nil {
 		t.Error("expected an error when DynamoDB is missing")
+	}
+}
+
+type capturingDynamoDB struct {
+	dynamodb.API
+	gotEmail string
+}
+
+func (f *capturingDynamoDB) BuildKey(pk string, pv any, sk string, sv any) (map[string]types.AttributeValue, error) {
+	f.gotEmail = pv.(string)
+	return map[string]types.AttributeValue{pk: &types.AttributeValueMemberS{Value: pv.(string)}}, nil
+}
+
+func (f *capturingDynamoDB) GetItemAs(ctx context.Context, table string, key map[string]types.AttributeValue, batch bool, keys []map[string]types.AttributeValue, out any) error {
+	return dynamodb.ErrNotFound
+}
+
+func TestIsBanned_NormalizesEmail(t *testing.T) {
+	fake := &capturingDynamoDB{}
+	c, err := New(Config{TableName: "banned-customers", DynamoDB: fake})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if _, err := c.IsBanned(context.Background(), "  User@Example.COM  "); err != nil {
+		t.Fatalf("IsBanned: %v", err)
+	}
+	if fake.gotEmail != "user@example.com" {
+		t.Errorf("lookup email = %q, want normalized user@example.com", fake.gotEmail)
+	}
+}
+
+type countingDynamoDB struct {
+	dynamodb.API
+	rec   *record
+	calls int
+}
+
+func (f *countingDynamoDB) BuildKey(pk string, pv any, sk string, sv any) (map[string]types.AttributeValue, error) {
+	return map[string]types.AttributeValue{pk: &types.AttributeValueMemberS{Value: pv.(string)}}, nil
+}
+
+func (f *countingDynamoDB) GetItemAs(ctx context.Context, table string, key map[string]types.AttributeValue, batch bool, keys []map[string]types.AttributeValue, out any) error {
+	f.calls++
+	if f.rec == nil {
+		return dynamodb.ErrNotFound
+	}
+	item, err := attributevalue.MarshalMap(f.rec)
+	if err != nil {
+		return err
+	}
+	return attributevalue.UnmarshalMap(item, out)
+}
+
+func TestIsBanned_CacheServesRepeatLookups(t *testing.T) {
+	fake := &countingDynamoDB{rec: &record{ExpiresAt: time.Now().Add(time.Hour).Unix()}}
+	c, err := New(Config{TableName: "t", DynamoDB: fake, CacheTTL: time.Minute})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	for i := 0; i < 3; i++ {
+		banned, err := c.IsBanned(context.Background(), "a@b.com")
+		if err != nil || !banned {
+			t.Fatalf("IsBanned = %v, %v; want true, nil", banned, err)
+		}
+	}
+	if fake.calls != 1 {
+		t.Errorf("expected 1 db call with caching, got %d", fake.calls)
+	}
+}
+
+func TestIsBanned_NoCacheQueriesEachTime(t *testing.T) {
+	fake := &countingDynamoDB{rec: &record{ExpiresAt: time.Now().Add(time.Hour).Unix()}}
+	c, err := New(Config{TableName: "t", DynamoDB: fake})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	for i := 0; i < 3; i++ {
+		if _, err := c.IsBanned(context.Background(), "a@b.com"); err != nil {
+			t.Fatalf("IsBanned: %v", err)
+		}
+	}
+	if fake.calls != 3 {
+		t.Errorf("expected 3 db calls without caching, got %d", fake.calls)
 	}
 }

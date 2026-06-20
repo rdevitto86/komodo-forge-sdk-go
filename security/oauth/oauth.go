@@ -4,18 +4,33 @@ import (
 	"strings"
 )
 
-var allowedScopes = map[string]bool{
-	"read":           true,
-	"write":          true,
-	"admin":          true,
-	"checkout:read":  true,
-	"checkout:write": true,
-	"orders:read":    true,
-	"users:profile":  true,
+var defaultAllowedScopes = []string{
+	"read", "write", "admin",
+	"checkout:read", "checkout:write",
+	"orders:read", "users:profile",
 }
 
-// Validates that every space- or comma-separated scope in scope is in the allowed set; svc: prefixed scopes are always valid.
-func IsValidScope(scope string) bool {
+type Config struct {
+	AllowedScopes []string
+}
+
+type Validator struct {
+	allowed map[string]struct{}
+}
+
+func New(cfg Config) *Validator {
+	scopes := cfg.AllowedScopes
+	if len(scopes) == 0 {
+		scopes = defaultAllowedScopes
+	}
+	allowed := make(map[string]struct{}, len(scopes))
+	for _, s := range scopes {
+		allowed[s] = struct{}{}
+	}
+	return &Validator{allowed: allowed}
+}
+
+func (v *Validator) IsValidScope(scope string) bool {
 	if scope == "" {
 		return false
 	}
@@ -23,28 +38,26 @@ func IsValidScope(scope string) bool {
 		if strings.HasPrefix(s, "svc:") {
 			continue
 		}
-		if !allowedScopes[s] {
+		if _, ok := v.allowed[s]; !ok {
 			return false
 		}
 	}
 	return true
 }
 
-// Returns all unrecognized scopes from the space- or comma-separated scope string.
-func GetInvalidScopes(scope string) []string {
+func (v *Validator) GetInvalidScopes(scope string) []string {
 	var invalid []string
 	for s := range strings.FieldsSeq(strings.ReplaceAll(scope, ",", " ")) {
 		if strings.HasPrefix(s, "svc:") {
 			continue
 		}
-		if !allowedScopes[s] {
+		if _, ok := v.allowed[s]; !ok {
 			invalid = append(invalid, s)
 		}
 	}
 	return invalid
 }
 
-// Validates that grantType is one of the recognized OAuth2 grant types.
 func IsValidGrantType(grantType string) bool {
 	switch grantType {
 	case "client_credentials", "authorization_code", "refresh_token":

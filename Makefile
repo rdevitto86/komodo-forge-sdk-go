@@ -1,10 +1,19 @@
-.PHONY: fmt lint install-hooks release
+.PHONY: fmt lint fresh install-hooks release
 
 fmt:
 	@gofmt -w .
 
 lint:
 	@golangci-lint run ./...
+
+fresh:
+	@go get -u ./...
+	@go mod tidy
+	@echo "verifying updated dependencies..."
+	@go build ./...
+	@go vet ./...
+	@go test ./...
+	@echo "dependencies updated to latest and verified"
 
 install-hooks:
 	@git config core.hooksPath .

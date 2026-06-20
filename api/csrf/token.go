@@ -1,21 +1,14 @@
 package csrf
 
 import (
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
 	"net/http"
 
 	"github.com/rdevitto86/komodo-forge-sdk-go/api/headers"
+	"github.com/rdevitto86/komodo-forge-sdk-go/security/token"
 )
 
-// Generates a random hex-encoded CSRF token for the double-submit cookie pattern.
 func GenerateToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("failed to generate csrf token: %w", err)
-	}
-	return hex.EncodeToString(b), nil
+	return token.Hex(32)
 }
 
 func setCookie(wtr http.ResponseWriter, token string) {

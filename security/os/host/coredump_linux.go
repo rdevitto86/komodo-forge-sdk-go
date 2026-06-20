@@ -2,11 +2,16 @@
 
 package host
 
-import "syscall"
+import "golang.org/x/sys/unix"
 
-// Sets the core-dump size limit to zero so a crash cannot spill in-memory secrets — notably an
-// RSA signing key — to disk. Applies on the Linux container that ships; non-Linux dev hosts get
-// the no-op in coredump_default.go.
 func DisableCoreDumps() error {
-	return syscall.Setrlimit(syscall.RLIMIT_CORE, &syscall.Rlimit{Cur: 0, Max: 0})
+	return unix.Setrlimit(unix.RLIMIT_CORE, &unix.Rlimit{Cur: 0, Max: 0})
+}
+
+func DisableTracing() error {
+	return unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0)
+}
+
+func LockMemory() error {
+	return unix.Mlockall(unix.MCL_CURRENT | unix.MCL_FUTURE)
 }

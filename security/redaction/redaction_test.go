@@ -111,3 +111,69 @@ func TestRedaction_RedactPair(t *testing.T) {
 		}
 	})
 }
+
+func TestRedaction_RedactString_BarePAN(t *testing.T) {
+	if got := RedactString("4111111111111111"); got != redacted {
+		t.Errorf("expected bare Luhn-valid PAN to be redacted, got %q", got)
+	}
+}
+
+func TestRedaction_RedactString_BareNonPAN_NotRedacted(t *testing.T) {
+	cases := []string{
+		"4111111111111112",
+		"123456789",
+		"42",
+		"100000",
+	}
+	for _, in := range cases {
+		if got := RedactString(in); got != in {
+			t.Errorf("RedactString(%q) = %q, want unchanged", in, got)
+		}
+	}
+}
+
+func TestRedaction_IsSensitiveKey(t *testing.T) {
+	sensitive := []string{
+		"authorization", "Authorization", "set-cookie", "password",
+		"access_token", "x-api-key", "user_ssn", "client_secret",
+	}
+	for _, k := range sensitive {
+		if !IsSensitiveKey(k) {
+			t.Errorf("IsSensitiveKey(%q) = false, want true", k)
+		}
+	}
+
+	notSensitive := []string{"className", "lesson_id", "x-custom", "count", "session_window"}
+	for _, k := range notSensitive {
+		if IsSensitiveKey(k) {
+			t.Errorf("IsSensitiveKey(%q) = true, want false (over-match)", k)
+		}
+	}
+}
+
+func TestRedaction_RedactValue_TypedMap(t *testing.T) {
+	in := map[string]string{"password": "hunter2", "name": "alice"}
+	out, ok := RedactValue(in).(map[string]string)
+	if !ok {
+		t.Fatalf("expected map[string]string, got %T", RedactValue(in))
+	}
+	if out["password"] != redacted {
+		t.Errorf("password = %q, want redacted", out["password"])
+	}
+	if out["name"] != "alice" {
+		t.Errorf("name = %q, want alice", out["name"])
+	}
+}
+
+func TestRedaction_RedactValue_TypedSlice(t *testing.T) {
+	out, ok := RedactValue([]string{"contact user@example.com", "plain"}).([]string)
+	if !ok {
+		t.Fatalf("expected []string, got %T", RedactValue([]string{}))
+	}
+	if out[0] != "contact [REDACTED]" {
+		t.Errorf("got %q, want redacted email", out[0])
+	}
+	if out[1] != "plain" {
+		t.Errorf("got %q, want plain", out[1])
+	}
+}

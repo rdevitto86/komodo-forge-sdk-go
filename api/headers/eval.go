@@ -2,6 +2,7 @@ package headers
 
 import (
 	"crypto/subtle"
+	"fmt"
 	"net/http"
 	"os"
 	"regexp"
@@ -18,6 +19,12 @@ var (
 	idempotencyKeyRE = regexp.MustCompile(`^[A-Za-z0-9_\-]{8,64}$`)
 )
 
+var jwtClient *jwt.Client
+
+func SetJWTClient(c *jwt.Client) {
+	jwtClient = c
+}
+
 // Validates header values against known patterns and security rules.
 func ValidateHeaderValue(hdr string, req *http.Request) (bool, error) {
 	val := req.Header.Get(hdr)
@@ -25,10 +32,14 @@ func ValidateHeaderValue(hdr string, req *http.Request) (bool, error) {
 	case "access-control-allow-origin":
 		return isValidCORS(val), nil
 	case "authorization":
-		if !strings.HasPrefix(val, "Bearer ") {
+		token, err := jwt.ExtractTokenFromRequest(req)
+		if err != nil {
 			return false, nil
 		}
-		return jwt.ValidateToken(strings.TrimPrefix(val, "Bearer "))
+		if jwtClient == nil {
+			return false, fmt.Errorf("jwt client not configured")
+		}
+		return jwtClient.ValidateToken(token)
 	case "cache-control":
 		return isValidCacheControl(val), nil
 	case "cookie":

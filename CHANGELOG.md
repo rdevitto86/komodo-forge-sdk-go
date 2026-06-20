@@ -6,6 +6,41 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.19.0]
+
+> **Security/crypto sweep.** The dead `crypto/` re-export facade is removed, `security/jwt` and `security/oauth` move to the standard `Client`/`New(Config)` pattern (eliminating package-global mutable state and a latent `iss`/`aud` data race), `security/encryption` ships an AES-256-GCM cipher, `security/hashing` adds an Argon2id password hasher, `security/token` adds fail-closed secure-random token generation, and the rest of the `security/` tree is hardened. **Breaking:** `auth.AuthMiddleware` and `api/headers` now take an injected JWT client.
+
+### Changed
+
+- **`security/jwt` — rewritten around `New(ctx, Config) (*Client, error)`.** Signing and verification hang off an immutable `Client` instead of package globals + `InitializeKeys`. `Config` carries `PrivateKeyPEM`, `PublicKeyPEM`, `KID`, `Issuer`, `Audience`, `Leeway`, and an optional `Secrets`/`PrivateKeyName` pair. `New` requires public key + issuer + audience (fail-fast), parses an optional private key (verify-only clients omit it), and rejects a mismatched key pair. Because the key set is now immutable struct state, the prior `iss`/`aud` read-outside-the-lock data race is gone — no mutex, no `atomic`. Verification adds `WithLeeway` (30s default) for clock skew; `ParseClaims` gains the `WithValidMethods(["RS256"])` allowlist for parity with the other verify paths; `SignToken` rejects `ttl <= 0`; and `ExtractTokenFromRequest` matches the Bearer scheme case-insensitively (RFC 6750) and trims surrounding whitespace.
+- **`security/oauth` — rewritten around `New(Config) *Validator`.** Scope validation moves off the package-global `allowedScopes` map to an injectable `Validator` (`Config.AllowedScopes`, defaulting to the canonical set when empty); `IsValidScope`/`GetInvalidScopes` are now methods. `IsValidGrantType` stays a stateless free function. The `svc:` prefix bypass is preserved.
+- **`security/redaction` — closed a PII leak and tightened key matching.** `RedactString` previously returned any all-digit value unredacted, leaking bare card numbers (PANs); it now redacts numeric strings that are 13–19 digits and Luhn-valid while leaving ordinary numeric IDs alone. `IsSensitiveKey` switched from naive substring matching to token-boundary matching (normalizing `-_. ` separators), so keys like `className` no longer match `ssn` while `set-cookie`/`access_token`/`x-api-key` still do. `RedactValue` now scrubs typed `map[string]string` and `[]string` values in addition to the `any`-typed variants.
+- **`security/bannedcustomers` — email is normalized (lowercase + trim) before lookup,** closing a case-variation ban-evasion bypass; `Config.CacheTTL` adds an optional in-memory result cache (default `0` = disabled).
+- **`auth.AuthMiddleware` / `api/headers` — migrated to an injected JWT client (breaking).** `AuthMiddleware` is now `AuthMiddleware(*jwt.Client) func(http.Handler) http.Handler`; `api/headers` exposes `SetJWTClient(*jwt.Client)` and validates the `authorization` header through it, replacing the hand-rolled `Bearer` strip.
+
+### Added
+
+- **`security/encryption` — AES-256-GCM `Cipher`.** `New(Config{Key})` (32-byte key, otherwise rejected) returns a `Cipher` with `Encrypt`/`Decrypt`; output is `nonce || ciphertext+tag` with a random per-message nonce. GCM's auth tag provides integrity, so no separate HMAC is needed.
+- **`security/jwt` — private-key loading via a `SecretsProvider`.** `Config.Secrets` + `Config.PrivateKeyName` load the signing key from a secrets backend (satisfied by `aws/secretsmanager.Client`) instead of an environment variable.
+- **`security/os/host` — `DisableTracing` (`prctl(PR_SET_DUMPABLE, 0)`) and `LockMemory` (`mlockall`),** build-tagged for Linux with no-op fallbacks, alongside the existing `DisableCoreDumps` (now via `golang.org/x/sys/unix`).
+- **`security/hashing` — Argon2id password/token hashing.** `New(Config) (*Hasher, error)` returns a `Hasher` with a `Hash(plaintext) (string, error)` method; the package-level `Verify(plaintext, encodedHash) (bool, error)` checks a candidate against a stored hash. `Config` exposes tunable `Memory`/`Time`/`Parallelism`/`SaltLen`/`KeyLen` with OWASP-aligned defaults (64 MiB, t=3, p=2, 16-byte salt, 32-byte key) applied to zero-value fields. Hashes are PHC-encoded (`$argon2id$v=19$m=,t=,p=$salt$hash`, `base64.RawStdEncoding`) so verification reads its parameters from the stored string; a per-hash salt comes from `crypto/rand`, comparison is constant-time (`subtle.ConstantTimeCompare`), and `Verify` rejects non-`argon2id`/non-v19 encodings (downgrade guard). Standardizes password storage for `komodo-user-api`. Promotes `golang.org/x/crypto` to a direct dependency.
+- **`security/token` — secure-random token generation.** Stateless, stdlib-only helpers over `crypto/rand`: `Bytes(n) ([]byte, error)`, `Hex(n) (string, error)`, `URLSafe(n) (string, error)` (`base64.RawURLEncoding`, no padding), and `APIKey(prefix) (string, error)` (a `DefaultBytes`=32 / 256-bit URL-safe token, optionally prefixed). Every path is fail-closed — a non-positive length or an RNG read failure returns an error, never a weak fallback. Intended for API keys, opaque/session tokens, password-reset and email-verification tokens, nonces, and OAuth `state`/PKCE verifiers across services; pairs with `security/hashing` for the generate-then-store-the-hash credential pattern.
+
+### Removed
+
+- **`crypto/jwt` and `crypto/oauth`** — the dead re-export facade (zero importers) is deleted.
+- **`security/jwt` package globals + `InitializeKeys`** — replaced by the `Client` constructor.
+
+### Security
+
+- Private JWT signing key can now be sourced from a secrets manager rather than a raw `JWT_PRIVATE_KEY` env var.
+- Completed the `security/jwt` `iss`/`aud` data-race fix by removing shared mutable state entirely.
+- Closed the `security/redaction` bare-PAN logging leak and the `security/bannedcustomers` email-case ban bypass.
+- Added `security/hashing` (Argon2id, constant-time verify, downgrade-guarded PHC encoding) so password storage no longer relies on per-service ad-hoc hashing.
+- Added `security/token` (fail-closed `crypto/rand` token generation) so token/API-key minting no longer relies on per-service hand-rolled generators, one of which fell back to a predictable timestamp on RNG failure.
+
+---
+
 ## [0.18.2]
 
 ### Changed

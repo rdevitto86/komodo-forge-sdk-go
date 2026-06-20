@@ -32,8 +32,8 @@ type Config struct {
 type ExecuteStatementInput struct {
 	SQL           string
 	Parameters    map[string]any
-	TransactionID string // optional; ties execution to a BeginTransaction call
-	Database      string // optional; overrides Config.Database for this call
+	TransactionID string // optional
+	Database      string // optional
 }
 
 type ExecuteStatementOutput struct {
@@ -72,11 +72,7 @@ type Client struct {
 	database    string
 }
 
-// Creates a new RDS Data API client. Returns an error if Region is empty, not a known AWS region, or if required ARN fields are missing.
 func New(ctx context.Context, config Config) (*Client, error) {
-	if config.Region == "" {
-		return nil, fmt.Errorf("missing region")
-	}
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
 	}
@@ -101,7 +97,6 @@ func New(ctx context.Context, config Config) (*Client, error) {
 		))
 	}
 
-	// Load the AWS configuration
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, cfgOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load AWS config: %w", err)
@@ -121,7 +116,6 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	}, nil
 }
 
-// Creates a new RDS Data API client with a pre-built rdsDataAPI.
 func newWithAPI(api rdsDataAPI, resourceARN, secretARN, database string) *Client {
 	return &Client{
 		api:         api,
@@ -131,13 +125,11 @@ func newWithAPI(api rdsDataAPI, resourceARN, secretARN, database string) *Client
 	}
 }
 
-// Runs a single SQL statement against the Aurora cluster.
 func (c *Client) ExecuteStatement(ctx context.Context, input ExecuteStatementInput) (*ExecuteStatementOutput, error) {
 	if input.SQL == "" {
 		return nil, fmt.Errorf("SQL is required")
 	}
 
-	// Build SQL parameters for the statement
 	params, err := buildSQLParameters(input.Parameters)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build SQL parameters: %w", err)
@@ -163,19 +155,16 @@ func (c *Client) ExecuteStatement(ctx context.Context, input ExecuteStatementInp
 		in.TransactionId = aws.String(input.TransactionID)
 	}
 
-	// Execute the DB statement
 	out, err := c.api.ExecuteStatement(ctx, in)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute statement: %w", err)
 	}
 
-	// Decode result rows
 	rows, err := decodeRecords(out.Records, out.ColumnMetadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode result rows: %w", err)
 	}
 
-	// Decode generated fields
 	generatedFields, err := decodeFields(out.GeneratedFields)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode generated fields: %w", err)
@@ -188,7 +177,6 @@ func (c *Client) ExecuteStatement(ctx context.Context, input ExecuteStatementInp
 	}, nil
 }
 
-// Runs a SQL statement once per parameter set, sending all sets in a single API call.
 func (c *Client) BatchExecuteStatement(ctx context.Context, input BatchExecuteStatementInput) (*BatchExecuteStatementOutput, error) {
 	if input.SQL == "" {
 		return nil, fmt.Errorf("SQL is required")
@@ -222,13 +210,11 @@ func (c *Client) BatchExecuteStatement(ctx context.Context, input BatchExecuteSt
 		in.TransactionId = aws.String(input.TransactionID)
 	}
 
-	// Execute the batch statement
 	out, err := c.api.BatchExecuteStatement(ctx, in)
 	if err != nil {
 		return nil, fmt.Errorf("failed to batch execute statement: %w", err)
 	}
 
-	// Decode and map DB results
 	results := make([]BatchUpdateResult, len(out.UpdateResults))
 	for i, ur := range out.UpdateResults {
 		gf, err := decodeFields(ur.GeneratedFields)
@@ -241,7 +227,6 @@ func (c *Client) BatchExecuteStatement(ctx context.Context, input BatchExecuteSt
 	return &BatchExecuteStatementOutput{UpdateResults: results}, nil
 }
 
-// Starts a new SQL transaction and returns the transaction ID for subsequent Execute, Commit, or Rollback calls.
 func (c *Client) BeginTransaction(ctx context.Context) (string, error) {
 	in := &rdsdata.BeginTransactionInput{
 		ResourceArn: aws.String(c.resourceARN),
@@ -252,7 +237,6 @@ func (c *Client) BeginTransaction(ctx context.Context) (string, error) {
 		in.Database = aws.String(c.database)
 	}
 
-	// Execute the transaction
 	out, err := c.api.BeginTransaction(ctx, in)
 	if err != nil {
 		return "", fmt.Errorf("failed to begin transaction: %w", err)
@@ -260,9 +244,7 @@ func (c *Client) BeginTransaction(ctx context.Context) (string, error) {
 	return aws.ToString(out.TransactionId), nil
 }
 
-// Commits the transaction identified by transactionID.
 func (c *Client) CommitTransaction(ctx context.Context, transactionID string) error {
-	// Commit the DB transaction
 	_, err := c.api.CommitTransaction(ctx, &rdsdata.CommitTransactionInput{
 		ResourceArn:   aws.String(c.resourceARN),
 		SecretArn:     aws.String(c.secretARN),
@@ -274,9 +256,7 @@ func (c *Client) CommitTransaction(ctx context.Context, transactionID string) er
 	return nil
 }
 
-// Rolls back the transaction identified by transactionID.
 func (c *Client) RollbackTransaction(ctx context.Context, transactionID string) error {
-	// Rollback the DB transaction
 	_, err := c.api.RollbackTransaction(ctx, &rdsdata.RollbackTransactionInput{
 		ResourceArn:   aws.String(c.resourceARN),
 		SecretArn:     aws.String(c.secretARN),
@@ -288,7 +268,6 @@ func (c *Client) RollbackTransaction(ctx context.Context, transactionID string) 
 	return nil
 }
 
-// Helper that converts a map of named Go values into a slice of SqlParameter.
 func buildSQLParameters(params map[string]any) ([]types.SqlParameter, error) {
 	if len(params) == 0 {
 		return nil, nil
@@ -306,7 +285,6 @@ func buildSQLParameters(params map[string]any) ([]types.SqlParameter, error) {
 	return out, nil
 }
 
-// Helper that converts DB records and column metadata into a slice of column-name-keyed maps of Go values.
 func decodeRecords(records [][]types.Field, cols []types.ColumnMetadata) ([]map[string]any, error) {
 	if len(records) == 0 {
 		return nil, nil
@@ -334,7 +312,6 @@ func decodeRecords(records [][]types.Field, cols []types.ColumnMetadata) ([]map[
 	return rows, nil
 }
 
-// Helper that converts a slice of DB Field values to a Go array.
 func decodeFields(fields []types.Field) ([]any, error) {
 	if len(fields) == 0 {
 		return nil, nil
@@ -350,3 +327,5 @@ func decodeFields(fields []types.Field) ([]any, error) {
 	}
 	return out, nil
 }
+
+var _ API = (*Client)(nil)

@@ -75,7 +75,7 @@ func (c *Client) Query(ctx context.Context, input QueryInput) (*QueryOutput, err
 	result, err := c.db.Query(ctx, q)
 	if err != nil {
 		logger.Error("dynamodb failed to query", err)
-		return nil, WrapError(err, "Query")
+		return nil, WrapError(err)
 	}
 	return &QueryOutput{
 		Items:            result.Items,
@@ -87,12 +87,11 @@ func (c *Client) Query(ctx context.Context, input QueryInput) (*QueryOutput, err
 func (c *Client) QueryAs(ctx context.Context, input QueryInput, out any) (*QueryOutput, error) {
 	result, err := c.Query(ctx, input)
 	if err != nil {
-		logger.Error("dynamodb failed to query", err)
-		return nil, WrapError(err, "QueryAs")
+		return nil, err
 	}
 	if err := attributevalue.UnmarshalListOfMaps(result.Items, out); err != nil {
 		logger.Error("dynamodb failed to unmarshal items", err)
-		return nil, WrapError(err, "QueryAs unmarshal")
+		return nil, WrapError(err)
 	}
 	return result, nil
 }
@@ -105,8 +104,7 @@ func (c *Client) QueryAll(ctx context.Context, input QueryInput) ([]map[string]t
 		input.ExclusiveStartKey = lastKey
 		result, err := c.Query(ctx, input)
 		if err != nil {
-			logger.Error("dynamodb failed to query", err)
-			return nil, WrapError(err, "QueryAll")
+			return nil, err
 		}
 		allItems = append(allItems, result.Items...)
 		if result.LastEvaluatedKey == nil {
@@ -120,12 +118,11 @@ func (c *Client) QueryAll(ctx context.Context, input QueryInput) ([]map[string]t
 func (c *Client) QueryAllAs(ctx context.Context, input QueryInput, out any) error {
 	items, err := c.QueryAll(ctx, input)
 	if err != nil {
-		logger.Error("dynamodb failed to query", err)
-		return WrapError(err, "QueryAllAs")
+		return err
 	}
 	if err = attributevalue.UnmarshalListOfMaps(items, out); err != nil {
 		logger.Error("dynamodb failed to unmarshal items", err)
-		return WrapError(err, "QueryAllAs unmarshal")
+		return WrapError(err)
 	}
 	return nil
 }
@@ -156,7 +153,7 @@ func (c *Client) Scan(ctx context.Context, input ScanInput) (*ScanOutput, error)
 	result, err := c.db.Scan(ctx, s)
 	if err != nil {
 		logger.Error("dynamodb failed to scan", err)
-		return nil, WrapError(err, "Scan")
+		return nil, WrapError(err)
 	}
 	return &ScanOutput{
 		Items:            result.Items,
@@ -168,12 +165,11 @@ func (c *Client) Scan(ctx context.Context, input ScanInput) (*ScanOutput, error)
 func (c *Client) ScanAs(ctx context.Context, input ScanInput, out any) (*ScanOutput, error) {
 	result, err := c.Scan(ctx, input)
 	if err != nil {
-		logger.Error("dynamodb failed to scan", err)
-		return nil, WrapError(err, "ScanAs")
+		return nil, err
 	}
 	if err = attributevalue.UnmarshalListOfMaps(result.Items, out); err != nil {
 		logger.Error("dynamodb failed to unmarshal items", err)
-		return nil, WrapError(err, "ScanAs unmarshal")
+		return nil, WrapError(err)
 	}
 	return result, nil
 }
@@ -186,8 +182,7 @@ func (c *Client) ScanAll(ctx context.Context, input ScanInput) ([]map[string]typ
 		input.ExclusiveStartKey = lastKey
 		result, err := c.Scan(ctx, input)
 		if err != nil {
-			logger.Error("dynamodb failed to scan", err)
-			return nil, WrapError(err, "ScanAll")
+			return nil, err
 		}
 		allItems = append(allItems, result.Items...)
 		if result.LastEvaluatedKey == nil {
@@ -201,12 +196,11 @@ func (c *Client) ScanAll(ctx context.Context, input ScanInput) ([]map[string]typ
 func (c *Client) ScanAllAs(ctx context.Context, input ScanInput, out any) error {
 	items, err := c.ScanAll(ctx, input)
 	if err != nil {
-		logger.Error("dynamodb failed to scan all", err)
-		return WrapError(err, "ScanAllAs")
+		return err
 	}
 	if err = attributevalue.UnmarshalListOfMaps(items, out); err != nil {
 		logger.Error("dynamodb failed to unmarshal items", err)
-		return WrapError(err, "ScanAllAs unmarshal")
+		return WrapError(err)
 	}
 	return nil
 }

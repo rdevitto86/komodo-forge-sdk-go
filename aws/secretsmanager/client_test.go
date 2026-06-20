@@ -247,9 +247,9 @@ func TestWatch_FiresOnChangeOnlyOnDiff(t *testing.T) {
 	var calls atomic.Int32
 	blobs := []string{
 		string(mustJSON(map[string]string{"SIGNING_KEY": "v1"})),
-		string(mustJSON(map[string]string{"SIGNING_KEY": "v1"})), // unchanged — no onChange
-		string(mustJSON(map[string]string{"SIGNING_KEY": "v2"})), // rotated — onChange
-		string(mustJSON(map[string]string{"SIGNING_KEY": "v2"})), // unchanged — no onChange
+		string(mustJSON(map[string]string{"SIGNING_KEY": "v1"})),
+		string(mustJSON(map[string]string{"SIGNING_KEY": "v2"})),
+		string(mustJSON(map[string]string{"SIGNING_KEY": "v2"})),
 	}
 	fake := &fakeSecretsAPI{
 		getSecretValueFunc: func(_ context.Context, _ *secretsmanager.GetSecretValueInput, _ ...func(*secretsmanager.Options)) (*secretsmanager.GetSecretValueOutput, error) {
@@ -312,7 +312,6 @@ func mustJSON(v map[string]string) []byte {
 
 func TestNew_ValidRegion(t *testing.T) {
 	testutil.Integration(t)
-	// LocalStack path: only Endpoint set, no real AWS call.
 	c, err := New(context.Background(), Config{
 		Region:   "us-east-1",
 		Endpoint: "http://localhost:4566",

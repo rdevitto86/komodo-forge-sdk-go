@@ -12,14 +12,18 @@ import (
 	"github.com/rdevitto86/komodo-forge-sdk-go/testing/testutil"
 )
 
-// embeds dynamoDBAPI so only the methods under test need implementing
 type fakeDynamoDBAPI struct {
 	dynamoDBAPI
 	batchWriteItemFunc func(ctx context.Context, input *dynamodb.BatchWriteItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.BatchWriteItemOutput, error)
+	batchGetItemFunc   func(ctx context.Context, input *dynamodb.BatchGetItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.BatchGetItemOutput, error)
 }
 
 func (f fakeDynamoDBAPI) BatchWriteItem(ctx context.Context, input *dynamodb.BatchWriteItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.BatchWriteItemOutput, error) {
 	return f.batchWriteItemFunc(ctx, input, opts...)
+}
+
+func (f fakeDynamoDBAPI) BatchGetItem(ctx context.Context, input *dynamodb.BatchGetItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.BatchGetItemOutput, error) {
+	return f.batchGetItemFunc(ctx, input, opts...)
 }
 
 func writeRequests(table string, n int) map[string][]types.WriteRequest {
@@ -41,7 +45,6 @@ func TestRetryUnprocessed_SucceedsAfterRetries(t *testing.T) {
 		batchWriteItemFunc: func(_ context.Context, input *dynamodb.BatchWriteItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.BatchWriteItemOutput, error) {
 			n := calls.Add(1)
 			if n < 3 {
-				// still throttled — return the same unprocessed batch
 				return &dynamodb.BatchWriteItemOutput{UnprocessedItems: input.RequestItems}, nil
 			}
 			return &dynamodb.BatchWriteItemOutput{}, nil
@@ -50,7 +53,7 @@ func TestRetryUnprocessed_SucceedsAfterRetries(t *testing.T) {
 	c := newWithAPI(fake, 1)
 
 	start := time.Now()
-	err := c.retryUnprocessed(context.Background(), "batchWriteItem", writeRequests(table, 1))
+	err := c.retryUnprocessed(context.Background(), writeRequests(table, 1))
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -59,7 +62,6 @@ func TestRetryUnprocessed_SucceedsAfterRetries(t *testing.T) {
 	if got := calls.Load(); got != 3 {
 		t.Errorf("expected 3 BatchWriteItem calls (1 initial unprocessed report not counted here, 2 retries + 1 success), got %d", got)
 	}
-	// Two retries with base 50ms doubling: ~50ms + ~100ms = ~150ms minimum.
 	if elapsed < 140*time.Millisecond {
 		t.Errorf("expected exponential backoff between retries, elapsed only %v", elapsed)
 	}
@@ -78,7 +80,7 @@ func TestRetryUnprocessed_ExhaustsAndWrapsError(t *testing.T) {
 	}
 	c := newWithAPI(fake, 1)
 
-	err := c.retryUnprocessed(context.Background(), "batchWriteItem", writeRequests(table, 1))
+	err := c.retryUnprocessed(context.Background(), writeRequests(table, 1))
 	if err == nil {
 		t.Fatal("expected an error after exhausting retries, got nil")
 	}
@@ -98,9 +100,64 @@ func TestRetryUnprocessed_PropagatesAPIError(t *testing.T) {
 	}
 	c := newWithAPI(fake, 1)
 
-	err := c.retryUnprocessed(context.Background(), "batchWriteItem", writeRequests("widgets", 1))
+	err := c.retryUnprocessed(context.Background(), writeRequests("widgets", 1))
 	if err == nil || !errors.Is(err, apiErr) {
 		t.Fatalf("expected the API error to be wrapped and retrievable via errors.Is, got %v", err)
+	}
+}
+
+func TestBatchGetItems_RetriesUnprocessedKeys(t *testing.T) {
+	testutil.Component(t)
+
+	const table = "widgets"
+	key := map[string]types.AttributeValue{"id": &types.AttributeValueMemberS{Value: "a"}}
+	item := map[string]types.AttributeValue{"id": &types.AttributeValueMemberS{Value: "a"}, "v": &types.AttributeValueMemberN{Value: "1"}}
+
+	var calls atomic.Int32
+	fake := fakeDynamoDBAPI{
+		batchGetItemFunc: func(_ context.Context, input *dynamodb.BatchGetItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.BatchGetItemOutput, error) {
+			if calls.Add(1) == 1 {
+				return &dynamodb.BatchGetItemOutput{
+					Responses:       map[string][]map[string]types.AttributeValue{},
+					UnprocessedKeys: input.RequestItems,
+				}, nil
+			}
+			return &dynamodb.BatchGetItemOutput{
+				Responses: map[string][]map[string]types.AttributeValue{table: {item}},
+			}, nil
+		},
+	}
+	c := newWithAPI(fake, 1)
+
+	got, err := c.batchGetItems(context.Background(), table, []map[string]types.AttributeValue{key})
+	if err != nil {
+		t.Fatalf("expected batchGetItems to recover unprocessed keys, got: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 item after retrying unprocessed keys, got %d", len(got))
+	}
+	if calls.Load() != 2 {
+		t.Errorf("expected 2 BatchGetItem calls (initial + 1 retry), got %d", calls.Load())
+	}
+}
+
+func TestBatchGetItems_ExhaustsUnprocessedKeys(t *testing.T) {
+	testutil.Component(t)
+
+	const table = "widgets"
+	key := map[string]types.AttributeValue{"id": &types.AttributeValueMemberS{Value: "a"}}
+	fake := fakeDynamoDBAPI{
+		batchGetItemFunc: func(_ context.Context, input *dynamodb.BatchGetItemInput, _ ...func(*dynamodb.Options)) (*dynamodb.BatchGetItemOutput, error) {
+			return &dynamodb.BatchGetItemOutput{
+				Responses:       map[string][]map[string]types.AttributeValue{},
+				UnprocessedKeys: input.RequestItems,
+			}, nil
+		},
+	}
+	c := newWithAPI(fake, 1)
+
+	if _, err := c.batchGetItems(context.Background(), table, []map[string]types.AttributeValue{key}); err == nil {
+		t.Fatal("expected an error after exhausting unprocessed-key retries, got nil")
 	}
 }
 

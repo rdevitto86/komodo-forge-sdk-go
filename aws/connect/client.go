@@ -17,7 +17,6 @@ type API interface {
 	ListContactFlows(ctx context.Context, instanceID string) ([]ContactFlow, error)
 }
 
-// Interface seam over the AWS SDK client; allows test injection without a real endpoint.
 type connectAPI interface {
 	StartOutboundVoiceContact(ctx context.Context, in *connect.StartOutboundVoiceContactInput, opts ...func(*connect.Options)) (*connect.StartOutboundVoiceContactOutput, error)
 	GetContactAttributes(ctx context.Context, in *connect.GetContactAttributesInput, opts ...func(*connect.Options)) (*connect.GetContactAttributesOutput, error)
@@ -33,7 +32,6 @@ type OutboundVoiceContactInput struct {
 	Attributes       map[string]string
 }
 
-// Flattens the Connect ContactFlowSummary type; only ID, ARN, Name, and Type are populated.
 type ContactFlow struct {
 	ID   string
 	ARN  string
@@ -52,7 +50,6 @@ type Client struct {
 	api connectAPI
 }
 
-// Constructs a Connect Client from the supplied Config. Region is required; AccessKey+SecretKey enable static credentials, Endpoint alone injects test credentials for LocalStack.
 func New(ctx context.Context, config Config) (*Client, error) {
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
@@ -85,12 +82,10 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{api: connect.NewFromConfig(cfg, opts...)}, nil
 }
 
-// Constructs a Client backed by a supplied fake; used in tests only.
 func newWithAPI(api connectAPI) *Client {
 	return &Client{api: api}
 }
 
-// Places an outbound call via the specified contact flow and returns the assigned contact ID.
 func (c *Client) StartOutboundVoiceContact(ctx context.Context, input OutboundVoiceContactInput) (string, error) {
 	if input.InstanceID == "" {
 		return "", fmt.Errorf("missing InstanceID")
@@ -121,7 +116,6 @@ func (c *Client) StartOutboundVoiceContact(ctx context.Context, input OutboundVo
 	return aws.ToString(out.ContactId), nil
 }
 
-// Retrieves all contact attributes for the given contact; returns an empty map when none are set.
 func (c *Client) GetContactAttributes(ctx context.Context, instanceID, contactID string) (map[string]string, error) {
 	if instanceID == "" {
 		return nil, fmt.Errorf("missing instanceID")
@@ -143,7 +137,6 @@ func (c *Client) GetContactAttributes(ctx context.Context, instanceID, contactID
 	return out.Attributes, nil
 }
 
-// Sets or updates the given attributes on the contact; attrs must be non-empty.
 func (c *Client) UpdateContactAttributes(ctx context.Context, instanceID, contactID string, attrs map[string]string) error {
 	if instanceID == "" {
 		return fmt.Errorf("missing instanceID")
@@ -166,7 +159,6 @@ func (c *Client) UpdateContactAttributes(ctx context.Context, instanceID, contac
 	return nil
 }
 
-// Returns all contact flows for the given Connect instance, paginating transparently.
 func (c *Client) ListContactFlows(ctx context.Context, instanceID string) ([]ContactFlow, error) {
 	if instanceID == "" {
 		return nil, fmt.Errorf("missing instanceID")

@@ -6,7 +6,19 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/lambda"
 )
+
+type fakeLambda struct {
+	out *lambda.InvokeOutput
+	err error
+}
+
+func (f *fakeLambda) Invoke(ctx context.Context, params *lambda.InvokeInput, optFns ...func(*lambda.Options)) (*lambda.InvokeOutput, error) {
+	return f.out, f.err
+}
 
 func localstackConfig() Config {
 	ep := os.Getenv("LOCALSTACK_ENDPOINT")
@@ -78,6 +90,29 @@ func TestInvokeAsync_EmptyFunctionName(t *testing.T) {
 	}
 }
 
+func TestInvoke_FunctionError(t *testing.T) {
+	c := newWithAPI(&fakeLambda{out: &lambda.InvokeOutput{
+		FunctionError: aws.String("Unhandled"),
+		Payload:       []byte(`{"errorMessage":"boom"}`),
+	}})
+	_, err := c.Invoke(context.Background(), "fn", []byte(`{}`))
+	if err == nil {
+		t.Fatal("expected error when FunctionError is set, got nil")
+	}
+}
+
+func TestInvoke_Success(t *testing.T) {
+	want := []byte(`{"ok":true}`)
+	c := newWithAPI(&fakeLambda{out: &lambda.InvokeOutput{Payload: want}})
+	got, err := c.Invoke(context.Background(), "fn", []byte(`{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("got %s, want %s", got, want)
+	}
+}
+
 // ── Integration Tests ────────────────────────────────────────────────────────
 
 func TestLocalStack_Invoke_NotFound(t *testing.T) {
@@ -95,7 +130,6 @@ func TestLocalStack_Invoke_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error invoking nonexistent function, got nil")
 	}
-	// Any SDK-level error is acceptable; the test proves the client reached LocalStack.
 }
 
 func TestLocalStack_InvokeAsync_NotFound(t *testing.T) {

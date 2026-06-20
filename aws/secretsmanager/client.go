@@ -198,7 +198,6 @@ func newWithAPI(api secretsManagerAPI, secretPath string) *Client {
 	}
 }
 
-// Fetches a single secret by its full name; results are cached for CacheTTL.
 func (c *Client) GetSecret(ctx context.Context, name string) (string, error) {
 	if name == "" {
 		return "", fmt.Errorf("invalid secret name")
@@ -228,7 +227,6 @@ func (c *Client) GetSecret(ctx context.Context, name string) (string, error) {
 	return v.(string), nil
 }
 
-// Fetches the JSON blob at SecretPath and returns the requested subset of keys; the parsed blob is cached for CacheTTL.
 func (c *Client) GetSecrets(ctx context.Context, keys []string) (map[string]string, error) {
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("keys must not be empty")
@@ -264,9 +262,6 @@ func (c *Client) GetSecrets(ctx context.Context, keys []string) (map[string]stri
 	return extractKeys(raw.(map[string]string), keys), nil
 }
 
-// Polls SecretPath on a supervised background goroutine, calling onChange only when a
-// requested key's value changes; cancel ctx to stop. Close tears down the cache
-// eviction loop Watch also relies on, so the client must stay open while watching.
 func (c *Client) Watch(ctx context.Context, interval time.Duration, keys []string, onChange func(map[string]string)) {
 	if interval <= 0 || len(keys) == 0 || onChange == nil || c.secretPath == "" {
 		return
@@ -304,7 +299,6 @@ func (c *Client) runWatch(ctx context.Context, interval time.Duration, keys []st
 	}
 }
 
-// Re-fetches directly from Secrets Manager, bypassing the cache, so Watch always observes the live value.
 func (c *Client) pollSecrets(ctx context.Context, keys []string) (map[string]string, error) {
 	result, err := c.sm.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
 		SecretId: aws.String(c.secretPath),
@@ -350,3 +344,5 @@ func extractKeys(all map[string]string, keys []string) map[string]string {
 	}
 	return result
 }
+
+var _ API = (*Client)(nil)

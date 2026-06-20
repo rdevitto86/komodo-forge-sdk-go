@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,7 +13,25 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs"
+	cwltypes "github.com/aws/aws-sdk-go-v2/service/cloudwatchlogs/types"
 )
+
+type fakeCWLogs struct {
+	putInputs   []*cloudwatchlogs.PutLogEventsInput
+	filterPages []*cloudwatchlogs.FilterLogEventsOutput
+	filterIdx   int
+}
+
+func (f *fakeCWLogs) PutLogEvents(ctx context.Context, params *cloudwatchlogs.PutLogEventsInput, optFns ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.PutLogEventsOutput, error) {
+	f.putInputs = append(f.putInputs, params)
+	return &cloudwatchlogs.PutLogEventsOutput{}, nil
+}
+
+func (f *fakeCWLogs) FilterLogEvents(ctx context.Context, params *cloudwatchlogs.FilterLogEventsInput, optFns ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.FilterLogEventsOutput, error) {
+	out := f.filterPages[f.filterIdx]
+	f.filterIdx++
+	return out, nil
+}
 
 func localstackConfig() Config {
 	ep := os.Getenv("LOCALSTACK_ENDPOINT")
@@ -53,16 +72,13 @@ func createLogGroupAndStream(t *testing.T, cfg Config, groupName, streamName str
 		o.BaseEndpoint = aws.String(ep)
 	})
 
-	// Create group — ignore AlreadyExistsException.
 	_, err = cwlClient.CreateLogGroup(context.Background(), &cloudwatchlogs.CreateLogGroupInput{
 		LogGroupName: aws.String(groupName),
 	})
 	if err != nil {
-		// AlreadyExists is acceptable; any other error is fatal.
 		t.Logf("CreateLogGroup: %v (may already exist)", err)
 	}
 
-	// Create stream — ignore AlreadyExistsException.
 	_, err = cwlClient.CreateLogStream(context.Background(), &cloudwatchlogs.CreateLogStreamInput{
 		LogGroupName:  aws.String(groupName),
 		LogStreamName: aws.String(streamName),
@@ -114,6 +130,56 @@ func TestPartitionLogEvents_ChunksAtLimit(t *testing.T) {
 	}
 	if len(batches[0]) != maxEventsPerCall {
 		t.Fatalf("expected first batch to have %d events, got %d", maxEventsPerCall, len(batches[0]))
+	}
+}
+
+func TestPutLogEvents_SortsByTimestamp(t *testing.T) {
+	f := &fakeCWLogs{}
+	c := newWithAPI(f)
+	base := time.Now()
+	events := []LogEvent{
+		{Timestamp: base.Add(2 * time.Second), Message: "second"},
+		{Timestamp: base.Add(1 * time.Second), Message: "first"},
+		{Timestamp: base.Add(3 * time.Second), Message: "third"},
+	}
+	if err := c.PutLogEvents(context.Background(), "g", "s", events); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(f.putInputs) != 1 {
+		t.Fatalf("expected 1 put call, got %d", len(f.putInputs))
+	}
+	sent := f.putInputs[0].LogEvents
+	for i := 1; i < len(sent); i++ {
+		if *sent[i-1].Timestamp > *sent[i].Timestamp {
+			t.Fatalf("events not sorted ascending at index %d", i)
+		}
+	}
+}
+
+func TestPartitionLogEvents_AccountsForOverhead(t *testing.T) {
+	half := maxBatchBytes/2 - 5
+	big := strings.Repeat("x", half)
+	batches := partitionLogEvents([]LogEvent{{Message: big}, {Message: big}})
+	if len(batches) != 2 {
+		t.Fatalf("expected 2 batches once per-event overhead is counted, got %d", len(batches))
+	}
+}
+
+func TestFilterLogEvents_Paginates(t *testing.T) {
+	tok := "next"
+	f := &fakeCWLogs{
+		filterPages: []*cloudwatchlogs.FilterLogEventsOutput{
+			{Events: []cwltypes.FilteredLogEvent{{Message: aws.String("a")}}, NextToken: &tok},
+			{Events: []cwltypes.FilteredLogEvent{{Message: aws.String("b")}}},
+		},
+	}
+	c := newWithAPI(f)
+	got, err := c.FilterLogEvents(context.Background(), FilterLogEventsInput{GroupName: "g"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 events across pages, got %d", len(got))
 	}
 }
 

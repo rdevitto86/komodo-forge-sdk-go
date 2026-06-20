@@ -9,14 +9,11 @@ import (
 
 func TestParseModel_Valid(t *testing.T) {
 	cases := []Model{
-		ModelClaudeOpus4_7,
-		ModelClaudeSonnet4_6,
-		ModelClaudeHaiku4_5,
-		ModelTitanTextExpress,
-		ModelTitanTextLite,
-		ModelLlama3_70B,
-		ModelLlama3_8B,
-		ModelMistralLarge,
+		MODEL_CLAUDE_DEFAULT,
+		MODEL_CLAUDE_HAIKU,
+		MODEL_GEMINI_DEFAULT,
+		MODEL_GPT_DEFAULT,
+		MODEL_DEEPSEEK_DEFAULT,
 	}
 	for _, m := range cases {
 		t.Run(string(m), func(t *testing.T) {
@@ -35,12 +32,9 @@ func TestParseModel_Invalid(t *testing.T) {
 	cases := []string{
 		"",
 		"garbage",
-		"anthropic.claude-opus-4-7",      // incomplete — missing version suffix
-		"anthropic.claude-sonnet-4-6-v1", // missing ":0" suffix
-		"anthropic.claude-haiku-4-5-20251001-v1:1", // wrong version number
-		"amazon.titan-text-express",                // missing "-v1"
-		"meta.llama3-8b-instruct-v1",               // missing ":0"
-		"mistral.mistral-large",                    // missing version
+		"anthropic.claude-sonnet-4-6",
+		"google.gemini-2.5-pro",
+		"openai.gpt-oss-20b",
 	}
 	for _, s := range cases {
 		t.Run(s, func(t *testing.T) {
@@ -72,8 +66,8 @@ func TestModels_Deterministic(t *testing.T) {
 }
 
 func TestModel_IsValid(t *testing.T) {
-	if !ModelClaudeSonnet4_6.IsValid() {
-		t.Errorf("IsValid() = false for known model %q", ModelClaudeSonnet4_6)
+	if !MODEL_CLAUDE_DEFAULT.IsValid() {
+		t.Errorf("IsValid() = false for known model %q", MODEL_CLAUDE_DEFAULT)
 	}
 	if Model("bogus").IsValid() {
 		t.Errorf("IsValid() = true for unknown model %q", "bogus")
@@ -82,7 +76,7 @@ func TestModel_IsValid(t *testing.T) {
 
 func TestModel_String(t *testing.T) {
 	want := "anthropic.claude-sonnet-4-6-v1:0"
-	if ModelClaudeSonnet4_6.String() != want {
-		t.Errorf("String() = %q, want %q", ModelClaudeSonnet4_6.String(), want)
+	if MODEL_CLAUDE_DEFAULT.String() != want {
+		t.Errorf("String() = %q, want %q", MODEL_CLAUDE_DEFAULT.String(), want)
 	}
 }

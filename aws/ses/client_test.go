@@ -203,6 +203,54 @@ func containsStr(s, sub string) bool {
 	return false
 }
 
+func TestSendEmail_RejectsHeaderInjection(t *testing.T) {
+	c := newWithAPI(&fakeSESAPI{})
+	_, err := c.SendEmail(context.Background(), SendEmailInput{
+		From:     "from@example.com",
+		To:       []string{"to@example.com"},
+		Subject:  "Subject\r\nBcc: victim@example.com",
+		TextBody: "hi",
+	})
+	if err == nil {
+		t.Fatal("expected error for CRLF in subject, got nil")
+	}
+}
+
+func TestBuildRawMessage_QuotedPrintableEncodesEquals(t *testing.T) {
+	raw, err := buildRawMessage(SendEmailInput{
+		From:     "from@example.com",
+		To:       []string{"to@example.com"},
+		Subject:  "test",
+		TextBody: "a=b url?x=1",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := string(raw)
+	if !contains(body, "quoted-printable") {
+		t.Fatal("expected quoted-printable transfer encoding")
+	}
+	if !contains(body, "=3D") {
+		t.Fatal("expected '=' to be quoted-printable encoded as =3D")
+	}
+}
+
+func TestBuildRawMessage_MultipartAlternativeWhenBothBodies(t *testing.T) {
+	raw, err := buildRawMessage(SendEmailInput{
+		From:     "from@example.com",
+		To:       []string{"to@example.com"},
+		Subject:  "test",
+		TextBody: "plain",
+		HTMLBody: "<p>html</p>",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !contains(string(raw), "multipart/alternative") {
+		t.Fatal("expected multipart/alternative when both text and html bodies set")
+	}
+}
+
 // ── Integration Tests ────────────────────────────────────────────────────────
 
 func TestLocalStack_SendEmail_Simple(t *testing.T) {
@@ -292,14 +340,12 @@ func TestLocalStack_SendEmail_WithAttachment(t *testing.T) {
 		t.Fatal("expected non-empty message ID")
 	}
 
-	// Optionally verify via LocalStack's SES inspection endpoint.
 	ep := os.Getenv("LOCALSTACK_ENDPOINT")
 	if ep == "" {
 		ep = "http://localhost:4566"
 	}
 	sesMessages := fetchLocalStackSESMessages(t, ep)
 	if len(sesMessages) == 0 {
-		// LocalStack community may not expose this endpoint; don't block.
 		t.Log("LocalStack SES message inspection endpoint returned no messages (may require Pro)")
 		return
 	}

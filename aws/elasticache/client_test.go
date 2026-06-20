@@ -6,7 +6,30 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awselasticache "github.com/aws/aws-sdk-go-v2/service/elasticache"
+	ectypes "github.com/aws/aws-sdk-go-v2/service/elasticache/types"
 )
+
+type fakeElastiCache struct {
+	rgPages []*awselasticache.DescribeReplicationGroupsOutput
+	rgIdx   int
+	ccPages []*awselasticache.DescribeCacheClustersOutput
+	ccIdx   int
+}
+
+func (f *fakeElastiCache) DescribeReplicationGroups(ctx context.Context, params *awselasticache.DescribeReplicationGroupsInput, optFns ...func(*awselasticache.Options)) (*awselasticache.DescribeReplicationGroupsOutput, error) {
+	out := f.rgPages[f.rgIdx]
+	f.rgIdx++
+	return out, nil
+}
+
+func (f *fakeElastiCache) DescribeCacheClusters(ctx context.Context, params *awselasticache.DescribeCacheClustersInput, optFns ...func(*awselasticache.Options)) (*awselasticache.DescribeCacheClustersOutput, error) {
+	out := f.ccPages[f.ccIdx]
+	f.ccIdx++
+	return out, nil
+}
 
 func localstackConfig() Config {
 	ep := os.Getenv("LOCALSTACK_ENDPOINT")
@@ -51,6 +74,42 @@ func TestNew_ValidConfig(t *testing.T) {
 	}
 	if c == nil {
 		t.Fatal("expected non-nil client")
+	}
+}
+
+func TestDescribeReplicationGroups_Paginates(t *testing.T) {
+	marker := "m"
+	f := &fakeElastiCache{
+		rgPages: []*awselasticache.DescribeReplicationGroupsOutput{
+			{ReplicationGroups: []ectypes.ReplicationGroup{{ReplicationGroupId: aws.String("a")}}, Marker: &marker},
+			{ReplicationGroups: []ectypes.ReplicationGroup{{ReplicationGroupId: aws.String("b")}}},
+		},
+	}
+	c := newWithAPI(f)
+	got, err := c.DescribeReplicationGroups(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 groups across pages, got %d", len(got))
+	}
+}
+
+func TestDescribeCacheClusters_Paginates(t *testing.T) {
+	marker := "m"
+	f := &fakeElastiCache{
+		ccPages: []*awselasticache.DescribeCacheClustersOutput{
+			{CacheClusters: []ectypes.CacheCluster{{CacheClusterId: aws.String("a")}}, Marker: &marker},
+			{CacheClusters: []ectypes.CacheCluster{{CacheClusterId: aws.String("b")}}},
+		},
+	}
+	c := newWithAPI(f)
+	got, err := c.DescribeCacheClusters(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("expected 2 clusters across pages, got %d", len(got))
 	}
 }
 

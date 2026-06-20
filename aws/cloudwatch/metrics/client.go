@@ -13,15 +13,14 @@ import (
 )
 
 const (
-	// maxDatumsPerCall is the CloudWatch limit for PutMetricData.
 	maxDatumsPerCall = 1000
 )
 
 type MetricDatum struct {
 	Name       string
 	Value      float64
-	Unit       string    // string form of a CloudWatch StandardUnit (e.g. "Count", "Bytes")
-	Timestamp  time.Time // time the datapoint was recorded; defaults to time.Now() if zero
+	Unit       string
+	Timestamp  time.Time
 	Dimensions map[string]string
 }
 
@@ -30,12 +29,11 @@ type GetMetricStatisticsInput struct {
 	MetricName string
 	StartTime  time.Time
 	EndTime    time.Time
-	Period     time.Duration // granularity of returned statistics (rounded to seconds)
-	Statistics []string      // stat names to retrieve, e.g. ["Average", "Sum"]
+	Period     time.Duration
+	Statistics []string
 	Dimensions map[string]string
 }
 
-// Holds a single statistics result datapoint returned by GetMetricStatistics.
 type MetricStat struct {
 	Timestamp   time.Time
 	Average     *float64
@@ -50,19 +48,14 @@ type Config struct {
 	Region    string
 	AccessKey string
 	SecretKey string
-	// Endpoint overrides the default CloudWatch endpoint; used for LocalStack.
-	Endpoint string
+	Endpoint  string
 }
 
 type Client struct {
 	cw *cloudwatch.Client
 }
 
-// Creates a CloudWatch metrics Client; returns an error if Region is empty, not a known AWS region, or AWS config loading fails.
 func New(ctx context.Context, config Config) (*Client, error) {
-	if config.Region == "" {
-		return nil, fmt.Errorf("missing region")
-	}
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
 	}
@@ -94,7 +87,6 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{cw: cloudwatch.NewFromConfig(cfg, opts...)}, nil
 }
 
-// Publishes metric data points to the given CloudWatch namespace, chunking automatically at 1000 datums per call.
 func (c *Client) PutMetricData(ctx context.Context, namespace string, metrics []MetricDatum) error {
 	if namespace == "" {
 		return fmt.Errorf("namespace is required")
@@ -150,7 +142,6 @@ func (c *Client) PutMetricData(ctx context.Context, namespace string, metrics []
 	return nil
 }
 
-// Retrieves aggregated statistics for a CloudWatch metric over a time window.
 func (c *Client) GetMetricStatistics(ctx context.Context, input GetMetricStatisticsInput) ([]MetricStat, error) {
 	if input.Namespace == "" {
 		return nil, fmt.Errorf("namespace is required")

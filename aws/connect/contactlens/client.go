@@ -15,12 +15,10 @@ type API interface {
 	ListRealtimeContactAnalysisSegments(ctx context.Context, instanceID, contactID string) ([]Segment, error)
 }
 
-// Interface seam over the AWS SDK client; allows test injection without a real endpoint.
 type contactLensAPI interface {
 	ListRealtimeContactAnalysisSegments(ctx context.Context, in *connectcontactlens.ListRealtimeContactAnalysisSegmentsInput, opts ...func(*connectcontactlens.Options)) (*connectcontactlens.ListRealtimeContactAnalysisSegmentsOutput, error)
 }
 
-// Flattens a real-time analysis transcript segment; only TRANSCRIPT segments populate all fields.
 type Segment struct {
 	Type              string
 	Content           string
@@ -41,7 +39,6 @@ type Client struct {
 	api contactLensAPI
 }
 
-// Constructs a Client from the supplied Config. Region is required; AccessKey+SecretKey enable static credentials, Endpoint alone injects test credentials for LocalStack.
 func New(ctx context.Context, config Config) (*Client, error) {
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
@@ -74,12 +71,10 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{api: connectcontactlens.NewFromConfig(cfg, opts...)}, nil
 }
 
-// Constructs a Client backed by a supplied fake; used in tests only.
 func newWithAPI(api contactLensAPI) *Client {
 	return &Client{api: api}
 }
 
-// Fetches all real-time analysis segments for the given contact, paginating transparently. Only TRANSCRIPT segments are mapped; other kinds are omitted.
 func (c *Client) ListRealtimeContactAnalysisSegments(ctx context.Context, instanceID, contactID string) ([]Segment, error) {
 	if instanceID == "" {
 		return nil, fmt.Errorf("missing instanceID")
@@ -115,7 +110,6 @@ func (c *Client) ListRealtimeContactAnalysisSegments(ctx context.Context, instan
 	return segments, nil
 }
 
-// Converts a raw SDK segment; non-transcript segments are returned with only Type set.
 func mapSegment(raw clstypes.RealtimeContactAnalysisSegment) Segment {
 	if raw.Transcript == nil {
 		return Segment{Type: "UNKNOWN"}

@@ -3,6 +3,7 @@ package logs
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -13,8 +14,9 @@ import (
 )
 
 const (
-	maxEventsPerCall = 10000           // CloudWatch Logs limit for PutLogEvents
-	maxBatchBytes    = 1 * 1024 * 1024 // 1 MB; approx max aggregate message size per PutLogEvents call
+	maxEventsPerCall = 10000
+	maxBatchBytes    = 1 * 1024 * 1024
+	logEventOverhead = 26
 )
 
 type LogEvent struct {
@@ -37,18 +39,22 @@ type FilteredLogEvent struct {
 	EventID    string
 }
 
+type cwLogsAPI interface {
+	PutLogEvents(ctx context.Context, params *cloudwatchlogs.PutLogEventsInput, optFns ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.PutLogEventsOutput, error)
+	FilterLogEvents(ctx context.Context, params *cloudwatchlogs.FilterLogEventsInput, optFns ...func(*cloudwatchlogs.Options)) (*cloudwatchlogs.FilterLogEventsOutput, error)
+}
+
 type Config struct {
 	Region    string
 	AccessKey string
 	SecretKey string
-	Endpoint  string // overrides the default CloudWatch Logs endpoint; used for LocalStack
+	Endpoint  string
 }
 
 type Client struct {
-	cwl *cloudwatchlogs.Client
+	cwl cwLogsAPI
 }
 
-// Creates a CloudWatch Logs Client; returns an error if Region is empty, not a known AWS region, or AWS config loading fails.
 func New(ctx context.Context, config Config) (*Client, error) {
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
@@ -81,7 +87,10 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{cwl: cloudwatchlogs.NewFromConfig(cfg, opts...)}, nil
 }
 
-// Writes log events to the specified CloudWatch Logs group and stream, chunking automatically at 10,000 events or ~1 MB.
+func newWithAPI(api cwLogsAPI) *Client {
+	return &Client{cwl: api}
+}
+
 func (c *Client) PutLogEvents(ctx context.Context, groupName, streamName string, events []LogEvent) error {
 	if groupName == "" {
 		return fmt.Errorf("group name is required")
@@ -93,17 +102,22 @@ func (c *Client) PutLogEvents(ctx context.Context, groupName, streamName string,
 		return nil
 	}
 
-	batches := partitionLogEvents(events)
+	resolved := make([]LogEvent, len(events))
+	for i, e := range events {
+		if e.Timestamp.IsZero() {
+			e.Timestamp = time.Now()
+		}
+		resolved[i] = e
+	}
+	sort.SliceStable(resolved, func(i, j int) bool {
+		return resolved[i].Timestamp.Before(resolved[j].Timestamp)
+	})
 
-	for _, batch := range batches {
+	for _, batch := range partitionLogEvents(resolved) {
 		sdkEvents := make([]types.InputLogEvent, 0, len(batch))
 		for _, e := range batch {
-			ts := e.Timestamp
-			if ts.IsZero() {
-				ts = time.Now()
-			}
 			sdkEvents = append(sdkEvents, types.InputLogEvent{
-				Timestamp: aws.Int64(ts.UnixMilli()),
+				Timestamp: aws.Int64(e.Timestamp.UnixMilli()),
 				Message:   aws.String(e.Message),
 			})
 		}
@@ -121,7 +135,6 @@ func (c *Client) PutLogEvents(ctx context.Context, groupName, streamName string,
 	return nil
 }
 
-// Retrieves log events from a CloudWatch Logs group matching an optional filter pattern.
 func (c *Client) FilterLogEvents(ctx context.Context, input FilterLogEventsInput) ([]FilteredLogEvent, error) {
 	if input.GroupName == "" {
 		return nil, fmt.Errorf("group name is required")
@@ -141,43 +154,51 @@ func (c *Client) FilterLogEvents(ctx context.Context, input FilterLogEventsInput
 		in.Limit = aws.Int32(input.Limit)
 	}
 
-	out, err := c.cwl.FilterLogEvents(ctx, in)
-	if err != nil {
-		return nil, fmt.Errorf("failed to filter log events: %w", err)
-	}
+	var result []FilteredLogEvent
+	for {
+		out, err := c.cwl.FilterLogEvents(ctx, in)
+		if err != nil {
+			return nil, fmt.Errorf("failed to filter log events: %w", err)
+		}
 
-	result := make([]FilteredLogEvent, 0, len(out.Events))
-	for _, e := range out.Events {
-		fe := FilteredLogEvent{
-			Message:    aws.ToString(e.Message),
-			StreamName: aws.ToString(e.LogStreamName),
-			EventID:    aws.ToString(e.EventId),
+		for _, e := range out.Events {
+			fe := FilteredLogEvent{
+				Message:    aws.ToString(e.Message),
+				StreamName: aws.ToString(e.LogStreamName),
+				EventID:    aws.ToString(e.EventId),
+			}
+			if e.Timestamp != nil {
+				fe.Timestamp = time.UnixMilli(*e.Timestamp).UTC()
+			}
+			result = append(result, fe)
+			if input.Limit > 0 && int32(len(result)) >= input.Limit {
+				return result[:input.Limit], nil
+			}
 		}
-		if e.Timestamp != nil {
-			fe.Timestamp = time.UnixMilli(*e.Timestamp).UTC()
+
+		if out.NextToken == nil {
+			break
 		}
-		result = append(result, fe)
+		in.NextToken = out.NextToken
 	}
 
 	return result, nil
 }
 
-// Splits events into batches respecting the per-call count and byte limits.
 func partitionLogEvents(events []LogEvent) [][]LogEvent {
 	var batches [][]LogEvent
 	var current []LogEvent
 	currentBytes := 0
 
 	for _, e := range events {
-		msgLen := len(e.Message)
-		// start a new batch if count or size limit would be exceeded
-		if len(current) >= maxEventsPerCall || (currentBytes+msgLen > maxBatchBytes && len(current) > 0) {
+		msgSize := len(e.Message) + logEventOverhead
+		if len(current) >= maxEventsPerCall || (currentBytes+msgSize > maxBatchBytes && len(current) > 0) {
 			batches = append(batches, current)
 			current = nil
 			currentBytes = 0
 		}
 		current = append(current, e)
-		currentBytes += msgLen
+		currentBytes += msgSize
 	}
 	if len(current) > 0 {
 		batches = append(batches, current)

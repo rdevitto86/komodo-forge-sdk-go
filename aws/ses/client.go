@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"mime"
 	"mime/multipart"
+	"mime/quotedprintable"
 	"net/textproto"
 	"strings"
 
@@ -34,7 +36,6 @@ type SendEmailInput struct {
 	Attachments []Attachment
 }
 
-// Interface seam over the AWS SESv2 SDK client; allows test injection without a real endpoint.
 type sesAPI interface {
 	SendEmail(ctx context.Context, in *sesv2.SendEmailInput, opts ...func(*sesv2.Options)) (*sesv2.SendEmailOutput, error)
 }
@@ -47,14 +48,13 @@ type Config struct {
 	Region    string
 	AccessKey string
 	SecretKey string
-	Endpoint  string // optional; set to LocalStack URL in non-prod environments
+	Endpoint  string // optional
 }
 
 type Client struct {
 	ses sesAPI
 }
 
-// Creates a SES Client; returns an error if Region is empty.
 func New(ctx context.Context, config Config) (*Client, error) {
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
@@ -87,18 +87,19 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{ses: sesv2.NewFromConfig(cfg, opts...)}, nil
 }
 
-// Constructs a Client with an injected sesAPI — used only in tests.
 func newWithAPI(api sesAPI) *Client {
 	return &Client{ses: api}
 }
 
-// Sends an outgoing email via SESv2, assembling raw multipart/mixed MIME when attachments are present. Returns the SES message ID.
 func (c *Client) SendEmail(ctx context.Context, input SendEmailInput) (string, error) {
 	if input.From == "" {
 		return "", fmt.Errorf("missing from address")
 	}
 	if len(input.To) == 0 {
 		return "", fmt.Errorf("missing To address")
+	}
+	if err := validateAddressHeaders(input); err != nil {
+		return "", err
 	}
 
 	var in *sesv2.SendEmailInput
@@ -160,12 +161,10 @@ func (c *Client) SendEmail(ctx context.Context, input SendEmailInput) (string, e
 	return aws.ToString(result.MessageId), nil
 }
 
-// Helper that constructs a multipart/mixed RFC 2822 MIME message including all body parts and base64-encoded attachments.
 func buildRawMessage(input SendEmailInput) ([]byte, error) {
 	var buf bytes.Buffer
 	w := multipart.NewWriter(&buf)
 
-	// RFC 2822 envelope headers must appear before the MIME boundary.
 	fmt.Fprintf(&buf, "From: %s\r\n", input.From)
 	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(input.To, ", "))
 	if len(input.Cc) > 0 {
@@ -174,30 +173,12 @@ func buildRawMessage(input SendEmailInput) ([]byte, error) {
 	if len(input.ReplyTo) > 0 {
 		fmt.Fprintf(&buf, "Reply-To: %s\r\n", strings.Join(input.ReplyTo, ", "))
 	}
-	fmt.Fprintf(&buf, "Subject: %s\r\n", input.Subject)
+	fmt.Fprintf(&buf, "Subject: %s\r\n", mime.QEncoding.Encode("utf-8", input.Subject))
 	fmt.Fprintf(&buf, "MIME-Version: 1.0\r\n")
 	fmt.Fprintf(&buf, "Content-Type: multipart/mixed; boundary=\"%s\"\r\n\r\n", w.Boundary())
 
-	if input.TextBody != "" {
-		h := make(textproto.MIMEHeader)
-		h.Set("Content-Type", "text/plain; charset=UTF-8")
-		h.Set("Content-Transfer-Encoding", "quoted-printable")
-		pw, err := w.CreatePart(h)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create text part: %w", err)
-		}
-		fmt.Fprint(pw, input.TextBody)
-	}
-
-	if input.HTMLBody != "" {
-		h := make(textproto.MIMEHeader)
-		h.Set("Content-Type", "text/html; charset=UTF-8")
-		h.Set("Content-Transfer-Encoding", "quoted-printable")
-		pw, err := w.CreatePart(h)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create html part: %w", err)
-		}
-		fmt.Fprint(pw, input.HTMLBody)
+	if err := writeBodyParts(w, input); err != nil {
+		return nil, err
 	}
 
 	for _, att := range input.Attachments {
@@ -228,4 +209,73 @@ func buildRawMessage(input SendEmailInput) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+func writeBodyParts(w *multipart.Writer, input SendEmailInput) error {
+	hasText := input.TextBody != ""
+	hasHTML := input.HTMLBody != ""
+
+	if hasText && hasHTML {
+		var altBuf bytes.Buffer
+		alt := multipart.NewWriter(&altBuf)
+		if err := writeQPPart(alt, "text/plain; charset=UTF-8", input.TextBody); err != nil {
+			return err
+		}
+		if err := writeQPPart(alt, "text/html; charset=UTF-8", input.HTMLBody); err != nil {
+			return err
+		}
+		if err := alt.Close(); err != nil {
+			return fmt.Errorf("failed to close alternative writer: %w", err)
+		}
+		h := make(textproto.MIMEHeader)
+		h.Set("Content-Type", "multipart/alternative; boundary=\""+alt.Boundary()+"\"")
+		pw, err := w.CreatePart(h)
+		if err != nil {
+			return fmt.Errorf("failed to create alternative part: %w", err)
+		}
+		if _, err := pw.Write(altBuf.Bytes()); err != nil {
+			return fmt.Errorf("failed to write alternative part: %w", err)
+		}
+		return nil
+	}
+
+	if hasText {
+		return writeQPPart(w, "text/plain; charset=UTF-8", input.TextBody)
+	}
+	if hasHTML {
+		return writeQPPart(w, "text/html; charset=UTF-8", input.HTMLBody)
+	}
+	return nil
+}
+
+func writeQPPart(w *multipart.Writer, contentType, body string) error {
+	h := make(textproto.MIMEHeader)
+	h.Set("Content-Type", contentType)
+	h.Set("Content-Transfer-Encoding", "quoted-printable")
+	pw, err := w.CreatePart(h)
+	if err != nil {
+		return fmt.Errorf("failed to create body part: %w", err)
+	}
+	qp := quotedprintable.NewWriter(pw)
+	if _, err := qp.Write([]byte(body)); err != nil {
+		return fmt.Errorf("failed to encode body part: %w", err)
+	}
+	if err := qp.Close(); err != nil {
+		return fmt.Errorf("failed to finalise body encoding: %w", err)
+	}
+	return nil
+}
+
+func validateAddressHeaders(input SendEmailInput) error {
+	fields := []string{input.From, input.Subject}
+	fields = append(fields, input.To...)
+	fields = append(fields, input.Cc...)
+	fields = append(fields, input.Bcc...)
+	fields = append(fields, input.ReplyTo...)
+	for _, f := range fields {
+		if strings.ContainsAny(f, "\r\n") {
+			return fmt.Errorf("failed to build email: header value contains CR or LF")
+		}
+	}
+	return nil
 }

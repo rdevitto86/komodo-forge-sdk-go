@@ -13,14 +13,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
 )
 
-// Interface seam over the AWS SDK client; allows test injection without a real endpoint.
 type bedrockRuntimeAPI interface {
 	InvokeModel(ctx context.Context, in *bedrockruntime.InvokeModelInput, opts ...func(*bedrockruntime.Options)) (*bedrockruntime.InvokeModelOutput, error)
 	Converse(ctx context.Context, in *bedrockruntime.ConverseInput, opts ...func(*bedrockruntime.Options)) (*bedrockruntime.ConverseOutput, error)
 }
 
 type Message struct {
-	Role    string // "user" or "assistant"
+	Role    string
 	Content string
 }
 
@@ -56,7 +55,6 @@ type Client struct {
 	api bedrockRuntimeAPI
 }
 
-// Creates a Bedrock Client from the provided Config. Region is required; AccessKey+SecretKey enable static credentials, Endpoint alone injects test credentials for LocalStack.
 func New(ctx context.Context, config Config) (*Client, error) {
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
@@ -91,7 +89,6 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{api: bedrockruntime.NewFromConfig(cfg, opts...)}, nil
 }
 
-// Constructs a Client backed by a supplied fake; used in tests only.
 func newWithAPI(api bedrockRuntimeAPI) *Client {
 	return &Client{api: api}
 }
@@ -107,7 +104,6 @@ type anthropicMessage struct {
 	Content string `json:"content"`
 }
 
-// Sends a prompt to the named Anthropic model using a preconfigured request envelope. Returns an error for non-Anthropic model families.
 func (c *Client) Invoke(ctx context.Context, model Model, prompt string) (string, error) {
 	if !model.IsValid() {
 		return "", fmt.Errorf("%w: %s", ErrUnknownModel, model)
@@ -150,7 +146,6 @@ func (c *Client) Invoke(ctx context.Context, model Model, prompt string) (string
 	return "", fmt.Errorf("invoke response contained no text content")
 }
 
-// Sends a raw JSON body to the specified model via InvokeModel and returns the raw response bytes. The caller is responsible for marshalling and unmarshalling according to the model's native format.
 func (c *Client) InvokeJSON(ctx context.Context, model Model, body []byte) ([]byte, error) {
 	if !model.IsValid() {
 		return nil, fmt.Errorf("%w: %s", ErrUnknownModel, model)
@@ -168,7 +163,6 @@ func (c *Client) InvokeJSON(ctx context.Context, model Model, body []byte) ([]by
 	return out.Body, nil
 }
 
-// Sends a multi-turn conversation to the specified model using the Bedrock Converse API and returns the model's text response and token usage.
 func (c *Client) Converse(ctx context.Context, input ConverseInput) (*ConverseOutput, error) {
 	if !input.Model.IsValid() {
 		return nil, fmt.Errorf("%w: %s", ErrUnknownModel, input.Model)
@@ -240,3 +234,5 @@ func (c *Client) Converse(ctx context.Context, input ConverseInput) (*ConverseOu
 
 	return result, nil
 }
+
+var _ API = (*Client)(nil)

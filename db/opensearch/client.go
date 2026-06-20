@@ -17,8 +17,6 @@ type Config struct {
 
 type Client struct{}
 
-// Returns ErrNotImplemented until a real opensearch-go client is wired in. Fails fast at
-// construction rather than handing back a client whose methods panic at first call.
 func New(config Config) (*Client, error) {
 	return nil, ErrNotImplemented
 }

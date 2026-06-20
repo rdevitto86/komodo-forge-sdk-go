@@ -14,9 +14,9 @@ import (
 type SendInput struct {
 	QueueURL string
 	Body     string
-	GroupID  string            // FIFO MessageGroupId (required for .fifo queues)
-	DedupID  string            // FIFO MessageDeduplicationId
-	Attrs    map[string]string // optional string message attributes
+	GroupID  string
+	DedupID  string
+	Attrs    map[string]string // optional
 }
 
 type Message struct {
@@ -43,12 +43,7 @@ type Client struct {
 	sqs *sqs.Client
 }
 
-// Creates and returns a new SQS Client. Returns an error if the region is
-// missing or not a known AWS region code.
 func New(ctx context.Context, config Config) (*Client, error) {
-	if config.Region == "" {
-		return nil, fmt.Errorf("missing region")
-	}
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
 	}
@@ -80,7 +75,6 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{sqs: sqs.NewFromConfig(cfg, opts...)}, nil
 }
 
-// Enqueues a message. For FIFO queues, set GroupID and DedupID.
 func (c *Client) Send(ctx context.Context, input SendInput) (string, error) {
 	in := &sqs.SendMessageInput{
 		QueueUrl:    aws.String(input.QueueURL),
@@ -111,7 +105,6 @@ func (c *Client) Send(ctx context.Context, input SendInput) (string, error) {
 	return aws.ToString(result.MessageId), nil
 }
 
-// Long-polls for up to maxMessages (max 10) from the queue.
 func (c *Client) Receive(ctx context.Context, queueURL string, maxMessages int32) ([]Message, error) {
 	if maxMessages > 10 {
 		maxMessages = 10
@@ -120,7 +113,7 @@ func (c *Client) Receive(ctx context.Context, queueURL string, maxMessages int32
 	result, err := c.sqs.ReceiveMessage(ctx, &sqs.ReceiveMessageInput{
 		QueueUrl:              aws.String(queueURL),
 		MaxNumberOfMessages:   maxMessages,
-		WaitTimeSeconds:       20, // long-poll
+		WaitTimeSeconds:       20,
 		MessageAttributeNames: []string{"All"},
 	})
 	if err != nil {
@@ -145,7 +138,6 @@ func (c *Client) Receive(ctx context.Context, queueURL string, maxMessages int32
 	return msgs, nil
 }
 
-// Removes a message from the queue after successful processing.
 func (c *Client) Delete(ctx context.Context, queueURL, receiptHandle string) error {
 	_, err := c.sqs.DeleteMessage(ctx, &sqs.DeleteMessageInput{
 		QueueUrl:      aws.String(queueURL),
@@ -156,3 +148,5 @@ func (c *Client) Delete(ctx context.Context, queueURL, receiptHandle string) err
 	}
 	return nil
 }
+
+var _ API = (*Client)(nil)

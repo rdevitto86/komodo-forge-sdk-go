@@ -12,6 +12,14 @@ import (
 	"github.com/google/uuid"
 )
 
+const (
+	JWT_PUBLIC_KEY  = "JWT_PUBLIC_KEY"
+	JWT_PRIVATE_KEY = "JWT_PRIVATE_KEY"
+	JWT_AUDIENCE    = "JWT_AUDIENCE"
+	JWT_ISSUER      = "JWT_ISSUER"
+	JWT_KID         = "JWT_KID"
+)
+
 const defaultLeeway = 30 * time.Second
 
 type SecretsProvider interface {

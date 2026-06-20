@@ -81,7 +81,6 @@ func TestLocalStack_ListDomainNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListDomainNames returned error: %v", err)
 	}
-	// No domains are expected on a fresh LocalStack; just confirm no error.
 	t.Logf("found %d domain(s)", len(names))
 }
 
@@ -100,5 +99,4 @@ func TestLocalStack_DescribeDomain_NotFound(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for nonexistent domain, got nil")
 	}
-	// Any SDK-level error is acceptable; proves the client reached LocalStack.
 }

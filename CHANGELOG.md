@@ -6,6 +6,24 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.19.1]
+
+> **Per-package constants.** Well-known env-var keys move out of the central `constants`/`config` package into folder-level `constants.go` files — each in `package <folder>`, so a package owns its own keys (`aws.AWS_REGION`, `http.HOST`, `security.JWT_ISSUER`, …). The `aws` package additionally carries deployment-sizing value constants (regions, ARN partitions, Fargate/Lambda CPU/memory/timeout). The central package is removed.
+
+### Added
+
+- **`aws` — `package aws` constants.** Env-var keys `AWS_REGION`, `AWS_ENDPOINT`, `AWS_SECRET_PATH`, plus value constants for regions (`AWS_US_EAST_1`…`AWS_US_WEST_2`), ARN partitions (`ARN_PARTITION_AWS*`), Fargate CPU/memory, Lambda memory/timeout, and generic request timeouts.
+- **`http` — env-var keys.** `HOST`, `MAX_CONTENT_LENGTH`, `RATE_LIMIT_RPS`, `RATE_LIMIT_BURST`, `BUCKET_TTL_SECOND`, `IP_WHITELIST`, `IP_BLACKLIST`, `IDEMPOTENCY_TTL_SEC`.
+- **`security` — env-var keys.** `JWT_PUBLIC_KEY`, `JWT_PRIVATE_KEY`, `JWT_AUDIENCE`, `JWT_ISSUER`, `JWT_KID`.
+- **`logging` — env-var keys.** `LOG_LEVEL`.
+- **`api` — env-var keys.** `APP_NAME`, `ENV`, `PORT`, `PORT_PRIVATE`, `PORT_METRICS`.
+
+### Removed
+
+- **Central `constants`/`config` package.** `constants/` and `aws/constants/` are deleted; their keys are redistributed to the owning packages above. DynamoDB env-var keys (`DYNAMODB_ENDPOINT`, `DYNAMODB_TABLE`, `DYNAMODB_ACCESS_KEY`, `DYNAMODB_SECRET_KEY`) consolidate into `aws/dynamodb`.
+
+---
+
 ## [0.19.0]
 
 > **Security/crypto sweep.** The dead `crypto/` re-export facade is removed, `security/jwt` and `security/oauth` move to the standard `Client`/`New(Config)` pattern (eliminating package-global mutable state and a latent `iss`/`aud` data race), `security/encryption` ships an AES-256-GCM cipher, `security/hashing` adds an Argon2id password hasher, `security/token` adds fail-closed secure-random token generation, and the rest of the `security/` tree is hardened. **Breaking:** `auth.AuthMiddleware` and `api/headers` now take an injected JWT client.

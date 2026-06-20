@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/opensearch"
 )
 
-// Flattens an OpenSearch domain returned by the control-plane API.
 type Domain struct {
 	Name          string
 	Endpoint      string
@@ -29,18 +28,14 @@ type Config struct {
 	Region    string
 	AccessKey string
 	SecretKey string
-	Endpoint  string // optional; set to LocalStack URL in non-prod environments
+	Endpoint  string // optional
 }
 
 type Client struct {
 	os *opensearch.Client
 }
 
-// Creates and returns a new OpenSearch control-plane Client. Returns an error if Region is empty or not a known AWS region.
 func New(ctx context.Context, config Config) (*Client, error) {
-	if config.Region == "" {
-		return nil, fmt.Errorf("missing region")
-	}
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
 	}
@@ -72,7 +67,6 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{os: opensearch.NewFromConfig(cfg, opts...)}, nil
 }
 
-// Fetches metadata for a single OpenSearch domain by name.
 func (c *Client) DescribeDomain(ctx context.Context, name string) (*Domain, error) {
 	if name == "" {
 		return nil, fmt.Errorf("domain name is required")
@@ -106,7 +100,6 @@ func (c *Client) DescribeDomain(ctx context.Context, name string) (*Domain, erro
 	return d, nil
 }
 
-// Returns the names of all OpenSearch domains in the configured region.
 func (c *Client) ListDomainNames(ctx context.Context) ([]string, error) {
 	result, err := c.os.ListDomainNames(ctx, &opensearch.ListDomainNamesInput{})
 	if err != nil {

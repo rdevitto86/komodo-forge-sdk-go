@@ -13,22 +13,18 @@ import (
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 type fakeConnectAPI struct {
-	// StartOutboundVoiceContact
 	outboundIn  *connect.StartOutboundVoiceContactInput
 	outboundOut *connect.StartOutboundVoiceContactOutput
 	outboundErr error
 
-	// GetContactAttributes
 	getAttrIn  *connect.GetContactAttributesInput
 	getAttrOut *connect.GetContactAttributesOutput
 	getAttrErr error
 
-	// UpdateContactAttributes
 	updateAttrIn  *connect.UpdateContactAttributesInput
 	updateAttrOut *connect.UpdateContactAttributesOutput
 	updateAttrErr error
 
-	// ListContactFlows
 	listFlowsIn  *connect.ListContactFlowsInput
 	listFlowsOut *connect.ListContactFlowsOutput
 	listFlowsErr error
@@ -88,7 +84,6 @@ func TestStartOutboundVoiceContact_HappyPath(t *testing.T) {
 		t.Errorf("contactID = %q, want %q", contactID, "contact-123")
 	}
 
-	// Verify input translation.
 	in := fake.outboundIn
 	if aws.ToString(in.InstanceId) != "instance-abc" {
 		t.Errorf("InstanceId = %q, want %q", aws.ToString(in.InstanceId), "instance-abc")
@@ -166,7 +161,6 @@ func TestGetContactAttributes_HappyPath(t *testing.T) {
 		t.Errorf("attrs[key2] = %q, want %q", attrs["key2"], "val2")
 	}
 
-	// Verify input translation.
 	if aws.ToString(fake.getAttrIn.InstanceId) != "inst-1" {
 		t.Errorf("InstanceId = %q, want %q", aws.ToString(fake.getAttrIn.InstanceId), "inst-1")
 	}
@@ -200,7 +194,6 @@ func TestUpdateContactAttributes_HappyPath(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify input translation.
 	in := fake.updateAttrIn
 	if aws.ToString(in.InstanceId) != "inst-1" {
 		t.Errorf("InstanceId = %q, want %q", aws.ToString(in.InstanceId), "inst-1")

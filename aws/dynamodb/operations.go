@@ -14,11 +14,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-// Confirms that a table exists and is reachable.
 func (c *Client) DescribeTable(ctx context.Context, table string) error {
 	if _, err := c.db.DescribeTable(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(table)}); err != nil {
 		logger.Error("failed to describe table", err)
-		return WrapError(err, "DescribeTable")
+		return WrapError(err)
 	}
 	return nil
 }
@@ -30,10 +29,10 @@ func (c *Client) getItem(ctx context.Context, tableName string, key map[string]t
 	})
 	if err != nil {
 		logger.Error("failed to get item", err)
-		return nil, WrapError(err, "getItem")
+		return nil, WrapError(err)
 	}
 	if result.Item == nil {
-		return nil, fmt.Errorf("getItem: %w", ErrNotFound)
+		return nil, ErrNotFound
 	}
 	return result.Item, nil
 }
@@ -53,7 +52,7 @@ func (c *Client) putItem(
 	}
 	if _, err := c.db.PutItem(ctx, input); err != nil {
 		logger.Error("failed to put item", err)
-		return WrapError(err, "putItem")
+		return WrapError(err)
 	}
 	return nil
 }
@@ -73,7 +72,7 @@ func (c *Client) deleteItem(
 	}
 	if _, err := c.db.DeleteItem(ctx, input); err != nil {
 		logger.Error("failed to delete item", err)
-		return WrapError(err, "deleteItem")
+		return WrapError(err)
 	}
 	return nil
 }
@@ -87,7 +86,6 @@ func chunks[T any](items []T) [][]T {
 	return out
 }
 
-// Runs fn for each of n chunk indices in parallel, bounded by the maxParallel semaphore; returns the first error.
 func (c *Client) runParallel(n int, fn func(i int) error) error {
 	if n == 1 {
 		return fn(0)
@@ -121,17 +119,16 @@ const (
 	batchRetryBaseDelay = 50 * time.Millisecond
 )
 
-// Resends unprocessed items with exponential backoff, returning a wrapped terminal error once retries are exhausted.
-func (c *Client) retryUnprocessed(ctx context.Context, op string, unprocessed map[string][]types.WriteRequest) error {
+func (c *Client) retryUnprocessed(ctx context.Context, unprocessed map[string][]types.WriteRequest) error {
 	delay := batchRetryBaseDelay
 	for attempt := 1; len(unprocessed) > 0; attempt++ {
 		if attempt > maxBatchRetries {
-			return WrapError(fmt.Errorf("%s has unprocessed items after %d retries", op, maxBatchRetries), op)
+			return WrapError(fmt.Errorf("unprocessed write items remain after %d retries", maxBatchRetries))
 		}
 
 		select {
 		case <-ctx.Done():
-			return WrapError(ctx.Err(), op)
+			return WrapError(ctx.Err())
 		case <-time.After(delay):
 		}
 		delay *= 2
@@ -139,11 +136,37 @@ func (c *Client) retryUnprocessed(ctx context.Context, op string, unprocessed ma
 		result, err := c.db.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{RequestItems: unprocessed})
 		if err != nil {
 			logger.Error("retry of unprocessed batch items failed", err)
-			return WrapError(err, op)
+			return WrapError(err)
 		}
 		unprocessed = result.UnprocessedItems
 	}
 	return nil
+}
+
+func (c *Client) retryUnprocessedKeys(ctx context.Context, tableName string, unprocessed map[string]types.KeysAndAttributes) ([]map[string]types.AttributeValue, error) {
+	var items []map[string]types.AttributeValue
+	delay := batchRetryBaseDelay
+	for attempt := 1; len(unprocessed) > 0; attempt++ {
+		if attempt > maxBatchRetries {
+			return nil, WrapError(fmt.Errorf("unprocessed read keys remain after %d retries", maxBatchRetries))
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, WrapError(ctx.Err())
+		case <-time.After(delay):
+		}
+		delay *= 2
+
+		result, err := c.db.BatchGetItem(ctx, &dynamodb.BatchGetItemInput{RequestItems: unprocessed})
+		if err != nil {
+			logger.Error("retry of unprocessed batch keys failed", err)
+			return nil, WrapError(err)
+		}
+		items = append(items, result.Responses[tableName]...)
+		unprocessed = result.UnprocessedKeys
+	}
+	return items, nil
 }
 
 func (c *Client) batchGetItems(
@@ -166,12 +189,17 @@ func (c *Client) batchGetItems(
 		})
 		if err != nil {
 			logger.Error("failed to batch get items", err)
-			return WrapError(err, "batchGetItems")
+			return WrapError(err)
 		}
+		items := result.Responses[tableName]
 		if len(result.UnprocessedKeys) > 0 {
-			return WrapError(fmt.Errorf("batch get has unprocessed keys"), "batchGetItems")
+			retried, rerr := c.retryUnprocessedKeys(ctx, tableName, result.UnprocessedKeys)
+			if rerr != nil {
+				return rerr
+			}
+			items = append(items, retried...)
 		}
-		results[i] = result.Responses[tableName]
+		results[i] = items
 		return nil
 	})
 	if err != nil {
@@ -197,7 +225,7 @@ func (c *Client) batchGetItemsAs(
 	}
 	if err = attributevalue.UnmarshalListOfMaps(items, out); err != nil {
 		logger.Error("failed to unmarshal items", err)
-		return WrapError(err, "batchGetItemsAs")
+		return WrapError(err)
 	}
 	return nil
 }
@@ -226,10 +254,10 @@ func (c *Client) batchWriteItems(
 		})
 		if err != nil {
 			logger.Error("failed to batch write items", err)
-			return WrapError(err, "batchWriteItem")
+			return WrapError(err)
 		}
 		if len(result.UnprocessedItems) > 0 {
-			return c.retryUnprocessed(ctx, "batchWriteItem", result.UnprocessedItems)
+			return c.retryUnprocessed(ctx, result.UnprocessedItems)
 		}
 		return nil
 	})
@@ -259,10 +287,10 @@ func (c *Client) batchDeleteItems(
 		})
 		if err != nil {
 			logger.Error("failed to batch delete items", err)
-			return WrapError(err, "batchDeleteItem")
+			return WrapError(err)
 		}
 		if len(result.UnprocessedItems) > 0 {
-			return c.retryUnprocessed(ctx, "batchDeleteItem", result.UnprocessedItems)
+			return c.retryUnprocessed(ctx, result.UnprocessedItems)
 		}
 		return nil
 	})

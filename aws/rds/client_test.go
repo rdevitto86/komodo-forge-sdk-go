@@ -130,7 +130,6 @@ func TestExecuteStatement_ParameterConversion(t *testing.T) {
 	}
 
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			p := findParam(params, tc.name)
@@ -182,7 +181,6 @@ func TestExecuteStatement_RowDecoding(t *testing.T) {
 		t.Fatalf("expected 2 rows, got %d", len(out.Rows))
 	}
 
-	// Row 0
 	row0 := out.Rows[0]
 	if row0["id"] != int64(1) {
 		t.Errorf("row0[id]: got %v (%T), want int64(1)", row0["id"], row0["id"])
@@ -197,7 +195,6 @@ func TestExecuteStatement_RowDecoding(t *testing.T) {
 		t.Errorf("row0[active]: got %v, want true", row0["active"])
 	}
 
-	// Row 1 — NULL score
 	row1 := out.Rows[1]
 	if row1["id"] != int64(2) {
 		t.Errorf("row1[id]: got %v, want int64(2)", row1["id"])
@@ -221,7 +218,6 @@ func TestExecuteStatement_Validation(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for empty SQL, got nil")
 	}
-	// Confirm the SDK was never called.
 	if fake.executeIn != nil {
 		t.Fatal("SDK ExecuteStatement was called despite empty SQL")
 	}
@@ -236,7 +232,6 @@ func TestTransactionLifecycle(t *testing.T) {
 	client := newTestClient(fake)
 	ctx := context.Background()
 
-	// Begin
 	txID, err := client.BeginTransaction(ctx)
 	if err != nil {
 		t.Fatalf("BeginTransaction error: %v", err)
@@ -245,7 +240,6 @@ func TestTransactionLifecycle(t *testing.T) {
 		t.Fatalf("BeginTransaction: got txID %q, want txn-abc", txID)
 	}
 
-	// Execute with transaction ID
 	_, err = client.ExecuteStatement(ctx, ExecuteStatementInput{
 		SQL:           "INSERT INTO t VALUES (:v)",
 		Parameters:    map[string]any{"v": "data"},
@@ -259,7 +253,6 @@ func TestTransactionLifecycle(t *testing.T) {
 			aws.ToString(fake.executeIn.TransactionId))
 	}
 
-	// Commit
 	if err = client.CommitTransaction(ctx, txID); err != nil {
 		t.Fatalf("CommitTransaction error: %v", err)
 	}
@@ -331,7 +324,6 @@ func TestBatchExecuteStatement(t *testing.T) {
 		t.Fatalf("BatchExecuteStatement error: %v", err)
 	}
 
-	// Single SDK call with all three parameter sets.
 	if fake.batchIn == nil {
 		t.Fatal("batch execute was not called")
 	}
@@ -339,7 +331,6 @@ func TestBatchExecuteStatement(t *testing.T) {
 		t.Errorf("expected 3 parameter sets in SDK call, got %d", len(fake.batchIn.ParameterSets))
 	}
 
-	// Decoded results.
 	if len(out.UpdateResults) != 3 {
 		t.Fatalf("expected 3 UpdateResults, got %d", len(out.UpdateResults))
 	}

@@ -6,7 +6,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/rdsdata/types"
 )
 
-// Converts a Go value to an RDS Data API Field union. Returns an error for unsupported types.
 func toField(v any) (types.Field, error) {
 	if v == nil {
 		return &types.FieldMemberIsNull{Value: true}, nil

@@ -7,12 +7,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
-var (
-	ErrClientNotInitialized = fmt.Errorf("client not initialized")
-	ErrNotFound = fmt.Errorf("item not found")
-)
+var ErrNotFound = errors.New("item not found")
 
-func WrapError(err error, operation string) error {
+func WrapError(err error) error {
 	if err == nil {
 		return nil
 	}
@@ -34,42 +31,42 @@ func WrapError(err error, operation string) error {
 
 	switch {
 	case errors.As(err, &conditionalCheckErr):
-		return fmt.Errorf("conditional check failed during %s: %w", operation, err)
+		return fmt.Errorf("failed conditional check: %w", err)
 
 	case errors.As(err, &resourceNotFoundErr):
-		return fmt.Errorf("resource not found during %s: %w", operation, err)
+		return fmt.Errorf("failed to find resource: %w", err)
 
 	case errors.As(err, &provisionedThroughputErr):
-		return fmt.Errorf("provisioned throughput exceeded during %s: %w", operation, err)
+		return fmt.Errorf("exceeded provisioned throughput: %w", err)
 
 	case errors.As(err, &requestLimitErr):
-		return fmt.Errorf("request limit exceeded during %s: %w", operation, err)
+		return fmt.Errorf("exceeded request limit: %w", err)
 
 	case errors.As(err, &transactionConflictErr):
-		return fmt.Errorf("transaction conflict during %s: %w", operation, err)
+		return fmt.Errorf("hit transaction conflict: %w", err)
 
 	case errors.As(err, &transactionCanceledErr):
-		return fmt.Errorf("transaction canceled during %s: %w", operation, err)
+		return fmt.Errorf("canceled transaction: %w", err)
 
 	case errors.As(err, &duplicateItemErr):
-		return fmt.Errorf("duplicate item during %s: %w", operation, err)
+		return fmt.Errorf("rejected duplicate item: %w", err)
 
 	case errors.As(err, &resourceInUseErr):
-		return fmt.Errorf("resource in use during %s: %w", operation, err)
+		return fmt.Errorf("found resource in use: %w", err)
 
 	case errors.As(err, &tableNotFoundErr):
-		return fmt.Errorf("table not found during %s: %w", operation, err)
+		return fmt.Errorf("failed to find table: %w", err)
 
 	case errors.As(err, &internalServerErr):
-		return fmt.Errorf("internal server error during %s: %w", operation, err)
+		return fmt.Errorf("hit internal server error: %w", err)
 
 	case errors.As(err, &itemCollectionErr):
-		return fmt.Errorf("item collection size exceeded during %s: %w", operation, err)
+		return fmt.Errorf("exceeded item collection size: %w", err)
 
 	case errors.As(err, &throttlingErr):
-		return fmt.Errorf("throttled during %s: %w", operation, err)
+		return fmt.Errorf("throttled request: %w", err)
 
 	default:
-		return fmt.Errorf("%s failed: %w", operation, err)
+		return fmt.Errorf("failed dynamodb request: %w", err)
 	}
 }

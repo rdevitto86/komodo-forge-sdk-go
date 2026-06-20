@@ -14,6 +14,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
+const (
+	DYNAMODB_ENDPOINT   = "DYNAMODB_ENDPOINT"
+	DYNAMODB_TABLE      = "DYNAMODB_TABLE"
+	DYNAMODB_ACCESS_KEY = "DYNAMODB_ACCESS_KEY"
+	DYNAMODB_SECRET_KEY = "DYNAMODB_SECRET_KEY"
+)
+
 type API interface {
 	BuildKey(pk string, pv any, sk string, sv any) (map[string]types.AttributeValue, error)
 	GetItem(ctx context.Context, table string, key map[string]types.AttributeValue, batch bool, keys []map[string]types.AttributeValue) (any, error)
@@ -34,7 +41,6 @@ type API interface {
 	DescribeTable(ctx context.Context, table string) error
 }
 
-// Mirrors the *dynamodb.Client surface so tests can inject a fake without a live endpoint.
 type dynamoDBAPI interface {
 	GetItem(ctx context.Context, input *dynamodb.GetItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error)
 	PutItem(ctx context.Context, input *dynamodb.PutItemInput, opts ...func(*dynamodb.Options)) (*dynamodb.PutItemOutput, error)
@@ -57,10 +63,9 @@ type Config struct {
 
 type Client struct {
 	db          dynamoDBAPI
-	maxParallel int // semaphore cap for batch operations
+	maxParallel int
 }
 
-// Constructs a Client with an injected fake API, bypassing AWS config loading; test-only.
 func newWithAPI(api dynamoDBAPI, maxParallel int) *Client {
 	if maxParallel <= 0 {
 		maxParallel = 5
@@ -73,26 +78,23 @@ func New(ctx context.Context, config Config) (*Client, error) {
 		return nil, fmt.Errorf("missing region")
 	}
 
-	var (
-		cfg aws.Config
-		err error
-	)
-
+	cfgOpts := []func(*awsconfig.LoadOptions) error{
+		awsconfig.WithRegion(config.Region),
+	}
 	if config.AccessKey != "" && config.SecretKey != "" {
-		cfg, err = awsconfig.LoadDefaultConfig(
-			ctx,
-			awsconfig.WithRegion(config.Region),
-			awsconfig.WithCredentialsProvider(
-				credentials.NewStaticCredentialsProvider(config.AccessKey, config.SecretKey, ""),
-			),
-		)
-	} else {
-		cfg, err = awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(config.Region))
+		cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(config.AccessKey, config.SecretKey, ""),
+		))
+	} else if config.Endpoint != "" {
+		cfgOpts = append(cfgOpts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider("test", "test", ""),
+		))
 	}
 
+	cfg, err := awsconfig.LoadDefaultConfig(ctx, cfgOpts...)
 	if err != nil {
 		logger.Error("dynamodb failed to load config", err)
-		return nil, WrapError(err, "New")
+		return nil, WrapError(err)
 	}
 
 	var opts []func(*dynamodb.Options)
@@ -121,7 +123,7 @@ func (c *Client) BuildKey(
 	pkAttr, err := attributevalue.Marshal(partitionValue)
 	if err != nil {
 		logger.Error("failed to marshal partition key", err)
-		return nil, WrapError(err, "BuildKey marshal partition key")
+		return nil, WrapError(err)
 	}
 	key[partitionKey] = pkAttr
 
@@ -129,7 +131,7 @@ func (c *Client) BuildKey(
 		skAttr, err := attributevalue.Marshal(sortValue)
 		if err != nil {
 			logger.Error("failed to marshal sort key", err)
-			return nil, WrapError(err, "BuildKey marshal sort key")
+			return nil, WrapError(err)
 		}
 		key[sortKey] = skAttr
 	}
@@ -163,12 +165,11 @@ func (c *Client) GetItemAs(
 
 	item, err := c.getItem(ctx, tableName, key)
 	if err != nil {
-		logger.Error("failed to get item", err)
-		return WrapError(err, "GetItemAs get")
+		return err
 	}
 	if err = attributevalue.UnmarshalMap(item, out); err != nil {
 		logger.Error("failed to unmarshal item", err)
-		return WrapError(err, "GetItemAs unmarshal")
+		return WrapError(err)
 	}
 	return nil
 }
@@ -199,7 +200,7 @@ func (c *Client) WriteItemFrom(
 		av, err := attributevalue.MarshalList(items)
 		if err != nil {
 			logger.Error("failed to marshal items", err)
-			return WrapError(err, "WriteItemFrom marshal batch items")
+			return WrapError(err)
 		}
 
 		avMaps := make([]map[string]types.AttributeValue, len(av))
@@ -207,7 +208,7 @@ func (c *Client) WriteItemFrom(
 			if m, ok := it.(*types.AttributeValueMemberM); ok {
 				avMaps[i] = m.Value
 			} else {
-				return WrapError(fmt.Errorf("item %d is not a map", i), "WriteItemFrom marshal batch items")
+				return WrapError(fmt.Errorf("item %d is not a map", i))
 			}
 		}
 		return c.batchWriteItems(ctx, tableName, avMaps)
@@ -216,7 +217,7 @@ func (c *Client) WriteItemFrom(
 	av, err := attributevalue.MarshalMap(item)
 	if err != nil {
 		logger.Error("failed to marshal item", err)
-		return WrapError(err, "WriteItemFrom marshal single item")
+		return WrapError(err)
 	}
 	return c.putItem(ctx, tableName, av, condition)
 }
@@ -249,7 +250,7 @@ func (c *Client) UpdateItem(
 	result, err := c.db.UpdateItem(ctx, input)
 	if err != nil {
 		logger.Error("failed to update item", err)
-		return nil, WrapError(err, "UpdateItem")
+		return nil, WrapError(err)
 	}
 	return result.Attributes, nil
 }
@@ -266,12 +267,11 @@ func (c *Client) UpdateItemAs(
 ) error {
 	attrs, err := c.UpdateItem(ctx, tableName, key, updateExpr, exprValues, exprNames, condition)
 	if err != nil {
-		logger.Error("failed to update item", err)
-		return WrapError(err, "UpdateItemAs")
+		return err
 	}
 	if err = attributevalue.UnmarshalMap(attrs, out); err != nil {
 		logger.Error("failed to unmarshal item", err)
-		return WrapError(err, "UpdateItemAs unmarshal")
+		return WrapError(err)
 	}
 	return nil
 }
@@ -289,3 +289,5 @@ func (c *Client) DeleteItem(
 	}
 	return c.deleteItem(ctx, tableName, key, condition)
 }
+
+var _ API = (*Client)(nil)

@@ -14,9 +14,9 @@ import (
 type PublishInput struct {
 	TopicARN string
 	Message  string
-	GroupID  string            // FIFO MessageGroupId (required for .fifo topics)
-	DedupID  string            // FIFO MessageDeduplicationId
-	Attrs    map[string]string // optional string message attributes
+	GroupID  string
+	DedupID  string
+	Attrs    map[string]string // optional
 }
 
 type API interface {
@@ -34,12 +34,7 @@ type Client struct {
 	sns *sns.Client
 }
 
-// Creates and returns a new SNS Client. Returns an error if the region is
-// missing or not a known AWS region code.
 func New(ctx context.Context, config Config) (*Client, error) {
-	if config.Region == "" {
-		return nil, fmt.Errorf("missing region")
-	}
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
 	}
@@ -71,7 +66,6 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{sns: sns.NewFromConfig(cfg, opts...)}, nil
 }
 
-// Sends a message to an SNS topic. For FIFO topics, set GroupID and DedupID.
 func (c *Client) Publish(ctx context.Context, input PublishInput) (string, error) {
 	in := &sns.PublishInput{
 		TopicArn: aws.String(input.TopicARN),
@@ -101,3 +95,5 @@ func (c *Client) Publish(ctx context.Context, input PublishInput) (string, error
 	}
 	return aws.ToString(result.MessageId), nil
 }
+
+var _ API = (*Client)(nil)

@@ -16,18 +16,21 @@ type API interface {
 	InvokeAsync(ctx context.Context, functionName string, payload []byte) error
 }
 
+type lambdaAPI interface {
+	Invoke(ctx context.Context, params *lambda.InvokeInput, optFns ...func(*lambda.Options)) (*lambda.InvokeOutput, error)
+}
+
 type Config struct {
 	Region    string
 	AccessKey string
 	SecretKey string
-	Endpoint  string // optional; set to LocalStack URL in non-prod environments
+	Endpoint  string
 }
 
 type Client struct {
-	lambda *lambda.Client
+	lambda lambdaAPI
 }
 
-// Creates a Lambda Client from the provided Config; returns an error if Region is empty.
 func New(ctx context.Context, config Config) (*Client, error) {
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
@@ -60,7 +63,10 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	return &Client{lambda: lambda.NewFromConfig(cfg, opts...)}, nil
 }
 
-// Synchronously invokes the named Lambda function with payload and returns the response payload.
+func newWithAPI(api lambdaAPI) *Client {
+	return &Client{lambda: api}
+}
+
 func (c *Client) Invoke(ctx context.Context, functionName string, payload []byte) ([]byte, error) {
 	if functionName == "" {
 		return nil, fmt.Errorf("missing function name")
@@ -74,10 +80,12 @@ func (c *Client) Invoke(ctx context.Context, functionName string, payload []byte
 	if err != nil {
 		return nil, fmt.Errorf("failed to invoke function: %w", err)
 	}
+	if result.FunctionError != nil {
+		return result.Payload, fmt.Errorf("failed to invoke function: function returned %q: %s", aws.ToString(result.FunctionError), string(result.Payload))
+	}
 	return result.Payload, nil
 }
 
-// Fires a Lambda invocation event without waiting for a response (InvocationTypeEvent).
 func (c *Client) InvokeAsync(ctx context.Context, functionName string, payload []byte) error {
 	if functionName == "" {
 		return fmt.Errorf("missing function name")
@@ -93,3 +101,5 @@ func (c *Client) InvokeAsync(ctx context.Context, functionName string, payload [
 	}
 	return nil
 }
+
+var _ API = (*Client)(nil)

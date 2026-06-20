@@ -57,7 +57,7 @@ func TestInvokeJSON_PassThrough(t *testing.T) {
 	}
 	c := newWithAPI(fake)
 
-	got, err := c.InvokeJSON(context.Background(), ModelMistralLarge, rawBody)
+	got, err := c.InvokeJSON(context.Background(), MODEL_DEEPSEEK_DEFAULT, rawBody)
 	if err != nil {
 		t.Fatalf("InvokeJSON returned unexpected error: %v", err)
 	}
@@ -115,9 +115,8 @@ func TestInvoke_RejectsUnknownModel(t *testing.T) {
 
 func TestInvoke_AnthropicBuildsBody(t *testing.T) {
 	const prompt = "What is the meaning of life?"
-
 	var capturedInput *bedrockruntime.InvokeModelInput
-	// Build a valid Anthropic-format response so Invoke can parse it back.
+
 	respPayload, _ := json.Marshal(map[string]interface{}{
 		"content": []map[string]string{{"type": "text", "text": "42"}},
 	})
@@ -129,7 +128,7 @@ func TestInvoke_AnthropicBuildsBody(t *testing.T) {
 	}
 	c := newWithAPI(fake)
 
-	text, err := c.Invoke(context.Background(), ModelClaudeSonnet4_6, prompt)
+	text, err := c.Invoke(context.Background(), MODEL_CLAUDE_DEFAULT, prompt)
 	if err != nil {
 		t.Fatalf("Invoke returned unexpected error: %v", err)
 	}
@@ -137,7 +136,6 @@ func TestInvoke_AnthropicBuildsBody(t *testing.T) {
 		t.Errorf("Invoke returned %q, want %q", text, "42")
 	}
 
-	// Verify the body sent to InvokeModel is well-formed Anthropic JSON.
 	var body anthropicRequestBody
 	if err := json.Unmarshal(capturedInput.Body, &body); err != nil {
 		t.Fatalf("captured body is not valid JSON: %v", err)
@@ -160,7 +158,6 @@ func TestInvoke_AnthropicBuildsBody(t *testing.T) {
 }
 
 func TestInvoke_NoTextContentReturnsError(t *testing.T) {
-	// Response contains only a non-text block; Invoke must error rather than return "".
 	respPayload, _ := json.Marshal(map[string]interface{}{
 		"content": []map[string]string{{"type": "image", "text": ""}},
 	})
@@ -171,7 +168,7 @@ func TestInvoke_NoTextContentReturnsError(t *testing.T) {
 	}
 	c := newWithAPI(fake)
 
-	_, err := c.Invoke(context.Background(), ModelClaudeSonnet4_6, "hello")
+	_, err := c.Invoke(context.Background(), MODEL_CLAUDE_DEFAULT, "hello")
 	if err == nil {
 		t.Fatal("Invoke expected error when response has no text content, got nil")
 	}
@@ -185,11 +182,10 @@ func TestInvoke_NonAnthropicReturnsError(t *testing.T) {
 	fake := &fakeRuntimeAPI{}
 	c := newWithAPI(fake)
 
-	_, err := c.Invoke(context.Background(), ModelMistralLarge, "hi")
+	_, err := c.Invoke(context.Background(), MODEL_GEMINI_DEFAULT, "hi")
 	if err == nil {
 		t.Fatal("Invoke expected error for non-Anthropic model, got nil")
 	}
-	// Must not wrap ErrUnknownModel — the model is valid, just unsupported by Invoke.
 	if errors.Is(err, ErrUnknownModel) {
 		t.Errorf("Invoke error should not be ErrUnknownModel for a valid non-Anthropic model: %v", err)
 	}
@@ -222,7 +218,7 @@ func TestConverse_HappyPath(t *testing.T) {
 	c := newWithAPI(fake)
 
 	out, err := c.Converse(context.Background(), ConverseInput{
-		Model: ModelClaudeHaiku4_5,
+		Model: MODEL_CLAUDE_HAIKU,
 		Messages: []Message{
 			{Role: "user", Content: "How are you?"},
 		},

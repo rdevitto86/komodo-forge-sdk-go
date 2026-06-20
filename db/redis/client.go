@@ -28,8 +28,8 @@ type Config struct {
 	Addr        string
 	Password    string
 	DB          int
-	DialTimeout time.Duration // defaults to 3s when zero
-	OpTimeout   time.Duration // defaults to 2s when zero
+	DialTimeout time.Duration // defaults to 3s
+	OpTimeout   time.Duration // defaults to 2s
 }
 
 type Client struct {
@@ -104,7 +104,6 @@ func (c *Client) withTimeout(ctx context.Context) (context.Context, context.Canc
 	return context.WithTimeout(ctx, d)
 }
 
-// Retrieves the string value stored at key. Returns ("", nil) on cache miss.
 func (c *Client) Get(ctx context.Context, key string) (string, error) {
 	ctx, cancel := c.withTimeout(ctx)
 	defer cancel()
@@ -156,7 +155,6 @@ func (c *Client) MGet(ctx context.Context, keys ...string) ([]string, error) {
 	return out, nil
 }
 
-// Stores a value with the given TTL in seconds. Use ttl=0 for no expiration.
 func (c *Client) Set(ctx context.Context, key string, value string, ttl int64) error {
 	ctx, cancel := c.withTimeout(ctx)
 	defer cancel()
@@ -173,7 +171,6 @@ func (c *Client) Set(ctx context.Context, key string, value string, ttl int64) e
 	return nil
 }
 
-// Atomically increments the integer value at key by one and returns the new value.
 func (c *Client) Incr(ctx context.Context, key string) (int64, error) {
 	ctx, cancel := c.withTimeout(ctx)
 	defer cancel()
@@ -186,7 +183,6 @@ func (c *Client) Incr(ctx context.Context, key string) (int64, error) {
 	return val, nil
 }
 
-// Sets key to value only if the key does not already exist; returns true if the write occurred.
 func (c *Client) SetNX(ctx context.Context, key string, value string, ttl int64) (bool, error) {
 	ctx, cancel := c.withTimeout(ctx)
 	defer cancel()
@@ -204,7 +200,6 @@ func (c *Client) SetNX(ctx context.Context, key string, value string, ttl int64)
 	return ok, nil
 }
 
-// Pings the Redis server to confirm connectivity.
 func (c *Client) Ping(ctx context.Context) error {
 	ctx, cancel := c.withTimeout(ctx)
 	defer cancel()
@@ -216,7 +211,6 @@ func (c *Client) Ping(ctx context.Context) error {
 	return nil
 }
 
-// Reports whether a key exists in Redis.
 func (c *Client) Exists(ctx context.Context, key string) (bool, error) {
 	ctx, cancel := c.withTimeout(ctx)
 	defer cancel()
@@ -229,7 +223,6 @@ func (c *Client) Exists(ctx context.Context, key string) (bool, error) {
 	return n > 0, nil
 }
 
-// Removes a key from Redis.
 func (c *Client) Delete(ctx context.Context, key string) error {
 	ctx, cancel := c.withTimeout(ctx)
 	defer cancel()
@@ -241,8 +234,6 @@ func (c *Client) Delete(ctx context.Context, key string) error {
 	return nil
 }
 
-// Sets the expiry on an existing key to ttl seconds. A ttl of zero or
-// negative is a no-op.
 func (c *Client) Expire(ctx context.Context, key string, ttl int64) error {
 	if ttl <= 0 {
 		return nil
@@ -261,7 +252,6 @@ func (c *Client) Close() error {
 	return c.rc.Close()
 }
 
-// atomic token bucket; returns {allowed, wait_ms}
 var tokenBucketScript = goredis.NewScript(`
 local now = tonumber(ARGV[1])
 local rate = tonumber(ARGV[2])
@@ -298,7 +288,6 @@ redis.call('EXPIRE', KEYS[1], ttl)
 return {allowed, tostring(wait_ms)}
 `)
 
-// Attempts to consume a token from a distributed token bucket; returns whether the request is allowed and how long to wait if not.
 func (c *Client) AllowDistributed(ctx context.Context, key string, rate, burst float64, ttlSec int) (bool, time.Duration, error) {
 	now := time.Now().UnixMilli()
 	res, err := tokenBucketScript.Run(ctx, c.rc, []string{key}, now, rate, burst, 1, ttlSec).Result()

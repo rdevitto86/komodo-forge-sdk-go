@@ -103,7 +103,6 @@ func TestToField(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			// Compare via type assertion since Field is an interface.
 			if got == nil {
 				t.Fatalf("got nil Field")
 			}
@@ -213,7 +212,6 @@ func TestFromField(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			// Use string comparison for []byte, direct == for scalars.
 			switch want := tc.want.(type) {
 			case []byte:
 				v, ok := got.([]byte)

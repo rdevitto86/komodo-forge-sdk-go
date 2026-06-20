@@ -84,7 +84,6 @@ func TestListRealtimeContactAnalysisSegments_HappyPath(t *testing.T) {
 		t.Errorf("Sentiment = %q, want %q", seg.Sentiment, string(clstypes.SentimentValueNeutral))
 	}
 
-	// Verify input translation.
 	if aws.ToString(fake.capturedIn.InstanceId) != "inst-1" {
 		t.Errorf("InstanceId = %q, want %q", aws.ToString(fake.capturedIn.InstanceId), "inst-1")
 	}
@@ -119,7 +118,6 @@ func TestListRealtimeContactAnalysisSegments_ValidationErrors(t *testing.T) {
 		{"missing contactID", "inst-1", ""},
 	}
 	for _, tc := range cases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := c.ListRealtimeContactAnalysisSegments(context.Background(), tc.instanceID, tc.contactID)
 			if err == nil {

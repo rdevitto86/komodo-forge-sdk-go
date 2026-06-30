@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
 	logger "github.com/rdevitto86/komodo-forge-sdk-go/logging/runtime"
 
@@ -21,9 +22,10 @@ type API interface {
 	PutObject(ctx context.Context, bucket, key string, data []byte, contentType string) error
 	DeleteObject(ctx context.Context, bucket, key string) error
 	HeadBucket(ctx context.Context, bucket string) error
+	PresignPut(ctx context.Context, bucket, key string, ttl time.Duration, contentType string, contentLength int64) (string, error)
 }
 
-type Config struct {
+type S3Config struct {
 	Region    string
 	AccessKey string
 	SecretKey string
@@ -34,7 +36,7 @@ type Client struct {
 	s3 *s3.Client
 }
 
-func New(ctx context.Context, config Config) (*Client, error) {
+func New(ctx context.Context, config S3Config) (*Client, error) {
 	if config.Region == "" {
 		return nil, fmt.Errorf("missing region")
 	}
@@ -55,7 +57,7 @@ func New(ctx context.Context, config Config) (*Client, error) {
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, cfgOpts...)
 	if err != nil {
 		logger.Error("s3 failed to load config", err)
-		return nil, WrapError(err)
+		return nil, wrapError(err)
 	}
 
 	var opts []func(*s3.Options)
@@ -73,7 +75,7 @@ func New(ctx context.Context, config Config) (*Client, error) {
 func (c *Client) HeadBucket(ctx context.Context, bucket string) error {
 	if _, err := c.s3.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)}); err != nil {
 		logger.Error("failed to head s3 bucket", err)
-		return WrapError(err)
+		return wrapError(err)
 	}
 	return nil
 }
@@ -85,14 +87,14 @@ func (c *Client) GetObject(ctx context.Context, bucket, key string) ([]byte, err
 	})
 	if err != nil {
 		logger.Error("failed to get s3 object", err)
-		return nil, WrapError(err)
+		return nil, wrapError(err)
 	}
 	defer result.Body.Close()
 
 	data, err := io.ReadAll(result.Body)
 	if err != nil {
 		logger.Error("failed to read s3 object body", err)
-		return nil, WrapError(err)
+		return nil, wrapError(err)
 	}
 	return data, nil
 }
@@ -104,7 +106,7 @@ func (c *Client) GetObjectAs(ctx context.Context, bucket, key string, out any) e
 	}
 	if err := json.Unmarshal(data, out); err != nil {
 		logger.Error("failed to unmarshal s3 object", err)
-		return WrapError(err)
+		return wrapError(err)
 	}
 	return nil
 }
@@ -120,7 +122,7 @@ func (c *Client) PutObject(ctx context.Context, bucket, key string, data []byte,
 	}
 	if _, err := c.s3.PutObject(ctx, input); err != nil {
 		logger.Error("failed to put s3 object", err)
-		return WrapError(err)
+		return wrapError(err)
 	}
 	return nil
 }
@@ -131,9 +133,40 @@ func (c *Client) DeleteObject(ctx context.Context, bucket, key string) error {
 		Key:    aws.String(key),
 	}); err != nil {
 		logger.Error("failed to delete s3 object", err)
-		return WrapError(err)
+		return wrapError(err)
 	}
 	return nil
 }
 
+func (c *Client) PresignPut(ctx context.Context, bucket, key string, ttl time.Duration, contentType string, contentLength int64) (string, error) {
+	if ttl <= 0 {
+		return "", fmt.Errorf("ttl must be greater than zero")
+	}
+
+	input := &s3.PutObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	}
+	if contentType != "" {
+		input.ContentType = aws.String(contentType)
+	}
+	if contentLength > 0 {
+		input.ContentLength = aws.Int64(contentLength)
+	}
+
+	resp, err := s3.NewPresignClient(c.s3).PresignPutObject(ctx, input, s3.WithPresignExpires(ttl))
+	if err != nil {
+		logger.Error("failed to presign put object", err)
+		return "", wrapError(err)
+	}
+	return resp.URL, nil
+}
+
 var _ API = (*Client)(nil)
+
+func wrapError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("failed to execute s3 request: %w", err)
+}

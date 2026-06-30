@@ -6,6 +6,16 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ---
 
+## [0.19.2]
+
+> **`aws/s3` presigned PUT.** Adds `PresignPut` to the S3 client for generating presigned upload URLs — primary use case is direct-to-S3 client uploads (e.g. profile avatar images).
+
+### Added
+
+- **`aws/s3` — `PresignPut` method.** `PresignPut(ctx, bucket, key string, ttl time.Duration, contentType string, contentLength int64) (string, error)` generates a presigned S3 PUT URL. `ttl` must be greater than zero. `contentType` is included in the signed request only when non-empty. `contentLength`, when greater than zero, is included in the signature — S3 enforces an exact byte match on upload (useful for fixed-size payloads). Added to the `API` interface.
+
+---
+
 ## [0.19.1]
 
 > **Per-package constants.** Well-known env-var keys move out of the central `constants`/`config` package into folder-level `constants.go` files — each in `package <folder>`, so a package owns its own keys (`aws.AWS_REGION`, `http.HOST`, `security.JWT_ISSUER`, …). The `aws` package additionally carries deployment-sizing value constants (regions, ARN partitions, Fargate/Lambda CPU/memory/timeout). The central package is removed.
